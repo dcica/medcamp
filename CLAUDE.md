@@ -71,13 +71,17 @@ LabStatus  ← per registration: pending | received | mailed (date); no lab resu
 
 ## Access Roles
 
-| Role | Access |
-|---|---|
-| Coordinator | Full god-view dashboard, all modules |
-| Registration desk | Registration + payment + badge print |
-| Station volunteer | Own station queue only (scan in/out) |
-| Doctor | Station view + add-on service flag |
-| Committee / admin | Supply calculator, camp setup, reports |
+| Role | Access | Cash |
+|---|---|---|
+| Coordinator | Full dashboard, all modules, volunteer/till setup | Can assign till |
+| Registration desk — till holder | Registration, payment, badge print | Yes |
+| Registration desk — no till | Registration, payment (Stripe only), badge print | No |
+| Station volunteer | Own station queue (scan in/out) | No |
+| Doctor | Station view + add-on service flag | No |
+| POS volunteer — till holder | Merchandise POS | Yes |
+| Committee / admin | Supply calculator, camp setup, reports | No |
+
+Till holders are assigned by the coordinator before camp. Cash option is hidden from non-till volunteers — their payment screen shows Stripe only.
 
 ## Repo Structure
 

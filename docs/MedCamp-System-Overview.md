@@ -347,6 +347,28 @@ In the open-space configuration, TV screens mounted near the waiting area can di
 
 ---
 
+## Access Roles & Cash Control
+
+| Role | System Access | Cash |
+|---|---|---|
+| Coordinator | Full dashboard, all modules, volunteer setup | Can assign till |
+| Registration desk — till holder | Registration, payment, badge print, cash + Stripe | Yes — has till |
+| Registration desk — no till | Registration, payment, badge print, Stripe only | No — card only |
+| Station volunteer | Own station queue (scan in/out) | No |
+| Doctor | Station view + add-on service flag | No |
+| POS volunteer — till holder | Merchandise POS, cash + Stripe | Yes — has till |
+| Committee / admin | Supply calculator, camp setup, reports | No |
+
+**Till assignment:**
+- Coordinator assigns till holders before camp day in the system
+- Volunteers assigned a till see both Stripe Tap to Pay and cash as payment options
+- Volunteers without a till see Stripe only — the cash option is hidden from their screen entirely
+- If a patient wants to pay cash and approaches a card-only volunteer, the screen prompts: "For cash payment, please visit the **till desk**"
+- Each till holder's cash transactions are logged separately for end-of-day reconciliation
+- Coordinator dashboard shows a per-till cash summary: total collected, number of transactions
+
+---
+
 ## What the System Does NOT Do
 
 To keep this focused and avoid unnecessary complexity:

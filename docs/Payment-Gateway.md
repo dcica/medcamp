@@ -80,12 +80,13 @@ Doctor recommends an additional service the patient did not pre-pay for.
 
 ### 4. Cash Payments
 
-Cash is accepted at the registration desk for walk-ins and add-ons. No cash drawer integration — handled manually by the volunteer.
+Cash is accepted only by volunteers assigned a **till** before camp. The till is the physical control — if you have the till, you take cash.
 
-- **Flow:** Volunteer selects "Cash" as payment method → enters amount tendered → system displays change due → volunteer collects cash and confirms → registration proceeds
-- **Reconciliation:** Cash payments are tracked separately in the system (amount, time, volunteer ID) and appear as a distinct line in the post-camp reconciliation report
-- **No online cash:** Pre-registration is card-only (Stripe). Cash is day-of only.
-- **Change calculator:** System shows change due on screen — volunteer handles cash drawer independently
+- **Till assignment:** Coordinator assigns till holders in the system before camp day. Typically 1–2 volunteers at the registration desk and 1 at the POS merchandise station.
+- **Cash option visibility:** Volunteers with a till see both Stripe and cash as payment options. Volunteers without a till see Stripe only — cash is hidden from their screen. If a card-only volunteer is approached for cash, the screen prompts: "For cash payment, please visit the till desk."
+- **Flow:** Till volunteer selects "Cash" → enters amount tendered → system shows change due → volunteer collects cash and confirms → registration/sale proceeds
+- **No cash online:** Pre-registration and membership are card-only (Stripe). Cash is day-of only.
+- **Reconciliation:** Each till holder's cash is tracked separately — total collected, number of transactions, timestamps. End-of-day: till holder counts physical cash and reconciles against the system total.
 
 ---
 
