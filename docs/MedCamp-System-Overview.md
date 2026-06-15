@@ -127,12 +127,22 @@ The label packet eliminates "which line do I go to?" confusion and removes handw
 
 When a patient arrives on camp day:
 
-1. Volunteer scans the QR code from the patient's confirmation email (or prints it on-site for those without smartphones)
+1. Patient presents confirmation code or QR from their confirmation email (volunteer can also look up by name)
 2. System confirms: ✓ Registered, ✓ Paid, ✓ Waiver signed
-3. Patient receives their printed badge if not already in hand
+3. Patient receives their printed label packet
 4. System assigns the patient to their first station queue
 
-Walk-ins who did not pre-register are handled at a dedicated walk-in desk adjacent to the main check-in.
+**Walk-In Registration Window**
+
+Walk-ins are not turned away, but registration opens on a delay to protect pre-registered patients and allow initial flow to stabilize.
+
+- **Camp opens:** Only pre-registered check-in is active; walk-in desk displays "Walk-in registration opens at [time]"
+- **After ~1 hour** (or when coordinator manually opens it): walk-in registration activates
+- The coordinator toggles walk-in registration open/closed from the dashboard — no fixed timer, based on real flow
+- Walk-in patients waiting during the hold period are given an estimated wait time and directed to the waiting area
+- Once open: walk-in desk processes registration, payment, and badge print in a single flow
+
+This mirrors the current practice of holding walk-ins for approximately one hour while pre-registered patients clear initial intake.
 
 ---
 

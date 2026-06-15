@@ -23,9 +23,10 @@ dcica is a registered 501(c)(3) non-profit organization that organizes medical c
 
 **Cancellations & Refunds:**
 - Cancellation before camp day: full refund via original payment method
-- No-shows: no automatic refund; contact sachin@buzzclan.com within 7 days
+- No-shows: no automatic refund; contact sachin@buzzclan.com within 7 days of the event
 - Service unavailable on the day: refund for that service only
 - Family registrations: all members can be cancelled together, or individual members cancelled separately
+- All refunds are processed by dcica staff through Stripe; processing time is 5–10 business days depending on your bank
 
 **Walk-ins:** Walk-in registration is available subject to capacity. Pre-registration is strongly recommended.
 

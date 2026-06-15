@@ -87,7 +87,7 @@ src/     — application code (Next.js project root goes here)
 
 ## Key External Integrations
 
-- **Stripe:** Payment Element for online checkout; Terminal SDK + Tap to Pay on phone for walk-in POS. Payment must succeed before registration is confirmed. Non-profit rate applies (501(c)(3) confirmed) — apply at stripe.com/docs/tax-exempt before go-live.
+- **Stripe:** Payment Element for online checkout; Terminal SDK + Tap to Pay on phone for walk-in POS. Payment must succeed before registration is confirmed. Non-profit rate applies (501(c)(3) confirmed) — apply at stripe.com/docs/tax-exempt before go-live. Refunds are staff-initiated only (no self-serve refund flow for patients).
   - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` — browser-safe, used in Payment Element
   - `STRIPE_SECRET_KEY` — server-side only, never exposed to client
   - Test keys stored in `.env` (gitignored). Swap for live keys in Vercel env vars at deploy time.
