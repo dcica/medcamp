@@ -6,7 +6,8 @@ Automation system for non-profit medical camps — registration, payments, patie
 
 - [System Overview & Committee Review](docs/MedCamp-System-Overview.md) — architecture, modules, venue configurations, build plan, and open questions for the committee
 - [Hardware Recommendations](docs/Hardware-Recommendations.md) — label printer, tablets, QR scanners, WiFi, displays, and budget estimate
-- [Payment Gateway](docs/Payment-Gateway.md) — Square integration, payment scenarios, pricing, and reconciliation
+- [Payment Gateway](docs/Payment-Gateway.md) — Stripe integration, payment scenarios, pricing, and reconciliation
+- [Platform Extensions](docs/Platform-Extensions.md) — general events, membership, POS/merchandise, vendor registration (with Zelle)
 
 ## Project Structure
 
