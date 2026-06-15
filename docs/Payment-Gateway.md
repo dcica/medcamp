@@ -1,13 +1,13 @@
 ---
 title: Payment Gateway
-nav_order: 4
+nav_order: 5
 ---
 
 # Payment Gateway
 
 ## Platform Decision
 
-Three options were evaluated. Square is the current working platform and likely the final choice, but the committee should confirm non-profit registration status — Stripe's non-profit tier may offer meaningful savings at scale.
+Three options were evaluated. Square is the current working platform, but Stripe was selected for the new build — its non-profit tier offers savings at scale, and its SDK is the best fit for a custom Next.js application with both online checkout and Tap to Pay.
 
 ### Comparison
 
@@ -78,31 +78,31 @@ Doctor recommends an additional service the patient did not pre-pay for.
   6. Payment confirmed → service added to patient's record → patient routed to the new station
 - **Rule:** Patient does not proceed to the new station until payment is confirmed in the system
 
-### 5. Payment Waiver (Override)
+### 5. Payment Override
 
 Certain authorized staff can waive payment for an individual service or an entire registration. This is a restricted action with a full audit trail.
 
-**Authorization:** Waiver permission is a separate role flag assigned by the coordinator before camp — independent of till access. A volunteer may have a till but not waiver authority, or vice versa. Typically limited to the coordinator and 1–2 senior committee members.
+**Authorization:** Override permission is a separate role flag assigned by the coordinator before camp — independent of till access. A volunteer may have a till but not override authority, or vice versa. Typically limited to the coordinator and 1–2 senior committee members.
 
 **Flow:**
 1. Authorized volunteer opens a registration or walk-in form
-2. Taps "Waive Payment" on a specific service or the full total
+2. Taps "Override Payment" on a specific service or the full total
 3. System requires a **reason** before proceeding (dropdown + optional free text):
    - Financial hardship
    - Volunteer / staff member
    - Committee decision
    - Complimentary (sponsor/donor)
    - Other (free text required)
-4. Waiver is recorded against the volunteer's ID, timestamp, and reason
-5. Registration proceeds at $0 for the waived amount
-6. For non-waiver volunteers: the "Waive Payment" option is not visible — it does not appear on their screen at all
+4. Override is recorded against the volunteer's ID, timestamp, and reason
+5. Registration proceeds at $0 for the overridden amount
+6. For non-override volunteers: the "Override Payment" option is not visible — it does not appear on their screen at all
 
-**Waiver log (coordinator dashboard):**
-- All waivers during the event listed in real time
-- Columns: attendee name, service(s) waived, original amount, waived by, reason, timestamp
+**Override log (coordinator dashboard):**
+- All payment overrides during the event listed in real time
+- Columns: attendee name, service(s) overridden, original amount, overridden by, reason, timestamp
 - Included in post-camp reconciliation export as a separate section
 
-**Partial waivers:** A single service can be waived while others are paid normally. The remaining balance is collected via Stripe or cash as usual.
+**Partial overrides:** A single service can be overridden while others are paid normally. The remaining balance is collected via Stripe or cash as usual.
 
 ---
 
@@ -183,12 +183,12 @@ Cash transactions are totalled separately so the volunteer can reconcile the phy
 
 ---
 
-## Square Account Setup Required
+## Stripe Account Setup Required
 
-Before going live, confirm the following with the Square account holder:
+Before going live, confirm the following on the Stripe account:
 
-- [ ] Square Web Payments SDK application ID and location ID (for online checkout)
-- [ ] Square Terminal paired and assigned to the registration desk location
-- [ ] Square Sandbox credentials available for development and testing
-- [ ] Webhook endpoint configured in Square Developer Dashboard (for payment confirmation callbacks)
-- [ ] Camp-specific item catalog set up in Square (optional — system can manage pricing independently)
+- [x] Publishable key (`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`) and secret key (`STRIPE_SECRET_KEY`) obtained — test keys in hand
+- [ ] Apply for Stripe non-profit rate at stripe.com/docs/tax-exempt (EIN + 501(c)(3) determination letter)
+- [ ] Tap to Pay on phone enabled on the Stripe account (for in-person walk-in and add-on payments)
+- [ ] Webhook endpoint configured in the Stripe Dashboard (for payment confirmation callbacks)
+- [ ] Swap test keys for live keys in Vercel environment variables at deploy time

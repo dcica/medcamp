@@ -364,7 +364,7 @@ In the open-space configuration, TV screens mounted near the waiting area can di
 | Coordinator | Full dashboard, all modules, volunteer setup | Can assign | Yes |
 | Registration desk — till holder | Registration, payment, badge print, cash + Stripe | Yes | No |
 | Registration desk — no till | Registration, payment, badge print, Stripe only | No | No |
-| Registration desk — waiver auth | Registration, payment, badge print, Stripe + waiver | Till if also assigned | Yes |
+| Registration desk — override auth | Registration, payment, badge print, Stripe + waiver | Till if also assigned | Yes |
 | Station volunteer | Own station queue (scan in/out) | No | No |
 | Doctor | Station view + add-on service flag | No | No |
 | POS volunteer — till holder | Merchandise POS, cash + Stripe | Yes | No |
@@ -378,8 +378,8 @@ In the open-space configuration, TV screens mounted near the waiting area can di
 - Each till holder's cash transactions are logged separately for end-of-day reconciliation
 - Coordinator dashboard shows a per-till cash summary: total collected, number of transactions
 
-**Payment waiver authorization:**
-- Waiver permission is a separate flag, assigned by the coordinator — independent of till access
+**Payment override authorization:**
+- Override permission is a separate flag, assigned by the coordinator — independent of till access
 - Waiver option is hidden from all non-authorized volunteers — not visible on their screen
 - Every waiver requires a mandatory reason: Financial hardship / Volunteer or staff / Committee decision / Complimentary / Other (free text)
 - Full waiver log visible to coordinator in real time; included in post-camp reconciliation export as a separate section
