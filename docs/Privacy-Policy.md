@@ -53,15 +53,17 @@ dcica is a registered 501(c)(3) non-profit organization. We organize medical cam
 - Insurance information
 - Payment card numbers (handled entirely by Stripe)
 
+**Doctor's notes go home with you.** During a medical camp, any notes or advice a clinician writes are recorded only on your paper **progress report sheet, which you keep**. dcica retains no copy — digital or paper. Our system records only your name, contact details, and the services you paid for, and purges those after the camp.
+
 ---
 
 ## How We Use Your Data
 
 | Data | Purpose |
 |---|---|
-| Name, phone, email | Registration confirmation, QR badge, mailing lab results, event communications |
+| Name, phone, email | Registration confirmation, QR on your progress report, mailing lab results, event communications |
 | Mailing address | Address labels for mailing physical lab results |
-| Services paid | Routing you to the right stations; printing your badge |
+| Services paid | Routing you to the right stations; printing your progress report sheet |
 | Payment info | Confirming registration; reconciliation records |
 | Marketing consent | If opted in: membership drives, event announcements, organization updates |
 | Volunteer profile, hours, school affiliation | Scheduling, confirmation reminders, recognition, certificates, and per-school hour summaries; recruitment for future events |

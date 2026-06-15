@@ -96,31 +96,35 @@ One person can register and pay for any number of attendees — including cases 
 
 ---
 
-### Module 2 — Patient Label Packet
+### Module 2 — Progress Report Sheet & Label Packet
 *The physical artifacts that replace verbal routing, handwritten sample IDs, and loose paper forms*
 
-Every patient — pre-registered or walk-in — gets a label packet printed at check-in. The camp ID is the thread linking all physical artifacts to the digital record.
+Every patient — pre-registered or walk-in — gets **one A4 progress report sheet** plus a small set of stickers. The camp ID is the thread linking all of it to the digital record. Visual specifications live in the [Design System](Design-System).
 
-**Label types printed per patient:**
+**The progress report sheet (one per patient):**
+
+A single A4 page that is both the **doctor's note-taking sheet** and the **patient's take-home record**:
+
+- **Header** — QR code + name + camp ID. This QR is the *staff* scan target: scanning it at a station pulls up the patient's paid-service list. (Tied to the camp-scoped record, purged after camp.)
+- **Care Spine rail** down the left margin — the patient's enrolled stations in routing order, each a color band (red = blood draw, blue = ultrasound, green = physician, etc.) with a letter and step number. The doctor or tech **pen-checks each band when they finish seeing the patient**; the next station is the topmost un-checked band. This is the wayfinding that replaces "which line do I go to?"
+- **Body** — paid-services confirmation, the doctor's notes/advice space, and an **Add service** line that captures a mid-visit add-on into the *Needs payment* flow.
+- **Take-home footer** — a second QR (the *patient's* link) to the persistent public camp page: meet the doctors who volunteered, and check lab status. The camp ID doubles as the lab-status lookup code.
+
+**The patient keeps the sheet.** Because the clinical notes go home with the patient, dcica retains *no* clinical content — the system stores only identity and paid services, and purges those after camp. There is nothing to collect or shred.
+
+**Multi-page packets.** A patient seeing several specialists may need more than one page. Page 1 carries the rail, header, and footer; additional **consult-note pages** are stapled into a single packet the patient carries. Every page runs a header of name + camp ID + "Page X of Y" (identity only) so a stray page can always be reunited. Continuation pages are estimated from the patient's consults at print time, and a doctor can request another at the desk — which is why the print/check-in desk keeps a **stapler** on hand.
+
+**Printing:** Print the full color sheet on a color laser (A4). **Pre-print the ~80% pre-registered patients the night before** (their services are known); print only walk-ins live at the desk, so one printer keeps up. Where no color printer is available, the fallback is a pre-printed B&W sheet with the rail in grayscale — the letter + number + check boxes still carry it.
+
+**Stickers (thermal label printer):**
 
 | Label | Size | Content | Used for |
 |---|---|---|---|
-| **Patient badge** | Large (2×4") | QR code + name + camp ID + color-coded service dots | Worn by patient throughout camp |
-| **Form / waiver labels** | Small (1×2.5") | Name + camp ID + date | Affixed to intake form, waiver, any paper handout — 2–3 copies |
-| **Sample labels** | Small (1×2.5") | Name + camp ID + sample type (Blood / Urine) | One per sample container; printed only for patients with lab services paid |
+| **Sample labels** | Small (1×2.5") | Station color + name + camp ID + sample type (Blood / Urine) | Peeled and applied to each sample tube — no handwriting; printed only for patients with lab services paid |
+| **Form / waiver labels** | Small (1×2.5") | Name + camp ID + date | Affixed to the signed waiver or any paper handout |
 | **Address label** | Medium (2×4") | Name + mailing address | Printed post-camp as a batch when lab results arrive — not at check-in |
 
-**How it works at the stations:**
-- Blood draw station peels the pre-printed sample label off the sheet and applies it to the tube — no handwriting, no transcription errors
-- All paper forms have a matching label → easy to reunite forms with the patient's digital record if needed
-- Envelope is labeled at mailing time from the same system, not manually written
-
-**Badge detail:**
-- QR code scans to pull up the patient's service list at any station
-- Color-coded dots correspond to stations (e.g., red = blood draw, blue = ultrasound, green = physician)
-- Checklist of paid services printed on badge for quick visual confirmation
-
-The label packet eliminates "which line do I go to?" confusion and removes handwriting from sample labeling entirely.
+The blood-draw station peels the pre-printed sample label onto the tube — no handwriting, no transcription errors. Mailing envelopes are labeled from the same system at mailing time.
 
 ---
 
@@ -130,7 +134,7 @@ When a patient arrives on camp day:
 
 1. Patient presents confirmation code or QR from their confirmation email (volunteer can also look up by name)
 2. System confirms: ✓ Registered, ✓ Paid, ✓ Waiver signed
-3. Patient receives their printed label packet
+3. Patient receives their printed progress report sheet (and sample labels, if they have lab services)
 4. System assigns the patient to their first station queue
 
 **Waiver for Minors:**
@@ -199,10 +203,11 @@ The camp coordinator gets a real-time overview of the entire operation:
 
 - **Event announcement** (pre-camp): generated when registration opens; includes event date, services, registration link
 - **Thank-you post** (post-camp): "We served [N] patients at our [event name] camp! Thank you to our volunteers and community." — numbers pulled from final headcount
+- **Medical staff thank-you** (post-camp): "Thank you to the [N] doctors and techs who volunteered — see who showed up: [camp page link]" — links to the public camp page
 - **Sponsor shout-outs** (post-camp): one post per confirmed sponsor, pulling their name and tier from the sponsor records — "Thank you to our [Platinum/Gold/...] sponsor, [Business Name]!"
 - **Membership drive post**: generated from consented contact count — "Enjoyed the camp? Join the dcica family — [link]"
 
-Staff copies text and posts manually to their preferred platforms. No social media API integration — no additional accounts, permissions, or scheduling needed.
+Every post links back to the **public camp page** (the same page patients reach from their progress report QR): the medical-staff roster, sponsor thanks, lab-status lookup, and the feedback/review prompt all live there, so it's the single canonical destination for post-camp traffic. Staff copies text and posts manually to their preferred platforms. No social media API integration — no additional accounts, permissions, or scheduling needed.
 
 Accessible on any phone or laptop — no special hardware needed.
 

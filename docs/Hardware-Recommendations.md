@@ -9,9 +9,30 @@ All software runs in a web browser — no app installs required on any device. H
 
 ---
 
-## Label Printer
+## Two printers, two jobs
 
-The label printer is the most critical piece of hardware. It needs to handle four label sizes from one roll without a roll change mid-camp.
+The patient's **progress report sheet** prints on a **color laser (A4)**; the small **stickers** (samples, forms, address) print on a **thermal label printer**. They are separate machines doing separate jobs — don't try to make one cover both.
+
+---
+
+## Color Printer (Progress Report Sheets)
+
+Each patient carries one A4 progress report sheet (doctor's notes + Care Spine routing rail + take-home page). It prints in color so the rail's station colors come through.
+
+**Recommended: Brother HL-L3270CDW color laser** (~$300)
+- Color laser — fast, low per-page cost, no ink drying between camps
+- WiFi + USB — sits at the registration/check-in desk, reachable from any tablet
+- ~25 pages/min, duplex — handles live walk-in printing without a queue
+
+**Workflow that keeps one printer ahead:** **pre-print the ~80% pre-registered patients the night before** (their services are known), so on camp day you only print walk-ins live. A patient seeing several specialists may get a **multi-page stapled packet** — see the stapler under Accessories.
+
+**Paper:** A4 (or US Letter), standard 20 lb stock. **No-color fallback:** any B&W laser works — the rail prints in grayscale and the letter + number + check boxes still carry it.
+
+---
+
+## Label Printer (Sample & Form Stickers)
+
+Reserved for the small stickers — **not** the progress report sheet. It needs to handle three label sizes from one roll without a roll change mid-camp.
 
 **Recommended: Brother QL-1110NWB** (~$180)
 - WiFi + USB connected — works at the registration desk and is accessible from any tablet on the network
@@ -21,13 +42,12 @@ The label printer is the most critical piece of hardware. It needs to handle fou
 
 **Label roll to use: Brother DK-22205** (2.4" continuous roll, white)
 - Cut to size per label type — the system controls the cut length
-- One roll handles all four label types without swapping
+- One roll handles all three label types without swapping
 
 | Label | Dimensions | Qty per patient |
 |---|---|---|
-| Patient badge | 2.4" × 4" | 1 |
-| Form / waiver labels | 2.4" × 1.5" | 2–3 |
 | Sample labels (blood tubes, urine cup) | 2.4" × 1" | 1 per lab service |
+| Form / waiver labels | 2.4" × 1.5" | 2–3 |
 | Address label (post-camp mailing) | 2.4" × 3" | 1 (printed in batch, not at check-in) |
 
 **Note on blood draw tube labels:** Standard vacutainer tubes require a narrow wrap-around label (~1"). The 2.4" label folded lengthwise works; confirm fit with your phlebotomist before camp day.
@@ -139,6 +159,8 @@ Often overlooked until something dies mid-camp.
 | USB-C charging hubs (6-port) | 2 | Overnight charge all tablets from one plug |
 | Portable battery pack (20,000mAh) | 2–3 | Backup for tablets in outdoor tents |
 | Label roll spares | 2 rolls | One roll ≈ 400 labels; bring backup |
+| A4 / Letter paper | 2 reams | Progress report sheets; ~1–2 pages per patient |
+| Stapler + staples | 2 | At the print desk — staple multi-page progress packets together |
 
 ---
 
@@ -146,8 +168,10 @@ Often overlooked until something dies mid-camp.
 
 | Category | Item | Unit Cost | Qty | Total |
 |---|---|---|---|---|
+| Color printer | Brother HL-L3270CDW color laser | $300 | 1 | $300 (buy or borrow) |
 | Label printer | Brother QL-1110NWB | $180 | 1 | $180 |
 | Label rolls | Brother DK-22205 (3-pack) | $30 | 2 | $60 |
+| Paper + staplers | A4/Letter reams + 2 staplers | — | — | $30 |
 | QR scanners | Tera 2D Wireless | $45 | 3 | $135 |
 | Tablets | iPad 10th gen | $350 | 6 | ~~$2,100~~ **Borrowed** |
 | Tablet stands | Viozon floor stand | $35 | 6 | $210 |
@@ -155,7 +179,7 @@ Often overlooked until something dies mid-camp.
 | WiFi mesh | TP-Link Deco XE75 3-pack | $250 | 1 | $250 |
 | Power strips | Belkin 6-outlet | $20 | 8 | $160 |
 | Battery packs | Anker 20,000mAh | $40 | 3 | $120 |
-| **Total** | | | | **~$1,165** |
+| **Total** | | | | **~$1,495** |
 
 Tablets will be borrowed from committee members. Confirm at least 6 devices (mix of iPads and Android tablets fine) are committed before camp week.
 
@@ -165,6 +189,7 @@ Tablets will be borrowed from committee members. Confirm at least 6 devices (mix
 
 | Item | Recommendation |
 |---|---|
+| Color printer | **Buy or borrow** — a committee member's color laser works; needed to pre-print sheets the night before |
 | Label printer | **Buy** — used every camp and for address label mailing |
 | QR scanners | **Buy** — inexpensive and reusable |
 | Tablets | **Borrow** — confirmed |

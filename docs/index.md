@@ -16,6 +16,7 @@ Non-profit event management system for medical camps, community events, membersh
 | Document | Description |
 |---|---|
 | [System Overview](MedCamp-System-Overview) | Architecture, modules, venue configurations, build plan, and committee questions |
+| [Design System](Design-System) | Visual language — color/type/spacing tokens, the Care Spine motif, and component anatomy (badge, queue card, dashboard) |
 | [Platform Extensions](Platform-Extensions) | General events, membership, POS, vendor registration, and sponsor tiers |
 | [Volunteer Module](Volunteer-Module) | Recruitment, signup, confirmation reminders, day-of sign in/out, and certificates — reusable across events |
 | [Payment Gateway](Payment-Gateway) | Stripe integration, payment scenarios, pricing, and reconciliation |
