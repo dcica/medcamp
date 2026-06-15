@@ -133,6 +133,15 @@ When a patient arrives on camp day:
 3. Patient receives their printed label packet
 4. System assigns the patient to their first station queue
 
+**Waiver for Minors:**
+
+A minor cannot sign their own waiver. The system flags any attendee registered as a minor and requires a parent or guardian signature on their behalf.
+
+- During online registration: the registrant signs the waiver for each minor attendee — the form labels it clearly as "Parent / Guardian signature for [minor's name]"
+- At walk-in: the adult accompanying the minor signs the waiver on the tablet (or paper) before the minor is checked in
+- If a minor arrives at check-in without an accompanying adult who signed the waiver, they cannot be checked in — the system blocks check-in and alerts the volunteer to contact the registrant
+- Minor flag is set if the attendee's age is under 18 (age collected at registration — not stored post-camp, used only for this check)
+
 **Walk-In Registration Window**
 
 Walk-ins are not turned away, but registration opens on a delay to protect pre-registered patients and allow initial flow to stabilize.
@@ -348,25 +357,33 @@ In the open-space configuration, TV screens mounted near the waiting area can di
 
 ---
 
-## Access Roles & Cash Control
+## Access Roles & Payment Controls
 
-| Role | System Access | Cash |
-|---|---|---|
-| Coordinator | Full dashboard, all modules, volunteer setup | Can assign till |
-| Registration desk — till holder | Registration, payment, badge print, cash + Stripe | Yes — has till |
-| Registration desk — no till | Registration, payment, badge print, Stripe only | No — card only |
-| Station volunteer | Own station queue (scan in/out) | No |
-| Doctor | Station view + add-on service flag | No |
-| POS volunteer — till holder | Merchandise POS, cash + Stripe | Yes — has till |
-| Committee / admin | Supply calculator, camp setup, reports | No |
+| Role | System Access | Cash | Waiver |
+|---|---|---|---|
+| Coordinator | Full dashboard, all modules, volunteer setup | Can assign | Yes |
+| Registration desk — till holder | Registration, payment, badge print, cash + Stripe | Yes | No |
+| Registration desk — no till | Registration, payment, badge print, Stripe only | No | No |
+| Registration desk — waiver auth | Registration, payment, badge print, Stripe + waiver | Till if also assigned | Yes |
+| Station volunteer | Own station queue (scan in/out) | No | No |
+| Doctor | Station view + add-on service flag | No | No |
+| POS volunteer — till holder | Merchandise POS, cash + Stripe | Yes | No |
+| Committee / admin | Supply calculator, camp setup, reports | No | Configurable |
 
 **Till assignment:**
 - Coordinator assigns till holders before camp day in the system
-- Volunteers assigned a till see both Stripe Tap to Pay and cash as payment options
+- Volunteers with a till see both Stripe Tap to Pay and cash as payment options
 - Volunteers without a till see Stripe only — the cash option is hidden from their screen entirely
-- If a patient wants to pay cash and approaches a card-only volunteer, the screen prompts: "For cash payment, please visit the **till desk**"
+- If a patient wants to pay cash and the volunteer has no till, screen prompts: "For cash payment, please visit the **till desk**"
 - Each till holder's cash transactions are logged separately for end-of-day reconciliation
 - Coordinator dashboard shows a per-till cash summary: total collected, number of transactions
+
+**Payment waiver authorization:**
+- Waiver permission is a separate flag, assigned by the coordinator — independent of till access
+- Waiver option is hidden from all non-authorized volunteers — not visible on their screen
+- Every waiver requires a mandatory reason: Financial hardship / Volunteer or staff / Committee decision / Complimentary / Other (free text)
+- Full waiver log visible to coordinator in real time; included in post-camp reconciliation export as a separate section
+- Partial waivers supported: one service waived, remainder paid normally
 
 ---
 

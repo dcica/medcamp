@@ -78,6 +78,34 @@ Doctor recommends an additional service the patient did not pre-pay for.
   6. Payment confirmed → service added to patient's record → patient routed to the new station
 - **Rule:** Patient does not proceed to the new station until payment is confirmed in the system
 
+### 5. Payment Waiver (Override)
+
+Certain authorized staff can waive payment for an individual service or an entire registration. This is a restricted action with a full audit trail.
+
+**Authorization:** Waiver permission is a separate role flag assigned by the coordinator before camp — independent of till access. A volunteer may have a till but not waiver authority, or vice versa. Typically limited to the coordinator and 1–2 senior committee members.
+
+**Flow:**
+1. Authorized volunteer opens a registration or walk-in form
+2. Taps "Waive Payment" on a specific service or the full total
+3. System requires a **reason** before proceeding (dropdown + optional free text):
+   - Financial hardship
+   - Volunteer / staff member
+   - Committee decision
+   - Complimentary (sponsor/donor)
+   - Other (free text required)
+4. Waiver is recorded against the volunteer's ID, timestamp, and reason
+5. Registration proceeds at $0 for the waived amount
+6. For non-waiver volunteers: the "Waive Payment" option is not visible — it does not appear on their screen at all
+
+**Waiver log (coordinator dashboard):**
+- All waivers during the event listed in real time
+- Columns: attendee name, service(s) waived, original amount, waived by, reason, timestamp
+- Included in post-camp reconciliation export as a separate section
+
+**Partial waivers:** A single service can be waived while others are paid normally. The remaining balance is collected via Stripe or cash as usual.
+
+---
+
 ### 4. Cash Payments
 
 Cash is accepted only by volunteers assigned a **till** before camp. The till is the physical control — if you have the till, you take cash.

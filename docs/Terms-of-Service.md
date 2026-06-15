@@ -43,6 +43,8 @@ All participants in medical camp events must sign a waiver before receiving serv
 
 A separate waiver document is presented at registration. Digital signature on a tablet or handwritten signature on paper are both accepted.
 
+**Minors:** A parent or guardian must sign the waiver on behalf of any attendee under 18. Minors cannot sign their own waiver. A minor will not be checked in without a completed guardian waiver.
+
 ---
 
 ## 4. No Medical Records
