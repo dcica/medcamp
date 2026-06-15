@@ -65,8 +65,9 @@ LabStatus  ← per registration: pending | received | mailed (date); no lab resu
 3. **Station Queue** — per-station tablet view + patient routing + add-on payment alerts
 4. **Coordinator Dashboard** — real-time god-view: queue depths, payment status, bottleneck alerts, reconciliation export
 5. **Supply Calculator** — pre-camp procurement list generator keyed to registered service counts
-6. **Lab Tracking & Patient Portal** — staff marks lab received/mailed; prints address label batch; patients check status by confirmation code
-7. **Venue Config** — switchable layouts: Clinic (7 rooms + 2 tents) vs. Open Space (configurable cabins)
+6. **Checklist Module** — phase-based operations checklist (pre-camp / day-of / during / post-camp); printable run sheet and signage (walk-in hold sign, station directionals, etc.)
+7. **Lab Tracking & Patient Portal** — staff marks lab received/mailed; prints address label batch; patients check status by confirmation code
+8. **Venue Config** — switchable layouts: Clinic (7 rooms + 2 tents) vs. Open Space (configurable cabins)
 
 ## Access Roles
 
