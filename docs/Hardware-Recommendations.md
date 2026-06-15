@@ -143,15 +143,15 @@ Often overlooked until something dies mid-camp.
 | Label printer | Brother QL-1110NWB | $180 | 1 | $180 |
 | Label rolls | Brother DK-22205 (3-pack) | $30 | 2 | $60 |
 | QR scanners | Tera 2D Wireless | $45 | 3 | $135 |
-| Tablets | iPad 10th gen | $350 | 6 | $2,100 |
+| Tablets | iPad 10th gen | $350 | 6 | ~~$2,100~~ **Borrowed** |
 | Tablet stands | Viozon floor stand | $35 | 6 | $210 |
 | Display | Chromecast | $50 | 1 | $50 |
 | WiFi mesh | TP-Link Deco XE75 3-pack | $250 | 1 | $250 |
 | Power strips | Belkin 6-outlet | $20 | 8 | $160 |
 | Battery packs | Anker 20,000mAh | $40 | 3 | $120 |
-| **Total** | | | | **~$3,265** |
+| **Total** | | | | **~$1,165** |
 
-Tablets are the largest cost. If the committee can borrow iPads from members or a school/community partner for the day, the budget drops to ~$1,200.
+Tablets will be borrowed from committee members. Confirm at least 6 devices (mix of iPads and Android tablets fine) are committed before camp week.
 
 ---
 
@@ -161,7 +161,7 @@ Tablets are the largest cost. If the committee can borrow iPads from members or 
 |---|---|
 | Label printer | **Buy** — used every camp and for address label mailing |
 | QR scanners | **Buy** — inexpensive and reusable |
-| Tablets | **Borrow first**, buy if borrowing isn't reliable |
+| Tablets | **Borrow** — confirmed |
 | TV display | **Borrow** — any member's TV works |
 | WiFi mesh | **Buy if open space**, borrow/rent for clinic (usually has WiFi) |
 | Square Terminal | **Already have** |
