@@ -111,14 +111,15 @@ Reliable WiFi is the backbone. Volunteer hotspots are a backup, not a primary pl
 
 ## Square Hardware (Payments)
 
-You already have Square. Confirm you have:
+Walk-in payments use **Tap to Pay on a volunteer's phone** (NFC) — no terminal hardware required. Works with Square, Stripe, and PayPal depending on the final payment gateway decision.
 
-| Device | Use | Notes |
-|---|---|---|
-| Square Terminal | Walk-in payments at registration desk | Standalone, no tablet needed |
-| Square Reader (Lightning or USB-C) | Backup on a phone/tablet | In case Terminal has issues |
+| What's needed | Notes |
+|---|---|
+| Volunteer phone with NFC | iPhone 7+ or most Android phones from 2018+ |
+| Payment app installed | Square POS, Stripe Terminal, or PayPal Zettle |
+| Internet connection | WiFi or cellular data on the payment phone |
 
-No additional Square hardware needed.
+No dedicated card reader or terminal needed.
 
 ---
 

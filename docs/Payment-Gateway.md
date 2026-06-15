@@ -11,7 +11,8 @@ Three options were evaluated. Square is the current working platform and likely 
 | **Online rate (standard)** | 2.9% + $0.30 | 2.99% + $0.49 | 2.9% + $0.30 |
 | **In-person rate (standard)** | 2.6% + $0.10 | 2.29% + $0.09 | 2.7% + $0.05 |
 | **Non-profit rate** | No dedicated tier | 1.99% + $0.49 (501(c)(3) verified) | 2.2% + $0.30 (501(c)(3) verified) |
-| **In-person hardware** | Square Terminal (owned) | Zettle terminal | Stripe Terminal |
+| **In-person method** | Tap to Pay on phone (NFC) | Tap to Pay on phone (NFC) | Tap to Pay on phone (NFC) |
+| **Hardware required** | None — phone only | None — phone only | None — phone only |
 | **Already in use** | Yes | No | No |
 | **Developer SDK quality** | Good | Dated | Excellent |
 | **Non-profit application** | N/A | paypal.com/us/webapps/mpp/givingfund | stripe.com/docs/tax-exempt |
@@ -31,9 +32,12 @@ Difference between Square standard and Stripe non-profit: ~$53/camp. Modest at t
 
 ### Decision
 
-**Square** — retained as the platform. Team has existing credentials, hardware, and experience. Switching cost outweighs fee savings at current camp volume.
+**Open — leaning Stripe.** In-person payments use Tap to Pay on a phone (NFC) for all three options — no terminal hardware is owned or needed, so there is no switching cost from Square. Stripe offers the best developer SDK for a custom Next.js build and the best non-profit rate once 501(c)(3) status is verified.
 
-**Action item:** Confirm whether the organization is registered as a 501(c)(3). If yes, apply for PayPal Giving Fund or Stripe non-profit rate as a secondary option for future consideration.
+**Action items:**
+- [ ] Confirm 501(c)(3) registration status — required to unlock Stripe and PayPal non-profit rates
+- [ ] Apply for Stripe non-profit rate: stripe.com/docs/tax-exempt
+- [ ] Committee to make final call: Square (familiar) vs. Stripe (better SDK + non-profit rate)
 
 ---
 
@@ -52,7 +56,7 @@ Patient registers on the camp website, selects services, and pays in one flow.
 
 Patient arrives without a pre-registration.
 
-- **Integration:** Square Terminal (standalone device) or Square POS on a phone/tablet
+- **Integration:** Tap to Pay on volunteer's phone (NFC) — no terminal hardware needed
 - **Flow:** Volunteer enters patient info on tablet → selects services → patient taps/swipes on Square Terminal → payment clears → badge printed immediately
 - **Hardware:** Square Terminal already owned; Square Reader on phone as backup
 
