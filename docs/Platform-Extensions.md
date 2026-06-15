@@ -359,4 +359,4 @@ Camp modules (Phases 1–6) are built first for the winter camp. Platform extens
 | **9 — POS** | Merchandise product list, Tap to Pay checkout, sales log |
 | **10 — Vendor** | Vendor registration, approval flow, Zelle instructions, booth assignment grid |
 | **11 — Sponsors** | Tier config, sponsor application, approval flow, vendor overlap, logo tracker |
-| **12 — Volunteers** | Signup + role/age config, 24–48h confirmation reminders, day-of sign in/out + hours, thank-you + certificates, outreach. See [Volunteer Module](Volunteer-Module) |
+| **12 — Volunteers** | Signup + role/age config, 24–48h confirmation reminders, day-of sign in/out + hours, thank-you + certificates, outreach. See [Volunteer Module](Volunteer-Module.md) |

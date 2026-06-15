@@ -35,7 +35,7 @@ The committee actively recruits volunteers — this is not purely inbound. **Our
 |---|---|
 | Schools & colleges (primary) | Per-event outreach list of contacts at middle schools, high schools, and local colleges — counselors, honor-society / club / NHS advisors, service-learning coordinators. Template leads with **verifiable community-service hours + certificate** as the draw |
 | Past volunteers | One-click email blast to the persistent volunteer roster ("You volunteered with us before — join us again"). Filterable by past role, event, or school |
-| Social media | Recruitment post generated alongside the existing [Social Media Pack](MedCamp-System-Overview#module-5--coordinator-dashboard) — "We need [N] volunteers for [event] on [date] — sign up: [link]" |
+| Social media | Recruitment post generated alongside the existing [Social Media Pack](MedCamp-System-Overview.md#module-5--coordinator-dashboard) — "We need [N] volunteers for [event] on [date] — sign up: [link]" |
 | Community organizations | Same template, organization contact list (faith groups, civic clubs, corporate volunteer programs) |
 
 Because students sign up in cohorts through a sponsoring teacher or advisor, the signup form captures **school / organization affiliation** so the coordinator can group volunteers by school and produce per-school hour summaries (see [Thank You & Certificates](#7--thank-you--certificates)).
@@ -145,7 +145,7 @@ Instructions are surfaced at three points so volunteers always know what to do:
 
 1. **In the confirmation email** (24–48h out) — role brief + what to bring
 2. **At check-in** — role instructions shown on the sign-in screen and on the printed badge
-3. **Printable run sheet** — coordinator can print a per-role instruction sheet for the briefing, consistent with the [Operations Checklist](MedCamp-System-Overview#module-7--operations-checklist) printable artifacts
+3. **Printable run sheet** — coordinator can print a per-role instruction sheet for the briefing, consistent with the [Operations Checklist](MedCamp-System-Overview.md#module-7--operations-checklist) printable artifacts
 
 Instruction text lives on the role config, so it's reusable and editable per event.
 
@@ -180,7 +180,7 @@ Everything above is event-agnostic. For any event type:
 - **Per-event config:** roles, age rules, target counts, shifts, instructions, outreach lists
 - A medical camp configures clinical-support roles; a general fundraiser configures setup/hospitality roles — same module, different role set
 
-This mirrors how [Events generalize the camp core](Platform-Extensions#module-1--events-general): the volunteer module is built once and reused, with per-event configuration doing the specialization.
+This mirrors how [Events generalize the camp core](Platform-Extensions.md#module-1--events-general): the volunteer module is built once and reused, with per-event configuration doing the specialization.
 
 ---
 
@@ -198,7 +198,7 @@ These extend the lifecycle above. All are event-agnostic and reuse the shared ro
 - **Shift swaps** — volunteers can release a confirmed slot back to the waitlist via the cancel link.
 - **Self check-in kiosk mode** — a tablet at the volunteer desk lets volunteers scan their own QR to sign in, mirroring the patient check-in gate (vs. a volunteer scanning each).
 - **Break / coverage tracking** — `on_break` status keeps the live roster honest about who's actually at a post.
-- **Station coverage view** — because roles link to camp stations, the coordinator sees volunteer staffing against live [queue depth](MedCamp-System-Overview#module-5--coordinator-dashboard) in one place, and redeploys accordingly.
+- **Station coverage view** — because roles link to camp stations, the coordinator sees volunteer staffing against live [queue depth](MedCamp-System-Overview.md#module-5--coordinator-dashboard) in one place, and redeploys accordingly.
 
 ### Recognition & Compliance
 - **Lifetime hours + milestone badges** — cumulative hours roll up on the profile; milestones (25h / 50h / 100h) are awarded automatically — a strong retention lever for repeat student volunteers.
@@ -275,7 +275,7 @@ OutreachList (per event)
 
 ## Build Order
 
-The volunteer module is a platform extension, built alongside the other reusable modules after the core camp phases. See the [Platform Extensions build order](Platform-Extensions#build-order-after-camp-modules).
+The volunteer module is a platform extension, built alongside the other reusable modules after the core camp phases. See the [Platform Extensions build order](Platform-Extensions.md#build-order-after-camp-modules).
 
 | Stage | What gets built |
 |---|---|

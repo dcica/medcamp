@@ -422,7 +422,7 @@ Printed from the thermal label printer for patients with lab services — peeled
 
 The take-home footer QR resolves here: a persistent, public page per camp that thanks the medical staff and lets patients look up the doctors they saw. It's the warm, editorial face of the system — same tokens, looser layout.
 
-It's **staff data, not patient data**, so it lives on past the patient-record purge. Each doctor's "saw N patients" is an aggregate counter (incremented when a logged-in doctor marks a consult done — the integer is kept, never the patient link). Contact is **opt-in per staff**; default is "reach via dcica." The page is also the canonical link target for the [Social Media Pack](MedCamp-System-Overview) shout-outs.
+It's **staff data, not patient data**, so it lives on past the patient-record purge. Each doctor's "saw N patients" is an aggregate counter (incremented when a logged-in doctor marks a consult done — the integer is kept, never the patient link). Contact is **opt-in per staff**; default is "reach via dcica." The page is also the canonical link target for the [Social Media Pack](MedCamp-System-Overview.md) shout-outs.
 
 <div class="ds">
 <div class="ds-hero">

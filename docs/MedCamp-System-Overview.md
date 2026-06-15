@@ -99,7 +99,7 @@ One person can register and pay for any number of attendees — including cases 
 ### Module 2 — Progress Report Sheet & Label Packet
 *The physical artifacts that replace verbal routing, handwritten sample IDs, and loose paper forms*
 
-Every patient — pre-registered or walk-in — gets **one A4 progress report sheet** plus a small set of stickers. The camp ID is the thread linking all of it to the digital record. Visual specifications live in the [Design System](Design-System).
+Every patient — pre-registered or walk-in — gets **one A4 progress report sheet** plus a small set of stickers. The camp ID is the thread linking all of it to the digital record. Visual specifications live in the [Design System](Design-System.md).
 
 **The progress report sheet (one per patient):**
 
