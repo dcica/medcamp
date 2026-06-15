@@ -66,17 +66,31 @@ Patients visit a single web page to register and pay in one flow.
 
 ---
 
-### Module 2 — Patient Badge / Sticker
-*The physical artifact that replaces verbal patient routing*
+### Module 2 — Patient Label Packet
+*The physical artifacts that replace verbal routing, handwritten sample IDs, and loose paper forms*
 
-Every patient — pre-registered or walk-in — receives a printed sticker badge. The badge contains:
+Every patient — pre-registered or walk-in — gets a label packet printed at check-in. The camp ID is the thread linking all physical artifacts to the digital record.
 
-- **Patient name and camp ID** (e.g., `MC-2025W-0042`) — no DOB or medical information
-- **QR code** — scanned at every station to pull up the patient's service list
-- **Color-coded service dots** — one color per station so a volunteer can glance at the sticker and know exactly where this patient belongs
-- **Checklist of paid services** — station volunteers check off completed services
+**Label types printed per patient:**
 
-The badge is the patient's passport through the camp. It eliminates "which line do I go to?" confusion entirely.
+| Label | Size | Content | Used for |
+|---|---|---|---|
+| **Patient badge** | Large (2×4") | QR code + name + camp ID + color-coded service dots | Worn by patient throughout camp |
+| **Form / waiver labels** | Small (1×2.5") | Name + camp ID + date | Affixed to intake form, waiver, any paper handout — 2–3 copies |
+| **Sample labels** | Small (1×2.5") | Name + camp ID + sample type (Blood / Urine) | One per sample container; printed only for patients with lab services paid |
+| **Address label** | Medium (2×4") | Name + mailing address | Printed post-camp as a batch when lab results arrive — not at check-in |
+
+**How it works at the stations:**
+- Blood draw station peels the pre-printed sample label off the sheet and applies it to the tube — no handwriting, no transcription errors
+- All paper forms have a matching label → easy to reunite forms with the patient's digital record if needed
+- Envelope is labeled at mailing time from the same system, not manually written
+
+**Badge detail:**
+- QR code scans to pull up the patient's service list at any station
+- Color-coded dots correspond to stations (e.g., red = blood draw, blue = ultrasound, green = physician)
+- Checklist of paid services printed on badge for quick visual confirmation
+
+The label packet eliminates "which line do I go to?" confusion and removes handwriting from sample labeling entirely.
 
 ---
 
