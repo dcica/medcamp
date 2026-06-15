@@ -70,7 +70,7 @@ If you opted in, we may contact you by email or phone about:
 - Membership programs
 - Organization news and fundraising drives
 
-**To opt out at any time:** Email us at sachin@buzzclan.com with the subject "Unsubscribe" and we will remove you from all marketing lists within 5 business days.
+**To opt out at any time:** Email us at admin@dcica.org with the subject "Unsubscribe" and we will remove you from all marketing lists within 5 business days.
 
 ---
 
@@ -107,7 +107,7 @@ You may request at any time:
 - **Deletion:** Remove your data from our records (subject to legal retention requirements)
 - **Opt-out:** Stop receiving marketing communications
 
-To exercise any of these rights, contact: **sachin@buzzclan.com**
+To exercise any of these rights, contact: **admin@dcica.org**
 
 ---
 
@@ -136,6 +136,6 @@ We may update this policy as the platform evolves. The "Last updated" date at th
 ## Contact
 
 **dcica**
-sachin@buzzclan.com
+admin@dcica.org
 
 For privacy concerns or data requests, please use the subject line "Privacy Request" so your message is routed correctly.

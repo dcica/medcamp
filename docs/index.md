@@ -37,4 +37,4 @@ Non-profit event management system for medical camps, community events, membersh
 
 ---
 
-*Questions or feedback: sachin@buzzclan.com*
+*Questions or feedback: admin@dcica.org*

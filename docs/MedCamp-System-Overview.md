@@ -77,7 +77,7 @@ One person can register and pay for multiple family members in a single checkout
 - Cancellations requested before camp day: full refund via Stripe for pre-registered patients; handled case-by-case for walk-ins
 - Service-level cancellation (e.g., a specific service cannot be provided on the day): refund for that service only
 - Family cancellation: all members cancelled together; individual member cancellation also supported
-- No-shows: no automatic refund; contact sachin@buzzclan.com within 7 days
+- No-shows: no automatic refund; contact admin@dcica.org within 7 days
 
 ---
 
@@ -331,4 +331,4 @@ Upon committee feedback:
 
 ---
 
-*Document prepared by Sachin Jain. For questions or feedback, contact sachin@buzzclan.com.*
+*Document prepared by Sachin Jain. For questions or feedback, contact admin@dcica.org.*
