@@ -1,3 +1,8 @@
+---
+title: System Overview
+nav_order: 2
+---
+
 # MedCamp Management System
 ## Project Overview — Committee Review Draft
 **Prepared:** June 2026  

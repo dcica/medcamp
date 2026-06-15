@@ -1,3 +1,8 @@
+---
+title: Payment Gateway
+nav_order: 4
+---
+
 # Payment Gateway
 
 ## Platform Decision

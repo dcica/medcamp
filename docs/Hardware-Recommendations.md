@@ -1,3 +1,8 @@
+---
+title: Hardware Recommendations
+nav_order: 5
+---
+
 # MedCamp Hardware Recommendations
 
 All software runs in a web browser — no app installs required on any device. Hardware selections below are optimized for reliability at a half-day, 300–500 patient event.

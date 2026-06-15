@@ -1,3 +1,8 @@
+---
+title: Platform Extensions
+nav_order: 3
+---
+
 # Platform Extensions
 
 The core medcamp system is being extended into a full non-profit event management and commerce platform for dcica. All modules share the same Stripe integration, Google auth, and phone-first UI.
