@@ -1,6 +1,9 @@
 title: dcica Platform
 description: Non-profit event management system — medical camps, events, membership, vendors, and sponsors
-theme: just-the-docs
+remote_theme: just-the-docs/just-the-docs
+
+plugins:
+  - jekyll-remote-theme
 
 url: https://dcica.github.io
 baseurl: /medcamp
