@@ -1,2 +1,20 @@
-# medcamp
-work to automate the medical camp
+# MedCamp
+
+Automation system for non-profit medical camps — registration, payments, patient routing, supply management, and day-of coordination.
+
+## Documentation
+
+- [System Overview & Committee Review](docs/MedCamp-System-Overview.md) — architecture, modules, venue configurations, build plan, and open questions for the committee
+
+## Project Structure
+
+```
+docs/    — planning documents, specs, committee materials
+src/     — application code (coming soon)
+```
+
+## Background
+
+We run medical camps serving 300–500 patients in a half-day session, offering specialist consultations, blood draw, imaging, and more. This system replaces disconnected Google Forms + Square workflows with a unified registration-to-discharge platform.
+
+For questions: sachin@buzzclan.com
