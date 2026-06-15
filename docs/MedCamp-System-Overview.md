@@ -40,7 +40,7 @@ The system has six functional modules, designed to be built in sequence so we ha
 Patients visit a single web page to register and pay in one flow.
 
 **Pre-registration (online, before camp day):**
-- Patient enters name, phone number, and selects services from our menu
+- Patient enters name, phone number, mailing address, and selects services from our menu
 - Pricing is shown live as services are added
 - Square Checkout is embedded — registration is not confirmed until payment clears
 - On payment success: patient receives a confirmation email containing their **QR code badge**
@@ -139,7 +139,31 @@ Before each camp:
 - Manual override available per item
 - Printable list to share with our pharmacy and physician procurement partners
 
+Supply categories: Medical, Food, Stationery.
+
 Supply tracking is pre-camp only — no mid-camp inventory system needed.
+
+---
+
+### Module 7 — Post-Camp Lab Tracking
+*New capability — replaces manual envelope stuffing with no visibility for patients*
+
+Lab results are returned as physical paper reports by the lab. The system handles the mailing logistics only — no digital lab results are stored.
+
+**Staff workflow:**
+1. Lab reports arrive (days or weeks after camp)
+2. Staff opens the system and marks patients `Lab Received` — individually or as a batch
+3. System prints a sheet of **address labels** (same label printer used for badges) — one per patient in the batch
+4. Staff stuffs envelopes, applies labels, mails
+5. Staff marks batch as `Mailed`
+
+**Patient status portal:**
+- Patient visits the camp website and enters their confirmation code
+- No login required — lookup by camp ID only
+- Status shown: `Lab Pending` → `Lab Received` → `Mailed on [date]`
+- No clinical information displayed — logistics status only
+
+This keeps lab results entirely on paper while giving patients visibility into where their results are.
 
 ---
 
@@ -177,7 +201,7 @@ In the open-space configuration, TV screens mounted near the waiting area can di
 
 To keep this focused and avoid unnecessary complexity:
 
-- **No PHI storage** — no diagnoses, prescriptions, lab results, or clinical notes
+- **No PHI storage** — no diagnoses, prescriptions, or clinical notes. Lab results remain on paper; the system tracks only mailing status (received / mailed)
 - **No cross-camp patient history** — each camp is a clean registration
 - **No telehealth or remote access for clinicians**
 - **No insurance billing**
@@ -211,7 +235,8 @@ Internet connectivity: reliable WiFi assumed; phone hotspot backup available.
 | **3 — Station Flow** | Weeks 8–11 | Queue tablets + patient routing + add-on payment alert |
 | **4 — Coordinator Dashboard** | Weeks 12–14 | God-view + reconciliation export |
 | **5 — Supplies & Venue Config** | Weeks 15–17 | Supply calculator + clinic vs. open space setup |
-| **6 — Dry Run** | Weeks 18–20 | Simulate 100-patient flow with volunteers before camp |
+| **6 — Lab Tracking & Patient Portal** | Weeks 17–19 | Lab status tracking + address label print + patient status lookup |
+| **7 — Dry Run** | Weeks 19–22 | Simulate 100-patient flow with volunteers before camp |
 
 The system is designed so that **Phase 1 alone delivers significant value** — replacing the Google Forms / Square reconciliation problem. Each subsequent phase adds capability without requiring the previous phase to be perfect.
 
