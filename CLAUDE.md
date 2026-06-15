@@ -12,7 +12,7 @@ MedCamp is a web application for a non-profit that runs medical camps serving 30
 
 - **Framework:** Next.js (App Router) — single codebase serves web, tablet, and TV display views
 - **Database:** PostgreSQL via Supabase
-- **Payments:** Square Web SDK (online checkout) + Square Terminal SDK (walk-in, on-site)
+- **Payments:** Stripe Payment Element (online checkout) + Stripe Terminal SDK / Tap to Pay on phone (walk-in, on-site). Org is 501(c)(3) — apply for Stripe non-profit rate (2.2% + $0.30).
 - **Auth:** Google OAuth via NextAuth.js — committee members use existing Google Workspace accounts
 - **QR / Badge printing:** `qrcode` npm library + browser print CSS (label printer compatible)
 - **Hosting:** Vercel (app) + Supabase (database)
@@ -84,6 +84,6 @@ src/     — application code (Next.js project root goes here)
 
 ## Key External Integrations
 
-- **Square:** Web Payments SDK for online checkout; Terminal API for walk-in POS. Payment must succeed before registration is confirmed.
+- **Stripe:** Payment Element for online checkout; Terminal SDK + Tap to Pay on phone for walk-in POS. Payment must succeed before registration is confirmed. Non-profit rate applies (501(c)(3) confirmed) — apply at stripe.com/docs/tax-exempt before go-live.
 - **Google Workspace:** OAuth login only — no Google Forms, no Sheets, no Drive sync. Those are the systems being replaced.
 - **Email:** Confirmation email with QR code sent post-payment (provider TBD; Resend or SendGrid).

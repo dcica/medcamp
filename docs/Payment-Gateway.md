@@ -32,12 +32,12 @@ Difference between Square standard and Stripe non-profit: ~$53/camp. Modest at t
 
 ### Decision
 
-**Open — leaning Stripe.** In-person payments use Tap to Pay on a phone (NFC) for all three options — no terminal hardware is owned or needed, so there is no switching cost from Square. Stripe offers the best developer SDK for a custom Next.js build and the best non-profit rate once 501(c)(3) status is verified.
+**Stripe — confirmed.** Organization is a registered 501(c)(3). Stripe non-profit rate (2.2% + $0.30) applies. No terminal hardware switching cost since in-person payments use Tap to Pay on a volunteer's phone. Stripe SDK is the best fit for a custom Next.js build.
 
 **Action items:**
-- [ ] Confirm 501(c)(3) registration status — required to unlock Stripe and PayPal non-profit rates
-- [ ] Apply for Stripe non-profit rate: stripe.com/docs/tax-exempt
-- [ ] Committee to make final call: Square (familiar) vs. Stripe (better SDK + non-profit rate)
+- [x] 501(c)(3) status — confirmed
+- [ ] Apply for Stripe non-profit rate: stripe.com/docs/tax-exempt (requires EIN and 501(c)(3) determination letter)
+- [ ] Create Stripe account and obtain API keys (publishable + secret) for development
 
 ---
 
@@ -47,18 +47,18 @@ Difference between Square standard and Stripe non-profit: ~$53/camp. Modest at t
 
 Patient registers on the camp website, selects services, and pays in one flow.
 
-- **Integration:** Square Web Payments SDK embedded in the registration form
-- **Flow:** Patient selects services → live total shown → enters card details → Square processes payment → on success, registration is confirmed and QR code confirmation email is sent
+- **Integration:** Stripe Payment Element embedded in the registration form
+- **Flow:** Patient selects services → live total shown → enters card details → Stripe processes payment → on success, registration is confirmed and QR code confirmation email is sent
 - **Rule:** Registration is not confirmed until payment clears. No pending/pay-later registrations.
-- **Free services:** First consultation is $0 — Square checkout handles $0 transactions; patient still completes the checkout flow so a record is created
+- **Free services:** First consultation is $0 — handled as a $0 Stripe PaymentIntent; patient still completes the flow so a record is created
 
 ### 2. Walk-In (Day-Of, At Registration Desk)
 
 Patient arrives without a pre-registration.
 
 - **Integration:** Tap to Pay on volunteer's phone (NFC) — no terminal hardware needed
-- **Flow:** Volunteer enters patient info on tablet → selects services → patient taps/swipes on Square Terminal → payment clears → badge printed immediately
-- **Hardware:** Square Terminal already owned; Square Reader on phone as backup
+- **Flow:** Volunteer enters patient info on tablet → selects services → patient taps phone/card on volunteer's phone (Tap to Pay) → payment clears → badge printed immediately
+- **Hardware:** Volunteer's NFC-enabled phone running Stripe Terminal SDK — no card reader needed
 
 ### 3. Doctor Add-On (Mid-Visit)
 
@@ -69,7 +69,7 @@ Doctor recommends an additional service the patient did not pre-pay for.
   2. Patient's record is marked `needs_payment`
   3. Registration desk receives an alert
   4. Volunteer escorts patient back to registration desk
-  5. Patient pays via Square Terminal for the added service
+  5. Patient pays via Tap to Pay on the registration desk phone
   6. Payment clears → service added to patient's record → patient routed to the new station
 - **Rule:** Patient does not proceed to the new station until payment is confirmed in the system
 
@@ -85,7 +85,7 @@ Today, Google Forms (registration) and Square (payment) are completely separate 
 | Patient in the form but not paid | Filled the form, intended to pay at the door |
 | Revenue vs. headcount mismatch | Manual reconciliation after the camp takes hours and still has errors |
 
-The new system fixes this by making Square checkout the last step of the registration form — one flow, one record, one ID.
+The new system fixes this by making Stripe checkout the last step of the registration form — one flow, one record, one ID.
 
 ---
 
