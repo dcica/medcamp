@@ -17,13 +17,23 @@ MedCamp is a web application for a non-profit that runs medical camps serving 30
 - **QR / Badge printing:** `qrcode` npm library + browser print CSS (label printer compatible)
 - **Hosting:** Vercel (app) + Supabase (database)
 
+## UI Constraint — Phone-First
+
+**Every volunteer-facing screen must work on a 6" phone.** No pinching, zooming, or horizontal scrolling. Tablets show the same interface larger — they are not required for any station to function.
+
+- Minimum 48px tap targets on all interactive elements
+- Single-column layouts on queue and scan views
+- QR scanning via device camera (dedicated scanners at busy stations are an enhancement only)
+- Label printing: triggered from any phone → sends to the shared WiFi label printer at registration desk
+- Coordinator dashboard: readable on phone, expands on larger screens
+
 ## Domain Model
 
 ```
 Camp
   └── Registration
         ├── camp_id (format: MC-YYYY[S|W]-NNNN)
-        ├── name, phone
+        ├── name, phone, mailing_address
         ├── services[]          ← pre-paid at registration
         ├── square_payment_id
         ├── waiver_signed
@@ -34,6 +44,7 @@ Camp
 
 Station    ← configured per camp (varies by venue)
 Supply     ← pre-camp estimates only, keyed to service type
+LabStatus  ← per registration: pending | received | mailed (date); no lab results stored
 ```
 
 ## Patient Flow
@@ -51,7 +62,8 @@ Supply     ← pre-camp estimates only, keyed to service type
 3. **Station Queue** — per-station tablet view + patient routing + add-on payment alerts
 4. **Coordinator Dashboard** — real-time god-view: queue depths, payment status, bottleneck alerts, reconciliation export
 5. **Supply Calculator** — pre-camp procurement list generator keyed to registered service counts
-6. **Venue Config** — switchable layouts: Clinic (7 rooms + 2 tents) vs. Open Space (configurable cabins)
+6. **Lab Tracking & Patient Portal** — staff marks lab received/mailed; prints address label batch; patients check status by confirmation code
+7. **Venue Config** — switchable layouts: Clinic (7 rooms + 2 tents) vs. Open Space (configurable cabins)
 
 ## Access Roles
 

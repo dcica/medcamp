@@ -238,6 +238,17 @@ The system will be a web application accessible on any modern phone, tablet, or 
 
 Internet connectivity: reliable WiFi assumed; phone hotspot backup available.
 
+### UI Constraint — Phone-First Design
+
+**Every volunteer-facing screen must work on a 6" phone screen with no pinching, zooming, or horizontal scrolling.** Tablets and laptops show the same interface at a larger size — they are not required for any station to function.
+
+This means:
+- Large tap targets (minimum 48px) for station check-in and mark-done actions
+- Single-column layouts on all queue and scan views
+- QR scanning via phone camera — no external scanner required (dedicated scanners at high-volume stations are an enhancement, not a dependency)
+- Label printing triggered from phone → prints to the shared WiFi label printer at the registration desk
+- Coordinator dashboard readable on a phone; expands to a richer layout on larger screens
+
 ---
 
 ## Build Plan — 6 Months to Winter Camp
