@@ -27,7 +27,7 @@ This document outlines a purpose-built MedCamp Management System to automate and
 | Registration (Google Forms) and payment (Square) are two separate, unlinked systems | Manual reconciliation takes hours; errors are common |
 | Walk-in patients fill out paper tripart forms by hand | Slow, error-prone, no digital record |
 | No patient routing system — volunteers herd patients verbally | Bottlenecks at popular stations; patient confusion |
-| No sticker/badge linking patient to their paid services | Station volunteers can't verify what a patient is there for |
+| No printed artifact linking patient to their paid services | Station volunteers can't verify what a patient is there for |
 | Supply ordering is experience-based, not data-driven | Risk of running short on high-demand items |
 | No real-time visibility for the camp coordinator | Coordinator can't see bottlenecks until a line forms |
 
@@ -48,14 +48,14 @@ Patients visit a single web page to register and pay in one flow.
 - Pricing is shown live as services are added
 - **Marketing consent checkbox** (opt-in, not required): _"I agree to be contacted by dcica for updates, membership drives, and future events."_ Consent and timestamp are recorded.
 - Stripe Checkout is embedded — registration is not confirmed until payment clears
-- On payment success: patient receives a confirmation email containing their **QR code badge**
+- On payment success: patient receives a confirmation email containing their **QR check-in code**
 - Capacity limits per service are enforced (e.g., ultrasound capped at 80 slots) so we never overbook a station
 
 **Walk-in registration (day-of, at the registration desk):**
 - Volunteer uses a tablet to enter the patient's information including email
 - Marketing consent checkbox presented on tablet — volunteer reads it aloud if needed
 - Patient pays via Stripe Tap to Pay on volunteer's phone
-- Badge is printed immediately at the desk
+- Their progress report sheet is printed immediately at the desk
 - Digital waiver is signed on the tablet (with paper fallback available)
 
 **Group / Family Registration:**
@@ -67,8 +67,8 @@ One person can register and pay for any number of attendees — including cases 
 - Each attendee: name, services selected, waiver acknowledgement — no assumption that the registrant is one of them
 - If the registrant is also attending, they add themselves as one of the attendees
 - Single Stripe checkout — total is the sum of all attendees' services
-- One confirmation email to the registrant with a separate QR badge for each attendee
-- Each attendee gets their own camp ID and label packet at check-in
+- One confirmation email to the registrant with a separate QR check-in code for each attendee
+- Each attendee gets their own camp ID and progress report sheet at check-in
 - Attendees move through stations independently after check-in
 - Marketing consent is captured once from the registrant
 - Walk-in groups: volunteer collects registrant contact info, then adds attendees one at a time before payment
@@ -154,7 +154,7 @@ Walk-ins are not turned away, but registration opens on a delay to protect pre-r
 - **After ~1 hour** (or when coordinator manually opens it): walk-in registration activates
 - The coordinator toggles walk-in registration open/closed from the dashboard — no fixed timer, based on real flow
 - Walk-in patients waiting during the hold period are given an estimated wait time and directed to the waiting area
-- Once open: walk-in desk processes registration, payment, and badge print in a single flow
+- Once open: walk-in desk processes registration, payment, and progress report print in a single flow
 
 This mirrors the current practice of holding walk-ins for approximately one hour while pre-registered patients clear initial intake.
 
@@ -164,7 +164,7 @@ This mirrors the current practice of holding walk-ins for approximately one hour
 
 Each station (doctor's office, blood draw, ultrasound, etc.) has a tablet or screen showing their live queue. The flow:
 
-1. Patient arrives at station → volunteer scans QR badge → patient marked **In Progress**
+1. Patient arrives at station → volunteer scans the patient's QR → patient marked **In Progress**
 2. Service completed → volunteer marks **Done**
 3. System automatically routes patient to their next station and adds them to that queue
 
@@ -176,7 +176,7 @@ Each station (doctor's office, blood draw, ultrasound, etc.) has a tablet or scr
 - Patient's record is flagged as **Needs Payment**
 - Registration desk receives an instant alert
 - A volunteer escorts the patient back to the registration desk to pay
-- Once paid via Square, the new service is added to the patient's badge and they are routed to the appropriate station
+- Once paid via Square, the new service is added to the patient's record and they are routed to the appropriate station
 
 ---
 
@@ -264,7 +264,7 @@ A phase-based checklist covering everything that needs to happen before, during,
 - [ ] Order supplies (medical, food, stationery) per supply calculator output
 - [ ] Print volunteer role cards
 - [ ] Confirm lab partner and sample collection supplies
-- [ ] Test label printer with a sample badge run
+- [ ] Test the color printer and label printer with a sample run
 
 *Day-of setup (before doors open):*
 - [ ] Print and post walk-in hold sign at entrance and walk-in desk
@@ -318,7 +318,7 @@ Lab results are returned as physical paper reports by the lab. The system handle
 **Staff workflow:**
 1. Lab reports arrive (days or weeks after camp)
 2. Staff opens the system and marks patients `Lab Received` — individually or as a batch
-3. System prints a sheet of **address labels** (same label printer used for badges) — one per patient in the batch
+3. System prints a sheet of **address labels** (same thermal label printer used for sample labels) — one per patient in the batch
 4. Staff stuffs envelopes, applies labels, mails
 5. Staff marks batch as `Mailed`
 
@@ -367,9 +367,9 @@ In the open-space configuration, TV screens mounted near the waiting area can di
 | Role | System Access | Cash | Waiver |
 |---|---|---|---|
 | Coordinator | Full dashboard, all modules, volunteer setup | Can assign | Yes |
-| Registration desk — till holder | Registration, payment, badge print, cash + Stripe | Yes | No |
-| Registration desk — no till | Registration, payment, badge print, Stripe only | No | No |
-| Registration desk — override auth | Registration, payment, badge print, Stripe + waiver | Till if also assigned | Yes |
+| Registration desk — till holder | Registration, payment, sheet print, cash + Stripe | Yes | No |
+| Registration desk — no till | Registration, payment, sheet print, Stripe only | No | No |
+| Registration desk — override auth | Registration, payment, sheet print, Stripe + waiver | Till if also assigned | Yes |
 | Station volunteer | Own station queue (scan in/out) | No | No |
 | Doctor | Station view + add-on service flag | No | No |
 | POS volunteer — till holder | Merchandise POS, cash + Stripe | Yes | No |
@@ -414,7 +414,7 @@ The system will be a web application accessible on any modern phone, tablet, or 
 | Database | PostgreSQL (patient records purged post-camp) |
 | Payments | Square (Web SDK for online, Terminal SDK for walk-in) |
 | Login / Access control | Google Workspace accounts (committee already has these) |
-| Badge / QR codes | Browser print (works with standard label printers) |
+| Progress report / QR codes | Browser print — color laser for sheets, thermal label printer for stickers |
 | Hosting | Cloud-hosted, no on-site server required |
 
 Internet connectivity: reliable WiFi assumed; phone hotspot backup available.
@@ -437,7 +437,7 @@ This means:
 | Phase | Timeline | What Gets Built |
 |---|---|---|
 | **1 — Registration Portal** | Weeks 1–4 | Unified registration + Square checkout + QR confirmation email |
-| **2 — Check-In & Badge** | Weeks 5–7 | Gate scan + digital waiver + badge printing |
+| **2 — Check-In & Sheet** | Weeks 5–7 | Gate scan + digital waiver + progress report printing |
 | **3 — Station Flow** | Weeks 8–11 | Queue tablets + patient routing + add-on payment alert |
 | **4 — Coordinator Dashboard** | Weeks 12–14 | God-view + reconciliation export |
 | **5 — Supplies & Venue Config** | Weeks 15–17 | Supply calculator + clinic vs. open space setup |
