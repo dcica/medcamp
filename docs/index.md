@@ -19,6 +19,8 @@ Non-profit event management system for medical camps, community events, membersh
 | [Platform Extensions](Platform-Extensions) | General events, membership, POS, vendor registration, and sponsor tiers |
 | [Payment Gateway](Payment-Gateway) | Stripe integration, payment scenarios, pricing, and reconciliation |
 | [Hardware Recommendations](Hardware-Recommendations) | Label printer, QR scanners, WiFi, displays, and budget |
+| [Privacy Policy](Privacy-Policy) | Data collection, retention, marketing consent, and your rights |
+| [Terms of Service](Terms-of-Service) | Registration, waiver, membership, vendor/sponsor, and liability terms |
 
 ---
 
