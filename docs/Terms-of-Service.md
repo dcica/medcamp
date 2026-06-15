@@ -21,7 +21,11 @@ dcica is a registered 501(c)(3) non-profit organization that organizes medical c
 
 **Payment:** Registration is confirmed only after payment is received in full. We do not hold spots without payment.
 
-**Refunds:** Refunds are handled on a case-by-case basis. Contact sachin@buzzclan.com before the event date to request a refund. No refunds are issued after the event.
+**Cancellations & Refunds:**
+- Cancellation before camp day: full refund via original payment method
+- No-shows: no automatic refund; contact sachin@buzzclan.com within 7 days
+- Service unavailable on the day: refund for that service only
+- Family registrations: all members can be cancelled together, or individual members cancelled separately
 
 **Walk-ins:** Walk-in registration is available subject to capacity. Pre-registration is strongly recommended.
 

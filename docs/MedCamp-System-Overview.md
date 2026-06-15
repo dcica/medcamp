@@ -40,7 +40,6 @@ The system has six functional modules, designed to be built in sequence so we ha
 ---
 
 ### Module 1 — Unified Registration & Payment Portal
-*Replaces: Google Forms + Square payment link (currently two separate steps)*
 
 Patients visit a single web page to register and pay in one flow.
 
@@ -58,6 +57,29 @@ Patients visit a single web page to register and pay in one flow.
 - Patient pays via Stripe Tap to Pay on volunteer's phone
 - Badge is printed immediately at the desk
 - Digital waiver is signed on the tablet (with paper fallback available)
+
+**Family Registration:**
+
+One person can register and pay for multiple family members in a single checkout.
+
+- Primary registrant fills their own details, then taps "+ Add Family Member"
+- Each additional member: name, services selected (services and pricing are per person)
+- Single Stripe checkout — total is the sum of all members' services
+- One confirmation email with a separate QR badge for each family member
+- Each member gets their own camp ID and label packet at check-in
+- Members move through stations independently after check-in
+- Marketing consent is captured once for the primary registrant
+- Waiver must be acknowledged for each member individually
+- Walk-in families: volunteer adds members one at a time before taking payment
+
+**Cancellations:**
+
+- Cancellations requested before camp day: full refund via Stripe for pre-registered patients; handled case-by-case for walk-ins
+- Service-level cancellation (e.g., a specific service cannot be provided on the day): refund for that service only
+- Family cancellation: all members cancelled together; individual member cancellation also supported
+- No-shows: no automatic refund; contact sachin@buzzclan.com within 7 days
+
+---
 
 **Service Menu (current pricing):**
 
@@ -102,7 +124,6 @@ The label packet eliminates "which line do I go to?" confusion and removes handw
 ---
 
 ### Module 3 — Check-In Gate
-*Replaces: paper sign-in sheets and verbal confirmation*
 
 When a patient arrives on camp day:
 
@@ -116,7 +137,6 @@ Walk-ins who did not pre-register are handled at a dedicated walk-in desk adjace
 ---
 
 ### Module 4 — Station Queue Management
-*Replaces: volunteers herding patients between stations*
 
 Each station (doctor's office, blood draw, ultrasound, etc.) has a tablet or screen showing their live queue. The flow:
 
@@ -137,7 +157,6 @@ Each station (doctor's office, blood draw, ultrasound, etc.) has a tablet or scr
 ---
 
 ### Module 5 — Coordinator Dashboard ("God View")
-*New capability — does not exist today*
 
 The camp coordinator gets a real-time overview of the entire operation:
 
@@ -151,7 +170,6 @@ Accessible on any phone or laptop — no special hardware needed.
 ---
 
 ### Module 6 — Supply Calculator
-*Replaces: experience-based estimation*
 
 Before each camp:
 
@@ -167,7 +185,6 @@ Supply tracking is pre-camp only — no mid-camp inventory system needed.
 ---
 
 ### Module 7 — Post-Camp Lab Tracking
-*New capability — replaces manual envelope stuffing with no visibility for patients*
 
 Lab results are returned as physical paper reports by the lab. The system handles the mailing logistics only — no digital lab results are stored.
 
