@@ -61,9 +61,9 @@ Patient registers on the camp website, selects services, and pays in one flow.
 
 Patient arrives without a pre-registration.
 
-- **Integration:** Tap to Pay on volunteer's phone (NFC) — no terminal hardware needed
-- **Flow:** Volunteer enters patient info on tablet → selects services → patient taps phone/card on volunteer's phone (Tap to Pay) → payment clears → badge printed immediately
-- **Hardware:** Volunteer's NFC-enabled phone running Stripe Terminal SDK — no card reader needed
+- **Integration:** Tap to Pay on volunteer's phone (NFC) or cash
+- **Flow:** Volunteer enters patient info on tablet → selects services → total shown → patient pays (card tap or cash) → volunteer confirms payment → badge printed immediately
+- **Hardware:** Volunteer's NFC-enabled phone for card; no hardware needed for cash
 
 ### 3. Doctor Add-On (Mid-Visit)
 
@@ -74,9 +74,18 @@ Doctor recommends an additional service the patient did not pre-pay for.
   2. Patient's record is marked `needs_payment`
   3. Registration desk receives an alert
   4. Volunteer escorts patient back to registration desk
-  5. Patient pays via Tap to Pay on the registration desk phone
-  6. Payment clears → service added to patient's record → patient routed to the new station
+  5. Patient pays via Tap to Pay or cash
+  6. Payment confirmed → service added to patient's record → patient routed to the new station
 - **Rule:** Patient does not proceed to the new station until payment is confirmed in the system
+
+### 4. Cash Payments
+
+Cash is accepted at the registration desk for walk-ins and add-ons. No cash drawer integration — handled manually by the volunteer.
+
+- **Flow:** Volunteer selects "Cash" as payment method → enters amount tendered → system displays change due → volunteer collects cash and confirms → registration proceeds
+- **Reconciliation:** Cash payments are tracked separately in the system (amount, time, volunteer ID) and appear as a distinct line in the post-camp reconciliation report
+- **No online cash:** Pre-registration is card-only (Stripe). Cash is day-of only.
+- **Change calculator:** System shows change due on screen — volunteer handles cash drawer independently
 
 ---
 
@@ -111,21 +120,37 @@ Configured in the system admin panel — can be updated per camp without a code 
 
 ---
 
+## Payment Methods by Module
+
+| Module | Methods accepted |
+|---|---|
+| Event pre-registration (online) | Stripe (card only) |
+| Walk-in registration (day-of) | Stripe Tap to Pay, cash |
+| Doctor add-ons (day-of) | Stripe Tap to Pay, cash |
+| Event tickets (day-of, at door) | Stripe Tap to Pay, cash |
+| POS / merchandise (day-of) | Stripe Tap to Pay, cash |
+| Membership (online) | Stripe (card only) |
+| Vendor registration | Zelle |
+| Sponsorship | Zelle, check |
+
+---
+
 ## Reconciliation
 
 Post-camp, the coordinator dashboard exports a payment reconciliation report:
 
 | Column | Source |
 |---|---|
-| Camp ID | System |
-| Patient name | Registration record |
-| Services paid | Registration record |
-| Amount | Square transaction |
-| Payment method | Square (online / terminal) |
-| Payment time | Square |
+| Record ID | System |
+| Patient / customer name | Registration record |
+| Services / items | Registration or POS record |
+| Amount | Transaction record |
+| Payment method | Stripe / cash / Zelle / check |
+| Payment time | System timestamp |
 | Add-ons | Station visit records |
+| Volunteer who processed | Staff ID (cash transactions) |
 
-This replaces the manual cross-check between Google Forms export and Square dashboard.
+Cash transactions are totalled separately so the volunteer can reconcile the physical cash at end of day. Stripe transactions reconcile automatically via the Stripe dashboard.
 
 ---
 

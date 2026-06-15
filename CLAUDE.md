@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 dcica platform — a non-profit event management and commerce system. The medical camp (300–500 patients, half-day) is the first module and primary build target. The platform also covers general events, annual/multi-year membership, onsite merchandise POS, and vendor registration.
 
-**Payment split:** Stripe for all patient/attendee/member payments (Tap to Pay on phone for in-person). Zelle for vendor registration fees (large amounts, manual staff verification — no API).
+**Payment split:** Stripe for online pre-registration and membership. Stripe Tap to Pay or **cash** for day-of walk-ins, event tickets, add-ons, and merchandise. Zelle or check for vendors and sponsors. Cash is recorded manually by staff (amount tendered, change due shown on screen) and tracked separately in reconciliation.
 
 **Hard constraint: No PHI/HIT stored.** Patient records are camp-scoped (name, phone, paid services only) and purged after each event. No diagnoses, lab results, clinical notes, or insurance data — ever.
 
