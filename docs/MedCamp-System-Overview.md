@@ -45,15 +45,17 @@ The system has six functional modules, designed to be built in sequence so we ha
 Patients visit a single web page to register and pay in one flow.
 
 **Pre-registration (online, before camp day):**
-- Patient enters name, phone number, mailing address, and selects services from our menu
+- Patient enters name, phone number, email, mailing address, and selects services from our menu
 - Pricing is shown live as services are added
-- Square Checkout is embedded — registration is not confirmed until payment clears
+- **Marketing consent checkbox** (opt-in, not required): _"I agree to be contacted by dcica for updates, membership drives, and future events."_ Consent and timestamp are recorded.
+- Stripe Checkout is embedded — registration is not confirmed until payment clears
 - On payment success: patient receives a confirmation email containing their **QR code badge**
 - Capacity limits per service are enforced (e.g., ultrasound capped at 80 slots) so we never overbook a station
 
 **Walk-in registration (day-of, at the registration desk):**
-- Volunteer uses a tablet to enter the patient's information
-- Patient pays on the Square terminal
+- Volunteer uses a tablet to enter the patient's information including email
+- Marketing consent checkbox presented on tablet — volunteer reads it aloud if needed
+- Patient pays via Stripe Tap to Pay on volunteer's phone
 - Badge is printed immediately at the desk
 - Digital waiver is signed on the tablet (with paper fallback available)
 
@@ -142,7 +144,7 @@ The camp coordinator gets a real-time overview of the entire operation:
 - **Patient counts:** Total checked in, currently at each station, completed, pending payment
 - **Queue depths per station:** Surface bottlenecks before they become jams (e.g., if ultrasound has 15 patients queued and blood draw has 2, redirect a volunteer)
 - **Payment status:** Pre-paid, walk-in paid, pending add-ons
-- **One-click export:** Post-camp summary and payment reconciliation report for committee review
+- **One-click export:** Post-camp summary, payment reconciliation report, and consented contacts list (name, email, phone) for membership drives
 
 Accessible on any phone or laptop — no special hardware needed.
 

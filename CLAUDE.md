@@ -35,7 +35,8 @@ dcica platform — a non-profit event management and commerce system. The medica
 Camp
   └── Registration
         ├── camp_id (format: MC-YYYY[S|W]-NNNN)
-        ├── name, phone, mailing_address
+        ├── name, phone, email, mailing_address
+        ├── marketing_consent   ← boolean, with consent_timestamp
         ├── services[]          ← pre-paid at registration
         ├── square_payment_id
         ├── waiver_signed
