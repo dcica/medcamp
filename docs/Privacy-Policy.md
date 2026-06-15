@@ -1,13 +1,13 @@
 ---
 title: Privacy & Data Use Policy
-nav_order: 6
+nav_order: 7
 ---
 
 # Privacy & Data Use Policy
 
 *Last updated: June 2026*
 
-This policy applies to all registrations, memberships, vendor applications, and sponsorships processed through the dcica platform.
+This policy applies to all registrations, memberships, vendor applications, sponsorships, and volunteer signups processed through the dcica platform.
 
 ---
 
@@ -39,6 +39,14 @@ dcica is a registered 501(c)(3) non-profit organization. We organize medical cam
 - Vendor type or sponsor tier
 - Payment status (Zelle or check — we do not store bank account details)
 
+### At Volunteer Signup
+- Full name, phone, email
+- Age band (e.g. under 16 / 16–17 / 18+) — we do not store date of birth
+- School or organization affiliation and sponsoring advisor (optional)
+- Role preferences, skills, languages, emergency contact
+- Hours served and certificate record
+- **For minor volunteers:** parent/guardian name and consent signature
+
 ### What We Do NOT Collect
 - Medical diagnoses, lab results, prescriptions, or clinical notes
 - Social Security numbers or government IDs
@@ -56,6 +64,7 @@ dcica is a registered 501(c)(3) non-profit organization. We organize medical cam
 | Services paid | Routing you to the right stations; printing your badge |
 | Payment info | Confirming registration; reconciliation records |
 | Marketing consent | If opted in: membership drives, event announcements, organization updates |
+| Volunteer profile, hours, school affiliation | Scheduling, confirmation reminders, recognition, certificates, and per-school hour summaries; recruitment for future events |
 
 We do not sell, rent, or share your personal information with third parties for their marketing purposes.
 
@@ -84,6 +93,8 @@ If you opted in, we may contact you by email or phone about:
 | Vendor / sponsor records | Retained for 3 years for financial record-keeping |
 | Payment references (Stripe transaction IDs) | Retained for 7 years (tax/audit requirements) |
 | Lab result mailing status | Purged after mailing confirmed |
+| Volunteer profiles (contact, hours, history) | Retained across events to support recruitment and recognition; deleted on request |
+| Minor volunteer consent records | Retained 3 years (record of authorization), then purged; deleted sooner on parent/guardian request |
 
 **No clinical or medical data is stored in our system at any time.**
 
@@ -124,6 +135,8 @@ To exercise any of these rights, contact: **admin@dcica.org**
 ## Children
 
 Our events are open to all ages. If a minor is registering, a parent or guardian must complete the registration and waiver on their behalf. We do not knowingly collect data directly from children under 13.
+
+Many of our volunteers are students recruited through middle schools, high schools, and colleges. A minor volunteer's signup requires a parent or guardian consent signature before it is accepted. We collect only what is needed to schedule, supervise, and recognize the volunteer (name, contact, age band, school affiliation, hours) — no date of birth and no sensitive data. Parents or guardians may request access to or deletion of their child's volunteer record at any time via admin@dcica.org.
 
 ---
 

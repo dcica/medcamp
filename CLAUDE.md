@@ -71,6 +71,7 @@ LabStatus  ← per registration: pending | received | mailed (date); no lab resu
 6. **Checklist Module** — phase-based operations checklist (pre-camp / day-of / during / post-camp); printable run sheet and signage (walk-in hold sign, station directionals, etc.)
 7. **Lab Tracking & Patient Portal** — staff marks lab received/mailed; prints address label batch; patients check status by confirmation code
 8. **Venue Config** — switchable layouts: Clinic (7 rooms + 2 tents) vs. Open Space (configurable cabins)
+9. **Volunteer Module** — platform-level, reusable across events: recruitment/outreach, per-event role + age-group config with capacity caps, signup form, 24–48h confirmation reminder, day-of QR sign in/out with hours tracking, thank-you + certificates. Volunteer profiles persist across events (NOT camp-scoped, NOT PHI). See `docs/Volunteer-Module.md`.
 
 ## Access Roles
 
@@ -83,6 +84,7 @@ LabStatus  ← per registration: pending | received | mailed (date); no lab resu
 | Doctor | Station view + add-on service flag | No |
 | POS volunteer — till holder | Merchandise POS | Yes |
 | Committee / admin | Supply calculator, camp setup, reports | No |
+| Volunteer Coordinator | Volunteer module: role/age config, outreach, reminders, roster, certificates | No |
 
 Till holders are assigned by the coordinator before camp. Cash option is hidden from non-till volunteers — their payment screen shows Stripe only.
 
