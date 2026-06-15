@@ -37,7 +37,7 @@ Difference between Square standard and Stripe non-profit: ~$53/camp. Modest at t
 **Action items:**
 - [x] 501(c)(3) status — confirmed
 - [ ] Apply for Stripe non-profit rate: stripe.com/docs/tax-exempt (requires EIN and 501(c)(3) determination letter)
-- [ ] Create Stripe account and obtain API keys (publishable + secret) for development
+- [x] Create Stripe account and obtain API keys (publishable + secret) — keys in hand
 
 ---
 

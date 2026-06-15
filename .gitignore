@@ -1,0 +1,19 @@
+# Environment variables — never commit these
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Dependencies
+node_modules/
+
+# Next.js build output
+.next/
+out/
+
+# Vercel
+.vercel
+
+# OS
+.DS_Store
+Thumbs.db
