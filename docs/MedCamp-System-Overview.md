@@ -58,19 +58,20 @@ Patients visit a single web page to register and pay in one flow.
 - Badge is printed immediately at the desk
 - Digital waiver is signed on the tablet (with paper fallback available)
 
-**Family Registration:**
+**Group / Family Registration:**
 
-One person can register and pay for multiple family members in a single checkout.
+One person can register and pay for any number of attendees — including cases where the person filling out the form is not attending themselves (e.g., a parent registering children, a caretaker registering a family member).
 
-- Primary registrant fills their own details, then taps "+ Add Family Member"
-- Each additional member: name, services selected (services and pricing are per person)
-- Single Stripe checkout — total is the sum of all members' services
-- One confirmation email with a separate QR badge for each family member
-- Each member gets their own camp ID and label packet at check-in
-- Members move through stations independently after check-in
-- Marketing consent is captured once for the primary registrant
-- Waiver must be acknowledged for each member individually
-- Walk-in families: volunteer adds members one at a time before taking payment
+- Registration starts by collecting the **registrant's contact details** (name, email, phone) for confirmation and communication — these are not camp attendee details
+- Registrant is then asked: "Who are you registering?" and adds one or more attendees
+- Each attendee: name, services selected, waiver acknowledgement — no assumption that the registrant is one of them
+- If the registrant is also attending, they add themselves as one of the attendees
+- Single Stripe checkout — total is the sum of all attendees' services
+- One confirmation email to the registrant with a separate QR badge for each attendee
+- Each attendee gets their own camp ID and label packet at check-in
+- Attendees move through stations independently after check-in
+- Marketing consent is captured once from the registrant
+- Walk-in groups: volunteer collects registrant contact info, then adds attendees one at a time before payment
 
 **Cancellations:**
 

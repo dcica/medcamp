@@ -33,17 +33,20 @@ dcica platform — a non-profit event management and commerce system. The medica
 
 ```
 Camp
-  └── Registration
-        ├── camp_id (format: MC-YYYY[S|W]-NNNN)
-        ├── name, phone, email, mailing_address
+  └── Order                     ← one per checkout (1 registrant, 1+ attendees)
+        ├── registrant          ← name, email, phone (contact only, may not be attending)
         ├── marketing_consent   ← boolean, with consent_timestamp
-        ├── services[]          ← pre-paid at registration
-        ├── square_payment_id
-        ├── waiver_signed
-        └── StationVisit[]
-              ├── station
-              ├── status        ← queued | in-progress | done
-              └── added_services[]  ← doctor add-ons, flagged needs_payment
+        ├── stripe_payment_id
+        ├── cash_amount         ← if paid by cash
+        └── Attendee[]          ← one per person actually attending
+              ├── camp_id (format: MC-YYYY[S|W]-NNNN)
+              ├── name, mailing_address
+              ├── services[]    ← pre-paid
+              ├── waiver_signed
+              └── StationVisit[]
+                    ├── station
+                    ├── status  ← queued | in-progress | done
+                    └── added_services[]  ← doctor add-ons, flagged needs_payment
 
 Station    ← configured per camp (varies by venue)
 Supply     ← pre-camp estimates only, keyed to service type
