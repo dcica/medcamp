@@ -1,0 +1,250 @@
+# MedCamp Management System
+## Project Overview — Committee Review Draft
+**Prepared:** June 2026  
+**Status:** Pre-Development — Seeking Committee Feedback
+
+---
+
+## Background
+
+Our medical camps have grown to serve 300–500 patients in a single half-day session. The operations model that got us here — Google Forms for registration, Square for payment, paper forms at walk-in, and volunteers verbally routing patients — is at its limit. We turn away volunteers because we can't absorb more people into a disorganized process. The problem is not staffing; it's the lack of a coordinating system.
+
+This document outlines a purpose-built MedCamp Management System to automate and streamline every phase of the camp, from pre-registration to post-camp reconciliation. It is designed specifically around how our camps work — no excess features, no unnecessary complexity.
+
+**One firm constraint:** No Health Information Technology (HIT) / Protected Health Information (PHI) is stored. Patient records are camp-scoped and purged after each event.
+
+---
+
+## What We're Solving
+
+| Problem Today | Impact |
+|---|---|
+| Registration (Google Forms) and payment (Square) are two separate, unlinked systems | Manual reconciliation takes hours; errors are common |
+| Walk-in patients fill out paper tripart forms by hand | Slow, error-prone, no digital record |
+| No patient routing system — volunteers herd patients verbally | Bottlenecks at popular stations; patient confusion |
+| No sticker/badge linking patient to their paid services | Station volunteers can't verify what a patient is there for |
+| Supply ordering is experience-based, not data-driven | Risk of running short on high-demand items |
+| No real-time visibility for the camp coordinator | Coordinator can't see bottlenecks until a line forms |
+
+---
+
+## System Overview
+
+The system has six functional modules, designed to be built in sequence so we have something working well before the winter camp.
+
+---
+
+### Module 1 — Unified Registration & Payment Portal
+*Replaces: Google Forms + Square payment link (currently two separate steps)*
+
+Patients visit a single web page to register and pay in one flow.
+
+**Pre-registration (online, before camp day):**
+- Patient enters name, phone number, and selects services from our menu
+- Pricing is shown live as services are added
+- Square Checkout is embedded — registration is not confirmed until payment clears
+- On payment success: patient receives a confirmation email containing their **QR code badge**
+- Capacity limits per service are enforced (e.g., ultrasound capped at 80 slots) so we never overbook a station
+
+**Walk-in registration (day-of, at the registration desk):**
+- Volunteer uses a tablet to enter the patient's information
+- Patient pays on the Square terminal
+- Badge is printed immediately at the desk
+- Digital waiver is signed on the tablet (with paper fallback available)
+
+**Service Menu (current pricing):**
+
+| Service | Price |
+|---|---|
+| First consultation | Free |
+| Additional consultation | $5 |
+| Blood test | $8–$15 per test |
+| Ultrasound | $40 |
+| X-ray | $40 |
+| Vitamin B12 or D shot | $10 per shot |
+| Blood bank (planned next camp) | TBD |
+
+---
+
+### Module 2 — Patient Badge / Sticker
+*The physical artifact that replaces verbal patient routing*
+
+Every patient — pre-registered or walk-in — receives a printed sticker badge. The badge contains:
+
+- **Patient name and camp ID** (e.g., `MC-2025W-0042`) — no DOB or medical information
+- **QR code** — scanned at every station to pull up the patient's service list
+- **Color-coded service dots** — one color per station so a volunteer can glance at the sticker and know exactly where this patient belongs
+- **Checklist of paid services** — station volunteers check off completed services
+
+The badge is the patient's passport through the camp. It eliminates "which line do I go to?" confusion entirely.
+
+---
+
+### Module 3 — Check-In Gate
+*Replaces: paper sign-in sheets and verbal confirmation*
+
+When a patient arrives on camp day:
+
+1. Volunteer scans the QR code from the patient's confirmation email (or prints it on-site for those without smartphones)
+2. System confirms: ✓ Registered, ✓ Paid, ✓ Waiver signed
+3. Patient receives their printed badge if not already in hand
+4. System assigns the patient to their first station queue
+
+Walk-ins who did not pre-register are handled at a dedicated walk-in desk adjacent to the main check-in.
+
+---
+
+### Module 4 — Station Queue Management
+*Replaces: volunteers herding patients between stations*
+
+Each station (doctor's office, blood draw, ultrasound, etc.) has a tablet or screen showing their live queue. The flow:
+
+1. Patient arrives at station → volunteer scans QR badge → patient marked **In Progress**
+2. Service completed → volunteer marks **Done**
+3. System automatically routes patient to their next station and adds them to that queue
+
+**Default routing order:**  
+`Vitals → Doctor Consultation → [variable: Blood Draw / Ultrasound / X-Ray / EKG / Shots]`
+
+**Add-on services (doctor recommends something not pre-paid):**
+- Doctor taps "Add Service" on their tablet
+- Patient's record is flagged as **Needs Payment**
+- Registration desk receives an instant alert
+- A volunteer escorts the patient back to the registration desk to pay
+- Once paid via Square, the new service is added to the patient's badge and they are routed to the appropriate station
+
+---
+
+### Module 5 — Coordinator Dashboard ("God View")
+*New capability — does not exist today*
+
+The camp coordinator gets a real-time overview of the entire operation:
+
+- **Patient counts:** Total checked in, currently at each station, completed, pending payment
+- **Queue depths per station:** Surface bottlenecks before they become jams (e.g., if ultrasound has 15 patients queued and blood draw has 2, redirect a volunteer)
+- **Payment status:** Pre-paid, walk-in paid, pending add-ons
+- **One-click export:** Post-camp summary and payment reconciliation report for committee review
+
+Accessible on any phone or laptop — no special hardware needed.
+
+---
+
+### Module 6 — Supply Calculator
+*Replaces: experience-based estimation*
+
+Before each camp:
+
+- Enter the number of registered patients per service
+- System generates a recommended procurement list (e.g., "80 ultrasound registrations → confirm gel, probe covers, etc.")
+- Manual override available per item
+- Printable list to share with our pharmacy and physician procurement partners
+
+Supply tracking is pre-camp only — no mid-camp inventory system needed.
+
+---
+
+## Venue Configurations
+
+The system supports two physical layouts. The coordinator selects the configuration when setting up each camp.
+
+### Configuration A — Clinic (Current Setup)
+
+| Zone | Location |
+|---|---|
+| Registration / Check-in | Clinic front |
+| Doctor consultations | 7 rooms |
+| Vitals | Outdoor tent |
+| Blood draw | Outdoor tent |
+| Imaging (X-ray, Ultrasound) | Clinic rooms |
+
+### Configuration B — Open Space (Future: Gym / Basketball Court)
+
+| Zone | Setup |
+|---|---|
+| Patient entry | Main entrance |
+| Waiting area | Open floor (chairs, numbered sections) |
+| Registration / Check-in | Dedicated table zone near entrance |
+| Doctor consultations | Portable cabins / dividers |
+| Vitals | Cabin or open station |
+| Blood draw | Cabin |
+| Imaging | Cabin or dedicated room if available |
+
+In the open-space configuration, TV screens mounted near the waiting area can display patient queue status by camp ID number — patients see their number called without a volunteer announcing it.
+
+---
+
+## What the System Does NOT Do
+
+To keep this focused and avoid unnecessary complexity:
+
+- **No PHI storage** — no diagnoses, prescriptions, lab results, or clinical notes
+- **No cross-camp patient history** — each camp is a clean registration
+- **No telehealth or remote access for clinicians**
+- **No insurance billing**
+- **No HIPAA-covered data workflows**
+
+---
+
+## Technology
+
+The system will be a web application accessible on any modern phone, tablet, or laptop — no app installation required for volunteers.
+
+| Component | Technology |
+|---|---|
+| Web application | Next.js (works on phones, tablets, TV displays) |
+| Database | PostgreSQL (patient records purged post-camp) |
+| Payments | Square (Web SDK for online, Terminal SDK for walk-in) |
+| Login / Access control | Google Workspace accounts (committee already has these) |
+| Badge / QR codes | Browser print (works with standard label printers) |
+| Hosting | Cloud-hosted, no on-site server required |
+
+Internet connectivity: reliable WiFi assumed; phone hotspot backup available.
+
+---
+
+## Build Plan — 6 Months to Winter Camp
+
+| Phase | Timeline | What Gets Built |
+|---|---|---|
+| **1 — Registration Portal** | Weeks 1–4 | Unified registration + Square checkout + QR confirmation email |
+| **2 — Check-In & Badge** | Weeks 5–7 | Gate scan + digital waiver + badge printing |
+| **3 — Station Flow** | Weeks 8–11 | Queue tablets + patient routing + add-on payment alert |
+| **4 — Coordinator Dashboard** | Weeks 12–14 | God-view + reconciliation export |
+| **5 — Supplies & Venue Config** | Weeks 15–17 | Supply calculator + clinic vs. open space setup |
+| **6 — Dry Run** | Weeks 18–20 | Simulate 100-patient flow with volunteers before camp |
+
+The system is designed so that **Phase 1 alone delivers significant value** — replacing the Google Forms / Square reconciliation problem. Each subsequent phase adds capability without requiring the previous phase to be perfect.
+
+---
+
+## Questions for Committee
+
+1. **Services:** Are there any services we offer that are not listed in the pricing menu above? Any planned additions beyond blood bank?
+
+2. **Walk-in cap:** Should we enforce a hard cap on walk-in capacity, or accept all walk-ins regardless of pre-registration numbers?
+
+3. **Station routing:** Is there a mandatory order certain patients must follow (e.g., must see a doctor before getting an ultrasound)? Or is the routing always flexible?
+
+4. **Waiver:** Should we use digital signature (tablet) as the primary method, with paper as fallback? Or keep paper as primary?
+
+5. **Volunteer roles:** Which committee members / volunteer roles should have access to which parts of the system? (Example: station volunteers can only see their queue; coordinator sees everything; registration desk can process payments)
+
+6. **Post-camp data:** What summary data do we need to retain after purging patient records? (e.g., total patients by service, revenue by service, supply usage)
+
+7. **Languages:** Do we need Spanish-language registration forms for the winter camp?
+
+8. **Blood bank:** If we secure a blood bank for the winter camp, is that a donation station (patients donating blood) or a dispensing station?
+
+---
+
+## Next Steps
+
+Upon committee feedback:
+1. Finalize service menu and station list for winter camp
+2. Confirm venue (clinic vs. open space) for winter camp
+3. Begin Phase 1 development — registration portal
+4. Identify 2–3 volunteers to test the system in a dry run
+
+---
+
+*Document prepared by Sachin Jain. For questions or feedback, contact sachin@buzzclan.com.*
