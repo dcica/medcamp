@@ -12,7 +12,9 @@ dcica Platform
   │     └── Camp Module  → station routing, labels, supplies, lab tracking
   ├── Membership Module  → annual/multi-year plans, member card, renewals
   ├── POS Module         → merchandise sales, Tap to Pay, no inventory
-  └── Vendor Module      → registration, Zelle payment, spot assignment
+  ├── Vendor Module      → registration, approval, Zelle payment, booth assignment
+  └── Sponsor Module     → tiers (configurable), event + annual scope,
+                           Zelle/check payment, vendor overlap with booth benefits
 ```
 
 ---
@@ -205,7 +207,125 @@ BoothSlot (per event)
   ├── slot_id (booth number / label)
   ├── type                   ← indoor | outdoor | corner | standard
   └── vendor_id              ← null if unassigned
+
+SponsorTier (configurable per event or annual)
+  ├── tier_id
+  ├── name                   ← Platinum | Gold | Silver | Bronze | custom
+  ├── scope                  ← event | annual
+  ├── amount
+  └── benefits{}             ← logo_on_banner, website_listing, free_entries,
+                                booth_included, booth_discount_pct, etc.
+
+Sponsor
+  ├── sponsor_id             ← = payment memo for Zelle/check matching
+  ├── organization_name, contact_name, phone, email
+  ├── tier_id
+  ├── scope                  ← event | annual
+  ├── event_id               ← null if annual
+  ├── application_status     ← pending | approved | rejected
+  ├── payment_method         ← zelle | check
+  ├── payment_status         ← unpaid | received | confirmed
+  ├── amount_due
+  ├── vendor_id              ← linked vendor record if dual role, else null
+  └── notes
 ```
+
+---
+
+## Module 5 — Sponsors
+
+Sponsors are a primary fundraising mechanism across all events. Sponsorship can be **per-event** or **annual** (covering all events in a year). Sponsors may also participate as vendors — their tier determines booth benefits.
+
+### Sponsor Tiers
+
+Tiers are fully configurable in the admin panel — names and amounts are set per event or per annual cycle. Default structure:
+
+| Tier | Scope | Benefits |
+|---|---|---|
+| **Platinum** | Event or Annual | Logo on all banners + website listing + social media mentions + free booth + free entries + recognition at event + program ad |
+| **Gold** | Event or Annual | Logo on banners + website listing + social media mentions + discounted booth + free entries + recognition at event |
+| **Silver** | Event or Annual | Website listing + social media mentions + discounted booth + recognition at event |
+| **Bronze** | Event or Annual | Website listing + recognition at event |
+
+Every benefit is a configurable checkbox per tier — the committee can customize freely per event or season.
+
+### Vendor Overlap (Hybrid)
+
+When a sponsor is also a vendor:
+- **Booth included in tier** → vendor booth fee waived automatically; system flags "Sponsor benefit applied"
+- **Booth discount in tier** → vendor fee reduced by the configured percentage
+- **No booth benefit** → vendor registers and pays separately at full rate
+- A single record links the sponsor and vendor entries — staff sees both in one view
+
+### Payment
+
+Sponsorship amounts are large — no credit card processing fees.
+
+| Method | When used |
+|---|---|
+| Zelle | Preferred for quick transfers |
+| Check | For organizations that require it |
+
+Both require manual staff verification. Staff marks `Payment Received` after confirming in bank app or upon check deposit.
+
+### Registration Flow
+
+```
+Sponsor applies (self-serve or staff-initiated)
+    │
+    └─► Committee reviews → Approves / Rejects
+              │
+         Approved: email sent with payment instructions
+         (Zelle details or mailing address for check)
+              │
+         Sponsor pays → Staff confirms receipt
+         → Status: Confirmed
+              │
+         If also a vendor → booth benefit applied automatically
+         → Confirmation email (booth number if applicable,
+           event details, logo submission instructions)
+```
+
+### Sponsor Record
+
+```
+SponsorTier (configurable, per event or annual)
+  ├── tier_id
+  ├── name                        ← Platinum | Gold | Silver | Bronze | custom
+  ├── scope                       ← event | annual
+  ├── amount
+  └── benefits
+        ├── logo_on_banner
+        ├── website_listing
+        ├── social_media_mentions  ← count
+        ├── free_entries           ← count
+        ├── booth_included         ← boolean
+        ├── booth_discount_pct     ← 0–100
+        ├── recognition_at_event
+        └── program_ad
+
+Sponsor
+  ├── sponsor_id                  ← = payment memo for Zelle matching
+  ├── organization_name, contact_name, phone, email
+  ├── tier_id
+  ├── scope                       ← event | annual
+  ├── event_id                    ← null if annual
+  ├── application_status          ← pending | approved | rejected
+  ├── payment_method              ← zelle | check
+  ├── payment_status              ← unpaid | received | confirmed
+  ├── amount_due
+  ├── vendor_id                   ← linked vendor record if dual role, else null
+  └── notes
+```
+
+### Staff Pipeline View
+
+- All sponsor applications per event (or annual)
+- Filter by status: pending / approved / paid / confirmed
+- One-click approve/reject with auto-email
+- Payment confirmation toggle
+- Booth benefit auto-applied when vendor record exists
+- Logo submission tracker (for banner/website use)
 
 ---
 
@@ -217,6 +337,7 @@ BoothSlot (per event)
 | Membership | Stripe (online) | Self-serve, automated |
 | POS / merchandise | Stripe Tap to Pay | No hardware, instant |
 | Vendor registration | Zelle | Large amounts, avoids processing fees |
+| Sponsorship | Zelle or check | Larger amounts, org procurement requirements |
 
 ---
 
@@ -229,4 +350,5 @@ Camp modules (Phases 1–6) are built first for the winter camp. Platform extens
 | **7 — General Events** | Generalize camp registration into event registration; entry fee checkout |
 | **8 — Membership** | Signup, renewal reminders, member card, event verification |
 | **9 — POS** | Merchandise product list, Tap to Pay checkout, sales log |
-| **10 — Vendor** | Vendor registration form, Zelle instructions, staff payment confirmation, spot assignment |
+| **10 — Vendor** | Vendor registration, approval flow, Zelle instructions, booth assignment grid |
+| **11 — Sponsors** | Tier config, sponsor application, approval flow, vendor overlap, logo tracker |
