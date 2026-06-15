@@ -1,8 +1,39 @@
 # Payment Gateway
 
-## Platform: Square
+## Platform Decision
 
-Square is already in use for the camp — the website has an existing Square integration and the team has Square phone app/terminal experience. The system builds on this rather than introducing a new payment processor.
+Three options were evaluated. Square is the current working platform and likely the final choice, but the committee should confirm non-profit registration status — Stripe's non-profit tier may offer meaningful savings at scale.
+
+### Comparison
+
+| | Square | PayPal | Stripe |
+|---|---|---|---|
+| **Online rate (standard)** | 2.9% + $0.30 | 2.99% + $0.49 | 2.9% + $0.30 |
+| **In-person rate (standard)** | 2.6% + $0.10 | 2.29% + $0.09 | 2.7% + $0.05 |
+| **Non-profit rate** | No dedicated tier | 1.99% + $0.49 (501(c)(3) verified) | 2.2% + $0.30 (501(c)(3) verified) |
+| **In-person hardware** | Square Terminal (owned) | Zettle terminal | Stripe Terminal |
+| **Already in use** | Yes | No | No |
+| **Developer SDK quality** | Good | Dated | Excellent |
+| **Non-profit application** | N/A | paypal.com/us/webapps/mpp/givingfund | stripe.com/docs/tax-exempt |
+
+### Savings at Camp Scale
+
+At 300 patients averaging $25/patient = $7,500 per camp:
+
+| Provider | Rate | Fee per camp |
+|---|---|---|
+| Square (standard) | 2.9% + $0.30 | ~$308 |
+| PayPal non-profit | 1.99% + $0.49 | ~$297 |
+| Stripe non-profit | 2.2% + $0.30 | ~$255 |
+| Square in-person only | 2.6% + $0.10 | ~$225 |
+
+Difference between Square standard and Stripe non-profit: ~$53/camp. Modest at this volume, but worth capturing if non-profit status is already registered.
+
+### Decision
+
+**Square** — retained as the platform. Team has existing credentials, hardware, and experience. Switching cost outweighs fee savings at current camp volume.
+
+**Action item:** Confirm whether the organization is registered as a 501(c)(3). If yes, apply for PayPal Giving Fund or Stripe non-profit rate as a secondary option for future consideration.
 
 ---
 
