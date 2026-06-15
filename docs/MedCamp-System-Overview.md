@@ -176,7 +176,7 @@ Each station (doctor's office, blood draw, ultrasound, etc.) has a tablet or scr
 - Patient's record is flagged as **Needs Payment**
 - Registration desk receives an instant alert
 - A volunteer escorts the patient back to the registration desk to pay
-- Once paid via Square, the new service is added to the patient's record and they are routed to the appropriate station
+- Once paid via Stripe, the new service is added to the patient's record and they are routed to the appropriate station
 
 ---
 
@@ -412,7 +412,7 @@ The system will be a web application accessible on any modern phone, tablet, or 
 |---|---|
 | Web application | Next.js (works on phones, tablets, TV displays) |
 | Database | PostgreSQL (patient records purged post-camp) |
-| Payments | Square (Web SDK for online, Terminal SDK for walk-in) |
+| Payments | Stripe (Payment Element online, Terminal SDK / Tap to Pay walk-in) |
 | Login / Access control | Google Workspace accounts (committee already has these) |
 | Progress report / QR codes | Browser print — color laser for sheets, thermal label printer for stickers |
 | Hosting | Cloud-hosted, no on-site server required |
@@ -436,7 +436,7 @@ This means:
 
 | Phase | Timeline | What Gets Built |
 |---|---|---|
-| **1 — Registration Portal** | Weeks 1–4 | Unified registration + Square checkout + QR confirmation email |
+| **1 — Registration Portal** | Weeks 1–4 | Unified registration + Stripe checkout + QR confirmation email |
 | **2 — Check-In & Sheet** | Weeks 5–7 | Gate scan + digital waiver + progress report printing |
 | **3 — Station Flow** | Weeks 8–11 | Queue tablets + patient routing + add-on payment alert |
 | **4 — Coordinator Dashboard** | Weeks 12–14 | God-view + reconciliation export |

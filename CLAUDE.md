@@ -57,13 +57,13 @@ LabStatus  ← per registration: pending | received | mailed (date); no lab resu
 
 `Registration → Check-In (QR scan) → Vitals → Doctor Consult → [variable labs/imaging]`
 
-- 80% pre-register online; 20% walk-in (tablet form + Square terminal on-site)
-- Doctor can add services mid-visit → patient flagged `needs_payment` → escorted to registration desk → Square payment → routed to new station
+- 80% pre-register online; 20% walk-in (tablet form + Stripe Tap to Pay on-site)
+- Doctor can add services mid-visit → patient flagged `needs_payment` → escorted to registration desk → Stripe payment → routed to new station
 - Every patient gets a printed badge: QR code + color-coded service dots + checklist
 
 ## Modules (build order)
 
-1. **Registration Portal** — unified form + Square checkout + QR confirmation email + service capacity caps
+1. **Registration Portal** — unified form + Stripe checkout + QR confirmation email + service capacity caps
 2. **Check-In & Badge** — QR scan gate + digital waiver + badge print
 3. **Station Queue** — per-station tablet view + patient routing + add-on payment alerts
 4. **Coordinator Dashboard** — real-time god-view: queue depths, payment status, bottleneck alerts, reconciliation export
