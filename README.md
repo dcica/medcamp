@@ -5,6 +5,7 @@ Automation system for non-profit medical camps — registration, payments, patie
 ## Documentation
 
 - [System Overview & Committee Review](docs/MedCamp-System-Overview.md) — architecture, modules, venue configurations, build plan, and open questions for the committee
+- [Hardware Recommendations](docs/Hardware-Recommendations.md) — label printer, tablets, QR scanners, WiFi, displays, and budget estimate
 
 ## Project Structure
 
