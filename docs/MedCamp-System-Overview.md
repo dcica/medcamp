@@ -166,14 +166,33 @@ Each station (doctor's office, blood draw, ultrasound, etc.) has a tablet or scr
 
 ---
 
-### Module 5 — Coordinator Dashboard ("God View")
+### Module 5 — Coordinator Dashboard
 
 The camp coordinator gets a real-time overview of the entire operation:
 
 - **Patient counts:** Total checked in, currently at each station, completed, pending payment
 - **Queue depths per station:** Surface bottlenecks before they become jams (e.g., if ultrasound has 15 patients queued and blood draw has 2, redirect a volunteer)
 - **Payment status:** Pre-paid, walk-in paid, pending add-ons
-- **One-click export:** Post-camp summary, payment reconciliation report, and consented contacts list (name, email, phone) for membership drives
+- **Walk-in registration toggle:** Open or hold walk-in desk from the dashboard
+- **Operations checklist:** Live checklist progress across all phases
+
+**Post-Camp Exports (one-click):**
+
+| Export | Contents |
+|---|---|
+| Payment reconciliation | All transactions, amounts, payment method, add-ons |
+| Consented contacts | Name, email, phone of opted-in patients — for membership drives |
+| Camp summary | Headcount by service, total revenue, walk-in vs. pre-registered split |
+| Social media pack | Ready-to-paste text for Instagram, Facebook, and X |
+
+**Social Media Pack** is generated automatically from camp data — no manual drafting:
+
+- **Event announcement** (pre-camp): generated when registration opens; includes event date, services, registration link
+- **Thank-you post** (post-camp): "We served [N] patients at our [event name] camp! Thank you to our volunteers and community." — numbers pulled from final headcount
+- **Sponsor shout-outs** (post-camp): one post per confirmed sponsor, pulling their name and tier from the sponsor records — "Thank you to our [Platinum/Gold/...] sponsor, [Business Name]!"
+- **Membership drive post**: generated from consented contact count — "Enjoyed the camp? Join the dcica family — [link]"
+
+Staff copies text and posts manually to their preferred platforms. No social media API integration — no additional accounts, permissions, or scheduling needed.
 
 Accessible on any phone or laptop — no special hardware needed.
 
