@@ -73,35 +73,77 @@ Payment: Stripe Tap to Pay (same as walk-in camp registrations — no extra hard
 
 ## Module 4 — Vendor Registration
 
-Vendor registration and payment for events that include vendor participation.
+Vendors are present at **all events** and are critical to fundraising. The committee actively recruits and markets to vendors — this is not just inbound self-registration.
 
-**Registration flow:**
-1. Vendor fills out registration form (business name, contact, type, space needed)
-2. System calculates fee based on vendor type / space
-3. System shows **Zelle payment instructions** — org's Zelle phone/email + amount + vendor ID as memo
-4. Vendor sends Zelle payment from their bank app
-5. Staff verifies receipt in bank app → marks `Payment Received` in system
-6. System assigns spot and sends vendor confirmation email
+**Vendor types and fee tiers:**
+
+| Type | Notes |
+|---|---|
+| Food | Full commercial rate (TBD per event) |
+| Merchandise | Full commercial rate (TBD per event) |
+| Non-profit | Discounted rate (TBD per event) |
+| Education | Discounted rate (TBD per event) |
+
+**Two-stage registration flow:**
+
+```
+Vendor applies
+    │
+    └─► Committee reviews in admin panel
+              │
+    ┌─────────┴──────────┐
+    │ Approved            │ Rejected
+    │ Email sent with     │ Email sent with
+    │ Zelle instructions  │ reason
+    │ + amount due        │
+    └─────────────────────┘
+              │
+    Vendor sends Zelle payment
+    (memo = Vendor ID for matching)
+              │
+    Staff verifies in bank app
+    → marks Payment Received
+              │
+    Staff assigns booth in system
+    → Confirmation email sent to vendor
+       (booth number, setup time, event details)
+```
 
 **Why Zelle for vendors:**
-- Vendor fees are larger amounts — avoids Stripe processing fees (2.2% + $0.30)
+- Vendor fees are larger amounts — avoids Stripe processing fees entirely
 - Zelle is free, instant bank-to-bank transfer
 - Tradeoff: no automated payment verification — staff manually confirms receipt
 
-**Vendor record:**
-- Vendor ID
-- Business name, contact name, phone, email
-- Event, vendor type, space requested
-- Fee due, payment status: Pending | Received | Confirmed
-- Spot assignment
-- Zelle memo (= Vendor ID, used to match incoming transfers)
+**Booth assignment:**
+- Each event has a configurable booth map (numbered slots with type: indoor / outdoor / corner / standard)
+- Staff assigns approved + paid vendors to slots from a simple grid view
+- Booth number included in confirmation email
+- Staff can reassign slots before event day
 
-**Open questions for committee:**
-- Which events have vendor participation?
-- Is there an approval step before vendors pay, or pay-to-register?
-- Are there different fee tiers by vendor type (food / merchandise / services)?
-- Does the system need to manage spot/booth assignment, or is that done offline?
-- Do vendors need a login portal after registration, or just a confirmation email?
+**Vendor record:**
+
+```
+Vendor
+  ├── vendor_id              ← used as Zelle memo
+  ├── event_id
+  ├── business_name, contact_name, phone, email
+  ├── vendor_type            ← food | merchandise | nonprofit | education
+  ├── space_requested        ← single / double / corner
+  ├── fee_due
+  ├── application_status     ← pending | approved | rejected
+  ├── payment_status         ← unpaid | received | confirmed
+  ├── booth_assignment       ← booth number / location label
+  └── notes                  ← committee notes on application
+```
+
+**Staff-side vendor pipeline view:**
+- List of all vendor applications per event
+- Filter by status (pending review / approved awaiting payment / paid / confirmed)
+- One-click approve/reject with auto-email
+- Payment confirmation toggle (after checking Zelle)
+- Booth assignment interface
+
+**Vendor-facing:** Confirmation email only (no portal needed at this stage). Email includes booth number, setup time window, event day details.
 
 ---
 
@@ -147,14 +189,22 @@ Sale (POS)
   └── stripe_payment_id
 
 Vendor
-  ├── vendor_id
+  ├── vendor_id              ← = zelle_memo for manual matching
   ├── event_id
-  ├── business_name, contact, phone, email
-  ├── vendor_type, space_requested
+  ├── business_name, contact_name, phone, email
+  ├── vendor_type            ← food | merchandise | nonprofit | education
+  ├── space_requested        ← single | double | corner
   ├── fee_due
-  ├── payment_status: pending | received | confirmed
-  ├── spot_assignment
-  └── zelle_memo             ← = vendor_id, for manual matching
+  ├── application_status     ← pending | approved | rejected
+  ├── payment_status         ← unpaid | received | confirmed
+  ├── booth_assignment
+  └── notes
+
+BoothSlot (per event)
+  ├── event_id
+  ├── slot_id (booth number / label)
+  ├── type                   ← indoor | outdoor | corner | standard
+  └── vendor_id              ← null if unassigned
 ```
 
 ---
