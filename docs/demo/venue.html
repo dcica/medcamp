@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Venue Configuration — MedCamp Demo</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="demo-banner"><span><b>DEMO</b> — static mockup.</span> <a href="#" data-reset>Reset demo</a></div>
+<nav class="topnav">
+  <span class="brand">dcica<span class="dot">●</span>MedCamp</span>
+  <a href="index.html">Home</a>
+  <a href="register.html">Patient</a>
+  <a href="volunteer.html">Volunteer</a>
+  <a href="vendor.html">Vendor</a>
+  <a href="supply.html" class="active">Logistics</a>
+</nav>
+
+<main class="wrap">
+  <p class="ds-eyebrow">Logistics · Venue configuration</p>
+  <h1 class="page-title">Venue layout</h1>
+  <p class="page-sub">The coordinator picks the layout per camp. The same software runs both — stations and routing
+    don’t change, only where they sit.</p>
+
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+    <button id="venueClinic" class="ds-btn primary">Clinic (current)</button>
+    <button id="venueOpen" class="ds-btn ghost">Open space</button>
+  </div>
+
+  <div id="venueOut"></div>
+</main>
+
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+<script>initVenue();</script>
+</body>
+</html>

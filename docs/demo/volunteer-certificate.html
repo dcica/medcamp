@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Volunteer Certificate — MedCamp Demo</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="demo-banner"><span><b>DEMO</b> — static mockup.</span> <a href="#" data-reset>Reset demo</a></div>
+<nav class="topnav">
+  <span class="brand">dcica<span class="dot">●</span>MedCamp</span>
+  <a href="index.html">Home</a>
+  <a href="register.html">Patient</a>
+  <a href="volunteer.html" class="active">Volunteer</a>
+  <a href="vendor.html">Vendor</a>
+  <a href="supply.html">Logistics</a>
+</nav>
+
+<main class="wrap">
+  <p class="ds-eyebrow no-print">Volunteer module · Certificate</p>
+  <h1 class="page-title no-print">Certificate of appreciation</h1>
+  <p class="page-sub no-print">Auto-generated for checked-in volunteers after the event — name, role, and computed
+    hours. Downloadable from the thank-you email and printable.</p>
+
+  <div id="cert" class="certificate"></div>
+
+  <p class="no-print" style="margin-top:16px"><button id="printCert" class="ds-btn primary">Print / save as PDF</button></p>
+</main>
+
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+<script>initVolunteerCertificate();</script>
+</body>
+</html>

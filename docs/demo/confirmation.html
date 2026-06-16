@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Confirmation — MedCamp Demo</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="demo-banner"><span><b>DEMO</b> — static mockup. No real payment, no data stored.</span> <a href="#" data-reset>Reset demo</a></div>
+<nav class="topnav">
+  <span class="brand">dcica<span class="dot">●</span>MedCamp</span>
+  <a href="index.html">Home</a>
+  <a href="register.html" class="active">Patient</a>
+  <a href="volunteer.html">Volunteer</a>
+  <a href="vendor.html">Vendor</a>
+  <a href="supply.html">Logistics</a>
+</nav>
+
+<main class="wrap">
+  <p class="ds-eyebrow">Module 2 · Confirmation &amp; progress report sheet</p>
+  <h1 class="page-title">You’re registered ✓</h1>
+  <p class="page-sub" id="regSummary"></p>
+
+  <p class="muted" style="font-size:13.5px;margin-top:-6px">Each attendee gets one A4 <b>progress report sheet</b>:
+    the Care Spine rail shows their stations in routing order; the header QR is the staff scan target; the footer
+    QR is the patient’s take-home link. The patient keeps the sheet — dcica stores only identity and paid services,
+    purged after camp.</p>
+
+  <div id="confirm" style="margin-top:18px"></div>
+
+  <div class="card">
+    <strong>What happens next</strong>
+    <ul class="checks">
+      <li><span class="tick">✓</span> A confirmation email goes to the registrant with each attendee’s QR check-in code.</li>
+      <li><span class="tick">✓</span> On camp day, present the QR (or look up by name) at <a href="checkin.html">Check-In</a>.</li>
+      <li><span class="tick">✓</span> Pre-registered sheets are printed in color the night before; walk-ins print live at the desk.</li>
+    </ul>
+  </div>
+</main>
+
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+<script>initConfirmation();</script>
+</body>
+</html>

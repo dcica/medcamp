@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coordinator Dashboard — MedCamp Demo</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="demo-banner"><span><b>DEMO</b> — static mockup. Sample camp data.</span> <a href="#" data-reset>Reset demo</a></div>
+<nav class="topnav">
+  <span class="brand">dcica<span class="dot">●</span>MedCamp</span>
+  <a href="index.html">Home</a>
+  <a href="register.html" class="active">Patient</a>
+  <a href="volunteer.html">Volunteer</a>
+  <a href="vendor.html">Vendor</a>
+  <a href="supply.html">Logistics</a>
+</nav>
+
+<main class="wrap">
+  <p class="ds-eyebrow">Module 5 · Coordinator dashboard</p>
+  <h1 class="page-title">Camp at a glance</h1>
+  <p class="page-sub">The coordinator’s god-view. A tile turns saffron only when it needs attention — a
+    deepening queue or pending add-on payments.</p>
+
+  <div id="tiles" class="tile-grid"></div>
+
+  <h2 class="section-head">Queue depth by station</h2>
+  <div class="card" style="padding:0" id="queues"></div>
+
+  <h2 class="section-head">Walk-in registration</h2>
+  <div class="card">
+    <p style="margin:0 0 12px">Walk-ins are held for ~1 hour after doors open so pre-registered flow stabilizes,
+      then opened from here — no fixed timer. Current state:
+      <b class="ds-mono" id="walkinState"></b></p>
+    <button id="walkinBtn" class="ds-btn primary"></button>
+  </div>
+
+  <h2 class="section-head">Post-camp exports</h2>
+  <div class="card">
+    <ul class="checks">
+      <li><span class="muted">·</span> Payment reconciliation — all transactions, amounts, method, add-ons</li>
+      <li><span class="muted">·</span> Consented contacts — opted-in patients for membership drives</li>
+      <li><span class="muted">·</span> Camp summary — headcount by service, revenue, walk-in vs. pre-registered</li>
+      <li><span class="muted">·</span> Social media pack — ready-to-paste posts</li>
+    </ul>
+    <p class="muted" style="font-size:12.5px;margin:8px 0 0">Exports are illustrative in this demo.</p>
+  </div>
+</main>
+
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+<script>initDashboard();</script>
+</body>
+</html>

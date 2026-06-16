@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Volunteer Signup — MedCamp Demo</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="demo-banner"><span><b>DEMO</b> — static mockup. No real data stored.</span> <a href="#" data-reset>Reset demo</a></div>
+<nav class="topnav">
+  <span class="brand">dcica<span class="dot">●</span>MedCamp</span>
+  <a href="index.html">Home</a>
+  <a href="register.html">Patient</a>
+  <a href="volunteer.html" class="active">Volunteer</a>
+  <a href="vendor.html">Vendor</a>
+  <a href="supply.html">Logistics</a>
+</nav>
+
+<main class="wrap">
+  <p class="ds-eyebrow">Volunteer module · Sign up</p>
+  <h1 class="page-title" id="volTitle">Volunteer at the winter camp</h1>
+  <p class="page-sub">Your profile carries across events — no PHI, never camp-scoped. Pick the roles you’d like;
+    we confirm 24–48h before with your shift and a sign-in QR.</p>
+
+  <p style="margin:-6px 0 14px"><button type="button" id="fillVol" class="ds-btn ghost" style="min-height:40px">Fill with sample data</button></p>
+
+  <div class="card">
+    <div class="field-2">
+      <div class="ds-field"><label>Full name</label><input id="volName" class="ds-input" placeholder="e.g. Aisha Khan"></div>
+      <div class="ds-field"><label>Phone</label><input id="volPhone" class="ds-input" inputmode="tel" placeholder="(555) 778-2231"></div>
+    </div>
+    <div class="field-2">
+      <div class="ds-field"><label>Email</label><input id="volEmail" class="ds-input" inputmode="email" placeholder="you@example.com"></div>
+      <div class="ds-field"><label>Age group</label>
+        <select id="ageBand" class="ds-input">
+          <option value="">Select…</option>
+          <option value="under_16">Under 16 · middle school</option>
+          <option value="16_17">16–17 · high school</option>
+          <option value="18_plus">18 or older</option>
+        </select>
+      </div>
+    </div>
+    <div class="field-2">
+      <div class="ds-field"><label>School / affiliation <span class="muted">(optional)</span></label><input id="schoolName" class="ds-input" placeholder="e.g. Edison High"></div>
+      <div class="ds-field"><label>Sponsoring teacher / advisor <span class="muted">(optional)</span></label><input id="advisorName" class="ds-input" placeholder="Advisor name"></div>
+    </div>
+  </div>
+
+  <h2 class="section-head">Role preferences</h2>
+  <p class="muted" style="margin:-4px 0 12px;font-size:13.5px">Pick one or more. Roles gray out when full or when
+    they need an older age group — pick your age group above first.</p>
+  <div id="roles" class="svc-list"></div>
+
+  <div id="minorConsent" class="card" style="display:none;margin-top:14px">
+    <div class="ds-eyebrow" style="color:var(--saffron-700)">Parent / guardian consent required</div>
+    <div class="ds-field" style="margin-top:8px"><label>Parent / guardian name</label>
+      <input id="guardianName" class="ds-input" placeholder="Guardian signs on the minor’s behalf"></div>
+  </div>
+
+  <h2 class="section-head">A few more details</h2>
+  <div class="card">
+    <div class="ds-field"><label>Skills &amp; languages <span class="muted">(optional)</span></label>
+      <input id="skills" class="ds-input" placeholder="e.g. Spanish, medical background, driving, heavy lifting"></div>
+    <div class="field-2">
+      <div class="ds-field"><label>Emergency contact name</label><input id="ecName" class="ds-input" placeholder="Name"></div>
+      <div class="ds-field"><label>Emergency contact phone</label><input id="ecPhone" class="ds-input" inputmode="tel" placeholder="(555) 000-0000"></div>
+    </div>
+    <div class="ds-field" style="max-width:200px;margin-bottom:0"><label>T-shirt size <span class="muted">(optional)</span></label>
+      <select id="tshirt" class="ds-input"><option>XS</option><option>S</option><option selected>M</option><option>L</option><option>XL</option><option>XXL</option></select></div>
+  </div>
+
+  <div class="total-bar">
+    <div class="muted" style="font-size:13.5px">We’ll match you to your top available preference and email a confirmation.</div>
+    <button id="volSubmit" class="ds-btn primary">Sign up →</button>
+  </div>
+</main>
+
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+<script>
+  document.getElementById('volTitle').textContent = 'Volunteer at ' + CAMP.name;
+  initVolunteer();
+</script>
+</body>
+</html>

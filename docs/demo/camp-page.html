@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Who You Saw Today — MedCamp Demo</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="demo-banner"><span><b>DEMO</b> — static mockup. The take-home QR destination.</span> <a href="#" data-reset>Reset demo</a></div>
+<nav class="topnav">
+  <span class="brand">dcica<span class="dot">●</span>MedCamp</span>
+  <a href="index.html">Home</a>
+  <a href="register.html" class="active">Patient</a>
+  <a href="volunteer.html">Volunteer</a>
+  <a href="vendor.html">Vendor</a>
+  <a href="supply.html">Logistics</a>
+</nav>
+
+<main class="wrap">
+  <p class="ds-eyebrow">Bonus · Public camp page (the footer-QR destination)</p>
+
+  <div class="ds-hero">
+    <span class="ds-eyebrow" style="color:var(--saffron-700)">Thank you · dcica Winter Camp 2026</span>
+    <h3>The doctors who showed up for our community</h3>
+    <p>Together, <b>23 physicians and technicians</b> saw <b>412 patients</b> across 7 specialties in a single morning.</p>
+  </div>
+
+  <div class="staff-grid">
+    <div class="ds-staff">
+      <div class="top">
+        <div class="ds-photo">AR</div>
+        <div><div class="nm">Dr. Asha Rao</div><div class="role">MD · Internal Medicine</div></div>
+      </div>
+      <span class="ds-tag"><span class="d" style="background:var(--st-doctor)"></span> Physician</span>
+      <div class="ds-bio">Two decades in community health; has volunteered at every dcica camp since 2019.</div>
+      <div class="ds-stat"><span>Patients seen</span><b>86</b></div>
+    </div>
+    <div class="ds-staff">
+      <div class="top">
+        <div class="ds-photo">VM</div>
+        <div><div class="nm">Dr. Vivek Menon</div><div class="role">MD · Radiology</div></div>
+      </div>
+      <span class="ds-tag"><span class="d" style="background:var(--st-ultra)"></span> Ultrasound</span>
+      <div class="ds-bio">Reads bedside ultrasound for the camp’s screening clinic. Reachable for follow-up via dcica.</div>
+      <div class="ds-stat"><span>Patients seen</span><b>64</b></div>
+    </div>
+    <div class="ds-staff">
+      <div class="top">
+        <div class="ds-photo">SK</div>
+        <div><div class="nm">Sunita Kaur</div><div class="role">Phlebotomy Technician</div></div>
+      </div>
+      <span class="ds-tag"><span class="d" style="background:var(--st-blood)"></span> Blood draw</span>
+      <div class="ds-bio">Keeps the blood-draw tent moving; trained this year’s volunteer phlebotomists.</div>
+      <div class="ds-stat"><span>Patients seen</span><b>121</b></div>
+    </div>
+  </div>
+
+  <h2 class="section-head">Lab status</h2>
+  <div class="card" style="max-width:340px">
+    <div class="ds-field" style="margin-bottom:10px">
+      <label>Your camp code</label>
+      <input id="labCode" class="ds-input" placeholder="MC-2026W-0148">
+    </div>
+    <button id="labLookupBtn" class="ds-btn ghost block">Check lab status</button>
+    <p class="muted" style="font-size:12.5px;margin:10px 0 0">No login — lookup by camp ID only.
+      Status is logistics only: <span class="ds-mono">Pending → Received → Mailed</span>. No clinical results.
+      <span class="muted">(Try <span class="ds-mono">MC-2026W-0148</span>; staff update status on the Lab tracking screen.)</span></p>
+  </div>
+  <div id="labStatusResult" style="margin-top:14px"></div>
+
+  <h2 class="section-head">Feedback &amp; reviews</h2>
+  <div class="ds-fb">
+    <h4>How was your visit?</h4>
+    <div class="ds-stars" id="stars">★★★★<span class="off">★</span></div>
+    <textarea class="note" placeholder="Anything you’d like us to know? (optional)"></textarea>
+    <div class="ds-social">
+      <a class="ds-soc" href="#"><span class="ic" style="background:#1877F2">f</span> Review on Facebook</a>
+      <span class="ds-soc" style="border-style:dashed;color:var(--ink-muted)">+ more soon</span>
+    </div>
+    <p class="muted" style="font-size:12.5px;margin:12px 0 0">Rating + comment are private to the committee
+      unless you opt in to a public testimonial.</p>
+  </div>
+</main>
+
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+<script>
+  // tiny star-rating interaction for the demo
+  (function () {
+    var stars = document.getElementById('stars');
+    function paint(n) {
+      var s = '';
+      for (var i = 1; i <= 5; i++) s += i <= n ? '★' : '<span class="off">★</span>';
+      stars.innerHTML = s;
+    }
+    stars.addEventListener('click', function (e) {
+      var rect = stars.getBoundingClientRect();
+      var n = Math.ceil(((e.clientX - rect.left) / rect.width) * 5);
+      paint(Math.max(1, Math.min(5, n)));
+    });
+  })();
+  initLabStatus();
+</script>
+</body>
+</html>

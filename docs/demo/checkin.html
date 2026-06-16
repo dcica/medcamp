@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Check-In — MedCamp Demo</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="demo-banner"><span><b>DEMO</b> — static mockup. No real payment, no data stored.</span> <a href="#" data-reset>Reset demo</a></div>
+<nav class="topnav">
+  <span class="brand">dcica<span class="dot">●</span>MedCamp</span>
+  <a href="index.html">Home</a>
+  <a href="register.html" class="active">Patient</a>
+  <a href="volunteer.html">Volunteer</a>
+  <a href="vendor.html">Vendor</a>
+  <a href="supply.html">Logistics</a>
+</nav>
+
+<main class="wrap">
+  <p class="ds-eyebrow">Module 3 · Check-in gate</p>
+  <h1 class="page-title">Check in a patient</h1>
+  <p class="page-sub">Scan the QR from the confirmation email, or look up by camp ID or name.</p>
+
+  <div class="card">
+    <div class="ds-field" style="margin-bottom:10px">
+      <label>Confirmation code or name</label>
+      <input id="lookup" class="ds-input" placeholder="MC-2026W-0148  ·  or  ·  Priya">
+    </div>
+    <button id="lookupBtn" class="ds-btn primary block">Look up →</button>
+    <p class="muted" style="font-size:13px;margin:10px 0 0">Tip: register someone on the
+      <a href="register.html">Register</a> screen first, then look them up here by name or the camp ID printed
+      on their sheet. Register a minor (age under 18) to see the blocked case.</p>
+  </div>
+
+  <div id="checkinResult" style="margin-top:16px"></div>
+</main>
+
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+<script>initCheckin();</script>
+</body>
+</html>

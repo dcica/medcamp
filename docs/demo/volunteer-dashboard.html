@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Volunteer Coordinator — MedCamp Demo</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="demo-banner"><span><b>DEMO</b> — static mockup. Sample roster data.</span> <a href="#" data-reset>Reset demo</a></div>
+<nav class="topnav">
+  <span class="brand">dcica<span class="dot">●</span>MedCamp</span>
+  <a href="index.html">Home</a>
+  <a href="register.html">Patient</a>
+  <a href="volunteer.html" class="active">Volunteer</a>
+  <a href="vendor.html">Vendor</a>
+  <a href="supply.html">Logistics</a>
+</nav>
+
+<main class="wrap">
+  <p class="ds-eyebrow">Volunteer module · Coordinator dashboard</p>
+  <h1 class="page-title">Volunteers at a glance</h1>
+  <p class="page-sub">Capacity vs. target per role, signups by outreach channel, and the day-of roster with
+    sign-in / sign-out.</p>
+
+  <div id="volTiles" class="tile-grid"></div>
+
+  <h2 class="section-head">Capacity by role</h2>
+  <div class="card" style="padding:0" id="volCapacity"></div>
+
+  <h2 class="section-head">Signups by source</h2>
+  <div class="src-row" id="volSources"></div>
+
+  <h2 class="section-head">Day-of roster — tap to sign in / out</h2>
+  <p class="muted" style="margin:-4px 0 12px;font-size:13.5px">Tap a <b>Confirmed</b> volunteer to sign them in,
+    then again to sign them out — hours compute automatically. No-shows are flagged for follow-up.</p>
+  <div class="card" style="padding:0" id="volRoster"></div>
+
+  <h2 class="section-head">Coordinator actions</h2>
+  <div class="card">
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button id="sendReminders" class="ds-btn ghost">Send 24–48h reminders</button>
+      <a class="ds-btn ghost" href="volunteer-certificate.html">Issue certificates →</a>
+    </div>
+    <p id="reminderNote" class="muted" style="font-size:13px;margin:10px 0 0"></p>
+  </div>
+</main>
+
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+<script>
+  // give the seeded roster believable planned in/out times for hours math
+  VOL_ROSTER[0].planIn='07:58'; VOL_ROSTER[0].planOut='12:05';
+  VOL_ROSTER[1].planIn='08:05'; VOL_ROSTER[1].planOut='13:00';
+  VOL_ROSTER[2].planIn='07:45'; VOL_ROSTER[2].planOut='11:00';
+  VOL_ROSTER[3].planIn='08:01'; VOL_ROSTER[3].planOut='12:10';
+  initVolunteerDashboard();
+</script>
+</body>
+</html>

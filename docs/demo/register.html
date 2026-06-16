@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Register — MedCamp Demo</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="demo-banner"><span><b>DEMO</b> — static mockup. No real payment, no data stored.</span> <a href="#" data-reset>Reset demo</a></div>
+<nav class="topnav">
+  <span class="brand">dcica<span class="dot">●</span>MedCamp</span>
+  <a href="index.html">Home</a>
+  <a href="register.html" class="active">Patient</a>
+  <a href="volunteer.html">Volunteer</a>
+  <a href="vendor.html">Vendor</a>
+  <a href="supply.html">Logistics</a>
+</nav>
+
+<main class="wrap">
+  <p class="ds-eyebrow">Module 1 · Registration &amp; payment</p>
+  <h1 class="page-title" id="campTitle">Register</h1>
+  <p class="page-sub" id="campLine">dcica Winter Camp 2026 · Saturday, December 6</p>
+
+  <div class="card">
+    <div class="ds-eyebrow">Who is registering?</div>
+    <p class="muted" style="margin:6px 0 12px;font-size:13.5px">Contact details for confirmation and communication.
+      The registrant may not be attending (e.g. a parent registering children).</p>
+    <div class="field-2">
+      <div class="ds-field"><label>Registrant name</label><input id="regName" class="ds-input" placeholder="e.g. Priya Sharma"></div>
+      <div class="ds-field"><label>Phone</label><input id="regPhone" class="ds-input" inputmode="tel" placeholder="(555) 012-3456"></div>
+    </div>
+    <div class="field-2">
+      <div class="ds-field"><label>Email</label><input id="regEmail" class="ds-input" inputmode="email" placeholder="you@example.com"></div>
+      <div class="ds-field"><label>Mailing address</label><input id="regAddress" class="ds-input" placeholder="Street, City, ST ZIP"></div>
+    </div>
+  </div>
+
+  <h2 class="section-head">Who are you registering?</h2>
+  <p class="muted" style="margin:-4px 0 12px;font-size:13.5px">Add one attendee per person attending. Each gets their own camp ID and progress sheet.</p>
+  <div id="attendees"></div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap">
+    <button type="button" id="addAttendee" class="ds-btn ghost">+ Add attendee</button>
+    <button type="button" id="addSelf" class="ds-btn ghost">+ Add myself as an attendee</button>
+  </div>
+
+  <div class="card" style="margin-top:18px">
+    <label class="consent">
+      <input type="checkbox" id="consent">
+      <span>I agree to be contacted by dcica for updates, membership drives, and future events.
+        <span class="muted">(Optional — consent and timestamp are recorded.)</span></span>
+    </label>
+  </div>
+
+  <p id="estNote" class="muted" style="display:none;font-size:13px;margin-top:12px">
+    Blood test pricing is $8–$15 depending on the test; the total below uses a $12 estimate and is finalized at the desk.</p>
+
+  <div class="total-bar">
+    <div><div class="lbl">Total due</div><div class="amt ds-mono" id="total">$0.00</div></div>
+    <button id="payBtn" class="ds-btn primary" disabled>Pay with Stripe →</button>
+  </div>
+  <p class="muted" style="font-size:12.5px;margin-top:8px">Payment is mocked in this demo. In the live system,
+    registration is confirmed only after Stripe payment clears, and a QR confirmation email is sent.</p>
+</main>
+
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+<script>
+  document.getElementById('campTitle').textContent = 'Register for ' + CAMP.name;
+  document.getElementById('campLine').textContent = CAMP.name + ' · Saturday, December 6';
+  initRegister();
+</script>
+</body>
+</html>

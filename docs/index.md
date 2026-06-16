@@ -6,8 +6,13 @@ nav_order: 1
 # dcica Platform
 {: .fs-9 }
 
-Non-profit event management system for medical camps, community events, membership, vendors, and sponsors.
+Open-source, multi-tenant SaaS for non-profit event management — medical camps, community events, membership, vendors, and sponsors. dcica is the first tenant; any non-profit can adopt or self-host it.
 {: .fs-6 .fw-300 }
+
+[▶ Try the interactive demo](demo/index.html){: .btn .btn-primary .fs-5 .mb-4 .mr-2 }
+{: .mt-4 }
+
+A clickable, static mockup of the MVP — Patient, Volunteer, Vendor, and Logistics flows. No real payment or data; for committee review.
 
 ---
 
@@ -15,6 +20,8 @@ Non-profit event management system for medical camps, community events, membersh
 
 | Document | Description |
 |---|---|
+| [▶ Interactive Demo](demo/index.html) | Clickable static mockup of the MVP — Patient, Volunteer, Vendor, and Logistics flows (no real data) |
+| [Platform Mandate](Platform-Mandate.md) | Foundational: open-source (AGPL-3.0), multi-tenant, OAuth-first, Stripe Connect, self-hostable — overrides single-org assumptions |
 | [System Overview](MedCamp-System-Overview.md) | Architecture, modules, venue configurations, build plan, and committee questions |
 | [Design System](Design-System.md) | Visual language — color/type/spacing tokens, the Care Spine motif, and component anatomy (badge, queue card, dashboard) |
 | [Platform Extensions](Platform-Extensions.md) | General events, membership, POS, vendor registration, and sponsor tiers |

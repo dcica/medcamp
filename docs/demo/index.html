@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MedCamp — MVP Demo</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="demo-banner"><span><b>DEMO</b> — static mockup. No real payment, no data stored. For committee review only.</span> <a href="#" data-reset>Reset demo</a></div>
+<nav class="topnav">
+  <span class="brand">dcica<span class="dot">●</span>MedCamp</span>
+  <a href="index.html" class="active">Home</a>
+  <a href="register.html">Patient</a>
+  <a href="volunteer.html">Volunteer</a>
+  <a href="vendor.html">Vendor</a>
+  <a href="supply.html">Logistics</a>
+</nav>
+
+<main class="wrap">
+  <p class="ds-eyebrow">Committee review draft · winter 2026</p>
+  <h1 class="page-title">MedCamp — MVP walk-through</h1>
+  <p class="page-sub">A clickable mockup of three flows — <b>Patient</b>, <b>Volunteer</b>, and <b>Vendor</b>. It’s
+    static: nothing is sent anywhere, so the committee can fill forms, watch totals, and route people through,
+    then tell us what to change before we build.</p>
+
+  <div class="card">
+    <strong>Sample data</strong>
+    <p class="muted" style="margin:6px 0 12px">Load a completed record into all three modules so the
+      confirmation and lookup screens show realistic content right away — or start empty and fill the forms
+      yourself (each form also has a “Fill with sample data” button).</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="ds-btn primary" data-seed="index.html">Load sample data</button>
+      <a class="ds-btn ghost" href="#" data-reset>Clear all demo data</a>
+    </div>
+    <p id="seedState" class="muted" style="font-size:13px;margin:10px 0 0"></p>
+  </div>
+
+  <h2 class="section-head">Patient flow</h2>
+  <p class="muted" style="margin:-4px 0 0;font-size:13.5px">Online registration through to the coordinator dashboard.</p>
+  <div class="home-grid">
+    <a class="home-card" href="register.html">
+      <div class="step">Module 1</div><div class="h">Registration &amp; payment</div>
+      <div class="d">Registrant + any number of attendees. Live pricing, capacity caps, minor waivers, consent.</div>
+    </a>
+    <a class="home-card" href="confirmation.html">
+      <div class="step">Module 2</div><div class="h">Progress report sheet</div>
+      <div class="d">One A4 sheet per attendee — Care Spine routing rail, QR header, paid services, camp ID.</div>
+    </a>
+    <a class="home-card" href="checkin.html">
+      <div class="step">Module 3</div><div class="h">Check-in gate</div>
+      <div class="d">Look up by code or name → Registered / Paid / Waiver. Minors without a guardian waiver are blocked.</div>
+    </a>
+    <a class="home-card" href="station.html">
+      <div class="step">Module 4</div><div class="h">Station queue</div>
+      <div class="d">Phone-first. Tap a patient Queued → In progress → Done. Add-ons flag “needs payment.”</div>
+    </a>
+    <a class="home-card" href="dashboard.html">
+      <div class="step">Module 5</div><div class="h">Coordinator dashboard</div>
+      <div class="d">Counts, queue depths, needs-payment, and the walk-in registration open/hold toggle.</div>
+    </a>
+    <a class="home-card" href="camp-page.html">
+      <div class="step">Bonus</div><div class="h">Public “Who you saw today”</div>
+      <div class="d">The take-home QR destination: thanks the medical staff and invites a review.</div>
+    </a>
+  </div>
+
+  <h2 class="section-head">Volunteer flow</h2>
+  <p class="muted" style="margin:-4px 0 0;font-size:13.5px">Recruitment → signup → confirmation → day-of sign in/out → certificate. Profiles persist across events (no PHI).</p>
+  <div class="home-grid">
+    <a class="home-card" href="volunteer.html">
+      <div class="step">Sign up</div><div class="h">Volunteer signup</div>
+      <div class="d">Role preferences with capacity caps and age-group gating; minor consent; skills &amp; emergency contact.</div>
+    </a>
+    <a class="home-card" href="volunteer-confirm.html">
+      <div class="step">Confirm</div><div class="h">Confirmation + sign-in QR</div>
+      <div class="d">Assigned role, shift, arrival time, role brief, and the day-of sign-in QR.</div>
+    </a>
+    <a class="home-card" href="volunteer-dashboard.html">
+      <div class="step">Coordinator</div><div class="h">Roster &amp; sign in/out</div>
+      <div class="d">Capacity vs. target, signups by source, day-of sign in/out with automatic hours.</div>
+    </a>
+    <a class="home-card" href="volunteer-certificate.html">
+      <div class="step">Thank you</div><div class="h">Certificate</div>
+      <div class="d">Auto-generated certificate — name, role, hours — printable / save as PDF.</div>
+    </a>
+  </div>
+
+  <h2 class="section-head">Vendor flow</h2>
+  <p class="muted" style="margin:-4px 0 0;font-size:13.5px">Apply → committee review → Zelle payment → booth assignment. Vendors pay by Zelle/check (no card fees).</p>
+  <div class="home-grid">
+    <a class="home-card" href="vendor.html">
+      <div class="step">Apply</div><div class="h">Vendor application</div>
+      <div class="d">Business + contact, vendor type and space, with the fee calculated live.</div>
+    </a>
+    <a class="home-card" href="vendor-admin.html">
+      <div class="step">Review</div><div class="h">Committee review</div>
+      <div class="d">Approve (sends Zelle instructions) → mark payment received → assign a booth from the grid.</div>
+    </a>
+    <a class="home-card" href="vendor-confirm.html">
+      <div class="step">Confirm</div><div class="h">Vendor confirmation</div>
+      <div class="d">Booth number, setup window, and fee-paid summary the vendor receives.</div>
+    </a>
+  </div>
+
+  <h2 class="section-head">Logistics &amp; operations</h2>
+  <p class="muted" style="margin:-4px 0 0;font-size:13.5px">The committee/coordinator tools around the camp — procurement, run sheet, lab mailing, and venue layout.</p>
+  <div class="home-grid">
+    <a class="home-card" href="supply.html">
+      <div class="step">Module 6</div><div class="h">Supply calculator</div>
+      <div class="d">Registered counts per service → procurement list by category, with overrides. Printable.</div>
+    </a>
+    <a class="home-card" href="checklist.html">
+      <div class="step">Module 7</div><div class="h">Operations checklist</div>
+      <div class="d">Phase-based run sheet with roles, plus the printable signs the system generates.</div>
+    </a>
+    <a class="home-card" href="lab.html">
+      <div class="step">Module 8</div><div class="h">Lab tracking &amp; mailing</div>
+      <div class="d">Mark reports received → print address labels → mark mailed. No clinical data stored.</div>
+    </a>
+    <a class="home-card" href="venue.html">
+      <div class="step">Venue</div><div class="h">Venue configuration</div>
+      <div class="d">Switch between the Clinic and Open-space layouts — same software, different floor plan.</div>
+    </a>
+  </div>
+
+  <h2 class="section-head">What this demo is not</h2>
+  <ul class="checks">
+    <li><span class="muted">·</span> No real Stripe/Zelle payment, email, or database — every action is local to your browser.</li>
+    <li><span class="muted">·</span> No PHI: no diagnoses, results, or clinical notes — by design, same as the real system.</li>
+    <li><span class="muted">·</span> Visuals follow the project Design System (Care Spine, saffron = action, the type trio).</li>
+  </ul>
+  <p class="muted" style="margin-top:16px">Open questions for the committee live at the end of
+    <span class="ds-mono">docs/MedCamp-System-Overview.md</span> — this demo makes those concrete.</p>
+</main>
+
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+<script>
+  document.getElementById('seedState').textContent = hasDemoData()
+    ? 'Sample data is loaded — open any confirmation or lookup screen to see it.'
+    : 'No demo data loaded yet.';
+</script>
+</body>
+</html>

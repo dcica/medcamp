@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lab Tracking — MedCamp Demo</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="demo-banner no-print"><span><b>DEMO</b> — static mockup. Sample lab list.</span> <a href="#" data-reset>Reset demo</a></div>
+<nav class="topnav no-print">
+  <span class="brand">dcica<span class="dot">●</span>MedCamp</span>
+  <a href="index.html">Home</a>
+  <a href="register.html">Patient</a>
+  <a href="volunteer.html">Volunteer</a>
+  <a href="vendor.html">Vendor</a>
+  <a href="supply.html" class="active">Logistics</a>
+</nav>
+
+<main class="wrap">
+  <p class="ds-eyebrow no-print">Logistics · Post-camp lab tracking (Module 8)</p>
+  <h1 class="page-title">Lab tracking &amp; mailing</h1>
+  <p class="page-sub no-print">Results come back on paper — the system tracks only the mailing logistics, no clinical data.
+    Mark reports received, print address labels, then mark mailed. Patients check status by camp ID on the
+    <a href="camp-page.html">public camp page</a>.</p>
+
+  <div class="card no-print" style="margin-bottom:14px">
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button id="markAllRecv" class="ds-btn ghost">Mark all received</button>
+      <button id="printLabels" class="ds-btn ghost">Print address labels</button>
+    </div>
+  </div>
+
+  <h2 class="section-head">Patients with labs</h2>
+  <div class="card" style="padding:0" id="labList"></div>
+
+  <h2 class="section-head">Address labels to print</h2>
+  <div id="labels" class="labels-grid"></div>
+</main>
+
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+<script>initLab();</script>
+</body>
+</html>

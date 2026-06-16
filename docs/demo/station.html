@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Station Queue — MedCamp Demo</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="demo-banner"><span><b>DEMO</b> — static mockup. Sample queue data.</span> <a href="#" data-reset>Reset demo</a></div>
+<nav class="topnav">
+  <span class="brand">dcica<span class="dot">●</span>MedCamp</span>
+  <a href="index.html">Home</a>
+  <a href="register.html" class="active">Patient</a>
+  <a href="volunteer.html">Volunteer</a>
+  <a href="vendor.html">Vendor</a>
+  <a href="supply.html">Logistics</a>
+</nav>
+
+<main class="wrap">
+  <p class="ds-eyebrow">Module 4 · Station queue (volunteer view)</p>
+  <h1 class="page-title">Ultrasound queue</h1>
+  <p class="page-sub">Phone-first. Tap a patient to cycle <b>Queued → In progress → Done</b>; the queue count
+    (top-right) updates and the patient is auto-routed to their next station.</p>
+
+  <div id="queueCard" class="ds-card"></div>
+
+  <h2 class="section-head">Doctor adds a service mid-visit</h2>
+  <p class="muted" style="margin:-4px 0 12px;font-size:13.5px">A doctor can recommend a service not pre-paid.
+    The patient is flagged <b>Needs payment</b> and escorted back to the desk — saffron, because it’s an action,
+    not an error.</p>
+  <button id="addServiceBtn" class="ds-btn ghost">+ Add service (recommend X-Ray)</button>
+  <div id="payAlert" style="margin-top:14px"></div>
+</main>
+
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+<script>initStation();</script>
+</body>
+</html>
