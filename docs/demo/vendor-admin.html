@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vendor Committee Review — MedCamp Demo</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="demo-banner"><span><b>DEMO</b> — static mockup. Sample applications.</span> <a href="#" data-reset>Reset demo</a></div>
+<nav class="topnav">
+  <span class="brand">dcica<span class="dot">●</span>MedCamp</span>
+  <a href="index.html">Home</a>
+  <a href="register.html">Patient</a>
+  <a href="volunteer.html">Volunteer</a>
+  <a href="vendor.html" class="active">Vendor</a>
+  <a href="supply.html">Logistics</a>
+</nav>
+
+<main class="wrap">
+  <p class="ds-eyebrow">Vendor module · Committee review</p>
+  <h1 class="page-title">Vendor applications</h1>
+  <p class="page-sub">Review → approve (sends Zelle instructions) → mark payment received → assign a booth → confirm.
+    Walk it through on the active application below.</p>
+
+  <h2 class="section-head">Active application</h2>
+  <div class="card" id="vendorCard"></div>
+
+  <h2 class="section-head">Queue</h2>
+  <div class="card" style="padding:0" id="vendorQueue"></div>
+</main>
+
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+<script>initVendorAdmin();</script>
+</body>
+</html>

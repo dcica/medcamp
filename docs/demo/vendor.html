@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vendor Application — MedCamp Demo</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="demo-banner"><span><b>DEMO</b> — static mockup. No real data stored.</span> <a href="#" data-reset>Reset demo</a></div>
+<nav class="topnav">
+  <span class="brand">dcica<span class="dot">●</span>MedCamp</span>
+  <a href="index.html">Home</a>
+  <a href="register.html">Patient</a>
+  <a href="volunteer.html">Volunteer</a>
+  <a href="vendor.html" class="active">Vendor</a>
+  <a href="supply.html">Logistics</a>
+</nav>
+
+<main class="wrap">
+  <p class="ds-eyebrow">Vendor module · Application</p>
+  <h1 class="page-title">Apply for a vendor booth</h1>
+  <p class="page-sub">Submit your application — the committee reviews it, then emails Zelle payment instructions
+    if approved. Booths are assigned after payment clears.</p>
+
+  <div id="vForm">
+    <p style="margin:-6px 0 14px"><button type="button" id="fillVendor" class="ds-btn ghost" style="min-height:40px">Fill with sample data</button></p>
+
+    <div class="card">
+      <div class="field-2">
+        <div class="ds-field"><label>Business name</label><input id="bizName" class="ds-input" placeholder="e.g. Spice Route Catering"></div>
+        <div class="ds-field"><label>Contact name</label><input id="vContact" class="ds-input" placeholder="Primary contact"></div>
+      </div>
+      <div class="field-2">
+        <div class="ds-field"><label>Email</label><input id="vEmail" class="ds-input" inputmode="email" placeholder="you@business.com"></div>
+        <div class="ds-field"><label>Phone</label><input id="vPhone" class="ds-input" inputmode="tel" placeholder="(555) 200-1188"></div>
+      </div>
+      <div class="field-2">
+        <div class="ds-field"><label>Vendor type</label><select id="vType" class="ds-input"></select></div>
+        <div class="ds-field"><label>Space requested</label><select id="vSpace" class="ds-input"></select></div>
+      </div>
+    </div>
+
+    <div class="total-bar">
+      <div><div class="lbl">Fee due if approved</div><div class="amt ds-mono" id="vFee">—</div></div>
+      <button id="vSubmit" class="ds-btn primary">Submit application →</button>
+    </div>
+    <p class="muted" style="font-size:12.5px;margin-top:8px">Vendor fees are paid by <b>Zelle</b> (no card processing fees on larger
+      amounts). Rates here are illustrative — set per event in the admin panel.</p>
+  </div>
+
+  <div id="vResult"></div>
+</main>
+
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+<script>initVendor();</script>
+</body>
+</html>

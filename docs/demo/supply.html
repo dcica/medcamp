@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Supply Calculator — MedCamp Demo</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="demo-banner no-print"><span><b>DEMO</b> — static mockup.</span> <a href="#" data-reset>Reset demo</a></div>
+<nav class="topnav no-print">
+  <span class="brand">dcica<span class="dot">●</span>MedCamp</span>
+  <a href="index.html">Home</a>
+  <a href="register.html">Patient</a>
+  <a href="volunteer.html">Volunteer</a>
+  <a href="vendor.html">Vendor</a>
+  <a href="supply.html" class="active">Logistics</a>
+</nav>
+
+<main class="wrap">
+  <p class="ds-eyebrow no-print">Logistics · Supply calculator (Module 6)</p>
+  <h1 class="page-title">Supply calculator</h1>
+  <p class="page-sub no-print">Enter registered counts per service; the procurement list updates automatically.
+    Override any quantity, then print the list for your pharmacy and procurement partners. Pre-camp only.</p>
+
+  <h2 class="section-head no-print">Registered counts</h2>
+  <div class="card no-print">
+    <div class="field-2" id="drivers" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))"></div>
+  </div>
+
+  <h2 class="section-head">Procurement list</h2>
+  <div id="supplyTable"></div>
+
+  <p class="no-print" style="margin-top:18px"><button id="printSupply" class="ds-btn primary">Print procurement list</button></p>
+  <p class="muted no-print" style="font-size:12.5px">“Suggested” is computed from the counts above; “Order” is your manual override (blank = use suggested).</p>
+</main>
+
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+<script>initSupply();</script>
+</body>
+</html>
