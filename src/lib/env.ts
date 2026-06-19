@@ -11,6 +11,11 @@ const schema = z.object({
   NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
   NEXT_PUBLIC_ROOT_DOMAIN: z.string().default("localhost:3000"),
   TENANT_ROUTING: z.enum(["subdomain", "path"]).default("path"),
+  // Approach C: single active tenant for now. Resolved by slug; subdomain
+  // routing is the future seam. See getActiveOrg().
+  DEFAULT_ORG_SLUG: z.string().default("dcica"),
+  // Comma-separated emails auto-granted COORDINATOR on first login (bootstrap).
+  BOOTSTRAP_ADMIN_EMAILS: z.string().optional(),
 
   // Database
   DATABASE_URL: z.string().min(1),

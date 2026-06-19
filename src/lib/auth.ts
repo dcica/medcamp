@@ -5,6 +5,7 @@ import GitHubProvider from "next-auth/providers/github";
 import AzureADProvider from "next-auth/providers/azure-ad";
 import { db } from "@/lib/db";
 import { env, enabledOidcProviders } from "@/lib/env";
+import { getActiveOrg } from "@/lib/tenant";
 
 /**
  * OIDC-first auth (CLAUDE.md). Only configured providers are offered — the env
@@ -48,9 +49,39 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async session({ session, user }) {
       if (session.user) {
-        (session.user as { id?: string }).id = user.id;
+        session.user.id = user.id;
       }
       return session;
+    },
+  },
+  events: {
+    /**
+     * Bootstrap: auto-grant COORDINATOR in the active org to any email listed in
+     * BOOTSTRAP_ADMIN_EMAILS on first sign-in. Without this, OIDC login succeeds
+     * but the user has no Membership and therefore no access. After bootstrap,
+     * coordinators assign further roles through the admin UI.
+     */
+    async signIn({ user }) {
+      if (!user.email) return;
+      const admins = (env.BOOTSTRAP_ADMIN_EMAILS ?? "")
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean);
+      if (!admins.includes(user.email.toLowerCase())) return;
+
+      const org = await getActiveOrg();
+      if (!org) return;
+
+      await db.membership.upsert({
+        where: { orgId_userId: { orgId: org.id, userId: user.id } },
+        update: {},
+        create: {
+          orgId: org.id,
+          userId: user.id,
+          role: "COORDINATOR",
+          canHoldTill: true,
+        },
+      });
     },
   },
 };
