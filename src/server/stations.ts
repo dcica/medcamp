@@ -10,7 +10,7 @@ import { getActiveOrg } from "@/lib/tenant";
  */
 
 /** The camp staff are working right now: ACTIVE if any, else the OPEN one. */
-async function getActiveCamp(orgId: string) {
+export async function getActiveCamp(orgId: string) {
   return (
     (await db.event.findFirst({ where: { orgId, status: "ACTIVE" } })) ??
     (await db.event.findFirst({ where: { orgId, status: "OPEN" } }))
