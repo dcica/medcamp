@@ -19,3 +19,17 @@ body {
   background: #f7faf9;
   -webkit-font-smoothing: antialiased;
 }
+
+/* Badge printing: hide chrome, render only the badge on label/A4 paper. */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+  .badge-print {
+    box-shadow: none !important;
+    border: none !important;
+  }
+}
