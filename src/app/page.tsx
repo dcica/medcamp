@@ -7,7 +7,7 @@ import Link from "next/link";
 const MODULES = [
   { n: 1, name: "Registration Portal", href: "/register", ready: true },
   { n: 2, name: "Check-In & Badge", href: "/checkin", ready: true },
-  { n: 3, name: "Station Queue", href: "#", ready: false },
+  { n: 3, name: "Station Queue", href: "/station", ready: true },
   { n: 4, name: "Coordinator Dashboard", href: "#", ready: false },
   { n: 5, name: "Supply Calculator", href: "#", ready: false },
   { n: 6, name: "Checklist Module", href: "#", ready: false },
