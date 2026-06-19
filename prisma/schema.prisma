@@ -48,6 +48,8 @@ model Organization {
   attendees    Attendee[]
   stations     Station[]
   lineItems    LineItem[]
+  checklist    ChecklistItem[]
+  invites      Invite[]
 
   @@map("organizations")
 }
@@ -89,6 +91,9 @@ model Membership {
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   role        Role
   canHoldTill Boolean      @default(false)
+  /// Waiver override authority (System Overview "override-auth" desk). Capability
+  /// flag, not a separate role — mirrors canHoldTill.
+  canOverrideWaiver Boolean @default(false)
   createdAt   DateTime     @default(now())
 
   @@unique([orgId, userId])
@@ -167,6 +172,8 @@ model Event {
   endsAt    DateTime
   /// Venue layout selection + config (Clinic vs Open Space), per-event override.
   venueConfig Json      @default("{}")
+  /// When walk-in registration opens day-of (coordinator toggle). Null = closed.
+  walkInOpensAt DateTime?
   /// Monotonic per-event counter for attendee campId sequence (NNNN). Incremented
   /// atomically at payment confirmation so abandoned carts don't burn IDs.
   nextCampSeq Int @default(1)
@@ -178,11 +185,12 @@ model Event {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  orders    Order[]
-  attendees Attendee[]
-  stations  Station[]
-  caps      ServiceCap[]
-  supplies  Supply[]
+  orders     Order[]
+  attendees  Attendee[]
+  stations   Station[]
+  caps       ServiceCap[]
+  supplies   Supply[]
+  checklist  ChecklistItem[]
 
   @@unique([orgId, code])
   @@index([orgId, status])
@@ -437,6 +445,9 @@ model Station {
 
   key      String // "checkin", "vitals", "consult", "vision", ...
   name     String
+  /// Badge/rail color. Auto-assigned from the Care Spine palette on create
+  /// (autoStationColor); admins never pick it. Null falls back to palette at render.
+  colorHex String?
   /// Order in the default Care Spine rail.
   sequence Int    @default(0)
   active   Boolean @default(true)
@@ -575,4 +586,71 @@ model VolunteerSignup {
   @@unique([volunteerId, roleId])
   @@index([roleId])
   @@map("volunteer_signups")
+}
+
+// ── Operations checklist (Module 7) ──────────────────────────────────────────
+
+enum ChecklistPhase {
+  PRE_CAMP
+  DAY_OF
+  DURING
+  POST_CAMP
+}
+
+enum ChecklistCategory {
+  SIGNAGE
+  SUPPLIES
+  TECH
+  LOGISTICS
+  SYSTEM
+}
+
+/// Per-event checklist item. Definition + run-state are collapsed into one row
+/// (each event has its own checklist); cross-event template reuse is deferred.
+model ChecklistItem {
+  id      String       @id @default(cuid())
+  orgId   String
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  eventId String
+  event   Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  phase         ChecklistPhase
+  category      ChecklistCategory @default(LOGISTICS)
+  description   String
+  assignedRole  Role?
+  /// True if checking this off produces a printable artifact (sign/sheet).
+  printArtifact Boolean           @default(false)
+  sequence      Int               @default(0)
+
+  // Run state
+  status          VisitStatus @default(QUEUED) // QUEUED = pending, DONE = complete
+  completedByUserId String?
+  completedAt       DateTime?
+
+  @@index([eventId, phase])
+  @@map("checklist_items")
+}
+
+// ── Member invites (admin portal) ────────────────────────────────────────────
+
+/// Pending role grant keyed to an email. Consumed on the invitee's first OIDC
+/// login (auth signIn event) to create their Membership. Mirrors the capability
+/// flags on Membership so an invite fully describes the grant.
+model Invite {
+  id      String       @id @default(cuid())
+  orgId   String
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  email             String
+  role              Role
+  canHoldTill       Boolean @default(false)
+  canOverrideWaiver Boolean @default(false)
+  invitedByUserId   String?
+
+  createdAt  DateTime  @default(now())
+  acceptedAt DateTime?
+
+  @@unique([orgId, email])
+  @@index([orgId])
+  @@map("invites")
 }

@@ -4,6 +4,7 @@ import { config } from "dotenv";
 config({ override: true });
 
 import { PrismaClient } from "@prisma/client";
+import { autoStationColor } from "../src/lib/stationColors";
 
 const db = new PrismaClient();
 
@@ -75,8 +76,13 @@ async function main() {
   for (const st of stations) {
     await db.station.upsert({
       where: { eventId_key: { eventId: event.id, key: st.key } },
-      update: {},
-      create: { orgId: org.id, eventId: event.id, ...st },
+      update: { colorHex: autoStationColor(st.key, st.sequence) },
+      create: {
+        orgId: org.id,
+        eventId: event.id,
+        ...st,
+        colorHex: autoStationColor(st.key, st.sequence),
+      },
     });
   }
 

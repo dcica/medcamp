@@ -56,32 +56,63 @@ export const authOptions: NextAuthOptions = {
   },
   events: {
     /**
-     * Bootstrap: auto-grant COORDINATOR in the active org to any email listed in
-     * BOOTSTRAP_ADMIN_EMAILS on first sign-in. Without this, OIDC login succeeds
-     * but the user has no Membership and therefore no access. After bootstrap,
-     * coordinators assign further roles through the admin UI.
+     * Grant access on first sign-in. Two sources, in order:
+     *   1. BOOTSTRAP_ADMIN_EMAILS → COORDINATOR (bootstrap the first admin).
+     *   2. A pending Invite (created by a coordinator in the admin portal) →
+     *      membership from the invite's role + capability flags.
+     * Without this, OIDC login succeeds but the user has no Membership = no access.
      */
     async signIn({ user }) {
       if (!user.email) return;
+      const org = await getActiveOrg();
+      if (!org) return;
+
+      const email = user.email.toLowerCase();
+
+      // Already a member — nothing to grant.
+      const existing = await db.membership.findUnique({
+        where: { orgId_userId: { orgId: org.id, userId: user.id } },
+      });
+      if (existing) return;
+
+      // 1. Bootstrap admins.
       const admins = (env.BOOTSTRAP_ADMIN_EMAILS ?? "")
         .split(",")
         .map((s) => s.trim().toLowerCase())
         .filter(Boolean);
-      if (!admins.includes(user.email.toLowerCase())) return;
+      if (admins.includes(email)) {
+        await db.membership.create({
+          data: {
+            orgId: org.id,
+            userId: user.id,
+            role: "COORDINATOR",
+            canHoldTill: true,
+          },
+        });
+        return;
+      }
 
-      const org = await getActiveOrg();
-      if (!org) return;
-
-      await db.membership.upsert({
-        where: { orgId_userId: { orgId: org.id, userId: user.id } },
-        update: {},
-        create: {
-          orgId: org.id,
-          userId: user.id,
-          role: "COORDINATOR",
-          canHoldTill: true,
-        },
+      // 2. Pending invite.
+      const invite = await db.invite.findUnique({
+        where: { orgId_email: { orgId: org.id, email } },
       });
+      if (invite && !invite.acceptedAt) {
+        await db.$transaction([
+          db.membership.create({
+            data: {
+              orgId: org.id,
+              userId: user.id,
+              role: invite.role,
+              canHoldTill: invite.canHoldTill,
+              canOverrideWaiver: invite.canOverrideWaiver,
+            },
+          }),
+          db.invite.update({
+            where: { id: invite.id },
+            data: { acceptedAt: new Date() },
+          }),
+        ]);
+      }
     },
   },
 };
