@@ -1,0 +1,578 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// dcica platform — canonical schema
+//
+// Locked 2026-06-19 (plan-eng-review, decision #1): ONE canonical schema authored
+// before any migration. Shape: Event > Order(registrant) > Attendee[] + LineItem[].
+// A Camp is a specialized Event. Every domain table carries `orgId` (Approach C
+// cheap multi-tenant seam — FK now, RLS deferred until a real 2nd org exists).
+//
+// Money is integer cents. Every billable thing is a LineItem; one PaymentService
+// writes one Ledger table (decision #6). Payment confirmation is Stripe-webhook-
+// authoritative (decision #2). PII purge is event-state-driven (decision #4).
+//
+// HARD CONSTRAINT: No PHI/HIT. No diagnoses, lab results, clinical notes, or
+// insurance data — ever. Lab tracking stores logistics state only.
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ── Tenancy ──────────────────────────────────────────────────────────────────
+
+/// Tenant root. dcica is the first tenant + reference deployment. Per-tenant
+/// config (branding, service menu, caps, layouts) lives in DB rows, not code.
+model Organization {
+  id        String   @id @default(cuid())
+  slug      String   @unique // tenant routing key (subdomain/path)
+  name      String
+  /// Per-tenant config-over-code blob: branding, feature flags, layout choices.
+  /// Structured columns are promoted out of here as they stabilize.
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships  Membership[]
+  events       Event[]
+  serviceTypes ServiceType[]
+  volunteers   Volunteer[]
+  payments     Payment[]
+  ledger       LedgerEntry[]
+  orders       Order[]
+  attendees    Attendee[]
+  stations     Station[]
+  lineItems    LineItem[]
+
+  @@map("organizations")
+}
+
+// ── Auth / RBAC (tenant-scoped) ──────────────────────────────────────────────
+
+model User {
+  id            String       @id @default(cuid())
+  email         String       @unique
+  name          String?
+  image         String?
+  emailVerified DateTime?
+  accounts      Account[]
+  sessions      Session[]
+  memberships   Membership[]
+  createdAt     DateTime     @default(now())
+
+  @@map("users")
+}
+
+enum Role {
+  COORDINATOR
+  REGISTRATION_TILL
+  REGISTRATION_NO_TILL
+  STATION_VOLUNTEER
+  DOCTOR
+  POS_TILL
+  COMMITTEE_ADMIN
+  VOLUNTEER_COORDINATOR
+}
+
+/// A user's membership in one org with a tenant-scoped role. A user may belong
+/// to multiple orgs (different rows). `canHoldTill` is assigned by a coordinator.
+model Membership {
+  id          String       @id @default(cuid())
+  orgId       String
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        Role
+  canHoldTill Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+
+  @@unique([orgId, userId])
+  @@index([orgId])
+  @@map("memberships")
+}
+
+// NextAuth.js adapter tables (OIDC-first; email/password fallback later).
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expires      DateTime
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ── Events / Camps ───────────────────────────────────────────────────────────
+
+enum EventType {
+  CAMP
+  GENERAL
+  MEMBERSHIP_DRIVE
+}
+
+/// Event lifecycle drives the two-phase PII purge state machine (decision #4).
+enum EventStatus {
+  DRAFT
+  OPEN // registration open
+  ACTIVE // day-of
+  CLOSED // camp over, labs may still be open
+  PURGEABLE // labs done OR cap reached → eligible for PII purge
+  PURGED // PII removed; anon summary + consented contacts retained
+}
+
+/// A Camp is a specialized Event (type = CAMP). Caps & service menu are config.
+model Event {
+  id        String      @id @default(cuid())
+  orgId     String
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  type      EventType   @default(CAMP)
+  status    EventStatus @default(DRAFT)
+  /// Code prefix for attendee camp IDs, e.g. "MC-2026W".
+  code      String
+  name      String
+  startsAt  DateTime
+  endsAt    DateTime
+  /// Venue layout selection + config (Clinic vs Open Space), per-event override.
+  venueConfig Json      @default("{}")
+  /// Monotonic per-event counter for attendee campId sequence (NNNN). Incremented
+  /// atomically at payment confirmation so abandoned carts don't burn IDs.
+  nextCampSeq Int @default(1)
+
+  /// Computed when the camp closes; PII is purged but this survives.
+  closedAt    DateTime?
+  purgedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders    Order[]
+  attendees Attendee[]
+  stations  Station[]
+  caps      ServiceCap[]
+  supplies  Supply[]
+
+  @@unique([orgId, code])
+  @@index([orgId, status])
+  @@map("events")
+}
+
+// ── Service menu & capacity (config-over-code) ───────────────────────────────
+
+/// Org-level catalogue of offerable services. Priced in cents. Reused across
+/// events; per-event availability + caps are set via ServiceCap.
+model ServiceType {
+  id          String       @id @default(cuid())
+  orgId       String
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  key         String // stable slug, e.g. "vision", "dental", "bloodwork"
+  name        String
+  priceCents  Int          @default(0)
+  /// Display color for badge service dots.
+  colorHex    String       @default("#888888")
+  /// Whether this service mails labs (drives lab tracking + purge hold).
+  hasLab      Boolean      @default(false)
+  active      Boolean      @default(true)
+
+  caps        ServiceCap[]
+  lineItems   LineItem[]
+
+  @@unique([orgId, key])
+  @@index([orgId])
+  @@map("service_types")
+}
+
+/// Per-event capacity cap for a service. `sold` is decremented atomically on the
+/// payment webhook (decision: caps enforced at DB, not app-layer).
+model ServiceCap {
+  id            String      @id @default(cuid())
+  eventId       String
+  event         Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  serviceTypeId String
+  serviceType   ServiceType @relation(fields: [serviceTypeId], references: [id], onDelete: Cascade)
+  capacity      Int // null-equivalent: very large number for "uncapped"
+  sold          Int         @default(0)
+
+  @@unique([eventId, serviceTypeId])
+  @@index([eventId])
+  @@map("service_caps")
+}
+
+// ── Orders / Attendees ───────────────────────────────────────────────────────
+
+enum OrderStatus {
+  PENDING // created, awaiting payment confirmation
+  CONFIRMED // webhook confirmed payment (or cash recorded)
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  STRIPE
+  CASH
+  ZELLE
+  CHECK
+}
+
+/// One per checkout. Registrant is contact only and may not be attending.
+model Order {
+  id        String      @id @default(cuid())
+  orgId     String
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  eventId   String
+  event     Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  status    OrderStatus @default(PENDING)
+
+  // Registrant (contact only)
+  registrantName  String
+  registrantEmail String
+  registrantPhone String
+
+  marketingConsent     Boolean   @default(false)
+  marketingConsentAt   DateTime?
+
+  method        PaymentMethod @default(STRIPE)
+  /// Idempotency key for resilient day-of writes (decision #3).
+  idempotencyKey String?      @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attendees Attendee[]
+  lineItems LineItem[]
+  payments  Payment[]
+
+  @@index([orgId, eventId])
+  @@index([eventId, status])
+  @@map("orders")
+}
+
+/// A person actually attending. camp_id format: MC-YYYY[S|W]-NNNN.
+/// PII (name, mailingAddress) is purged per decision #4; campId + anon stats stay.
+model Attendee {
+  id      String       @id @default(cuid())
+  orgId   String
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  eventId String
+  event   Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  orderId String
+  order   Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  /// Human-facing confirmation/camp ID (MC-YYYY[S|W]-NNNN). Assigned at payment
+  /// confirmation, not at cart creation. Stable; survives purge for reconciliation.
+  campId  String?      @unique
+
+  // ── PII (purged on event PURGED) ──
+  name           String?
+  mailingAddress String?
+
+  waiverSigned   Boolean   @default(false)
+  waiverSignedAt DateTime?
+  checkedInAt    DateTime?
+
+  /// Set when purged so we keep the row (for counts) without PII.
+  piiPurgedAt DateTime?
+
+  lineItems     LineItem[]
+  stationVisits StationVisit[]
+  labStatuses   LabStatus[]
+
+  @@index([orgId, eventId])
+  @@index([eventId])
+  @@map("attendees")
+}
+
+// ── Billing: every billable thing is a LineItem ──────────────────────────────
+
+enum LineItemStatus {
+  PENDING_PAYMENT // doctor add-on flagged needs_payment
+  PAID
+  REFUNDED
+  VOID
+}
+
+/// The single billable unit. Attached to an order (and usually an attendee).
+/// Doctor add-ons mid-visit are LineItems with status PENDING_PAYMENT.
+model LineItem {
+  id      String       @id @default(cuid())
+  orgId   String
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  orderId String
+  order   Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  attendeeId String?
+  attendee   Attendee? @relation(fields: [attendeeId], references: [id], onDelete: SetNull)
+
+  serviceTypeId String?
+  serviceType   ServiceType? @relation(fields: [serviceTypeId], references: [id], onDelete: SetNull)
+
+  description String
+  amountCents Int
+  status      LineItemStatus @default(PENDING_PAYMENT)
+  /// True if added mid-visit by a doctor (routes patient back to registration).
+  addedOnsite Boolean        @default(false)
+
+  createdAt DateTime @default(now())
+
+  ledgerEntries LedgerEntry[]
+
+  @@index([orgId])
+  @@index([orderId])
+  @@index([attendeeId])
+  @@map("line_items")
+}
+
+// ── Payments + single ledger (decision #6) ───────────────────────────────────
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+/// A payment attempt. Stripe webhook is authoritative for SUCCEEDED (decision #2).
+/// Cash is recorded manually by a till holder (amount tendered / change shown).
+model Payment {
+  id      String       @id @default(cuid())
+  orgId   String
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  orderId String?
+  order   Order?       @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  method      PaymentMethod
+  status      PaymentStatus @default(PENDING)
+  amountCents Int
+
+  // Stripe
+  stripePaymentIntentId String? @unique
+  stripeCheckoutId      String? @unique
+
+  // Cash bookkeeping
+  cashTenderedCents Int?
+  cashChangeCents   Int?
+  /// User id of the till holder who recorded cash.
+  recordedByUserId  String?
+
+  /// Idempotency guard so webhook retries don't double-confirm (decision #2).
+  idempotencyKey String? @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ledgerEntries LedgerEntry[]
+
+  @@index([orgId])
+  @@index([orderId])
+  @@map("payments")
+}
+
+enum LedgerDirection {
+  CREDIT // money in
+  DEBIT // refund / adjustment out
+}
+
+/// One ledger table for all money movement. Drives reconciliation export.
+model LedgerEntry {
+  id      String       @id @default(cuid())
+  orgId   String
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  paymentId  String?
+  payment    Payment?  @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  lineItemId String?
+  lineItem   LineItem? @relation(fields: [lineItemId], references: [id], onDelete: SetNull)
+
+  direction   LedgerDirection
+  method      PaymentMethod
+  amountCents Int
+  memo        String?
+
+  createdAt DateTime @default(now())
+
+  @@index([orgId, createdAt])
+  @@map("ledger_entries")
+}
+
+// ── Stations & routing (one stored route per attendee — decision #5) ─────────
+
+model Station {
+  id      String       @id @default(cuid())
+  orgId   String
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  eventId String
+  event   Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  key      String // "checkin", "vitals", "consult", "vision", ...
+  name     String
+  /// Order in the default Care Spine rail.
+  sequence Int    @default(0)
+  active   Boolean @default(true)
+
+  visits StationVisit[]
+
+  @@unique([eventId, key])
+  @@index([eventId])
+  @@map("stations")
+}
+
+enum VisitStatus {
+  QUEUED
+  IN_PROGRESS
+  DONE
+}
+
+/// One row per (attendee, station) — the stored route. The printed Care Spine
+/// rail and the digital queue both derive from these.
+model StationVisit {
+  id         String      @id @default(cuid())
+  attendeeId String
+  attendee   Attendee    @relation(fields: [attendeeId], references: [id], onDelete: Cascade)
+  stationId  String
+  station    Station     @relation(fields: [stationId], references: [id], onDelete: Cascade)
+
+  sequence  Int // position in this attendee's route
+  status    VisitStatus @default(QUEUED)
+  enteredAt DateTime?
+  doneAt    DateTime?
+
+  @@unique([attendeeId, stationId])
+  @@index([stationId, status])
+  @@map("station_visits")
+}
+
+// ── Lab tracking (logistics only — NO results, NO PHI) ───────────────────────
+
+enum LabState {
+  PENDING
+  RECEIVED
+  MAILED
+}
+
+/// Per attendee per lab service: logistics state only. Storing a result here
+/// would violate the No-PHI constraint — do not add result columns.
+model LabStatus {
+  id         String   @id @default(cuid())
+  attendeeId String
+  attendee   Attendee @relation(fields: [attendeeId], references: [id], onDelete: Cascade)
+  /// Which lab service (free-text key, mirrors ServiceType.key).
+  serviceKey String
+
+  state      LabState  @default(PENDING)
+  receivedAt DateTime?
+  mailedAt   DateTime?
+
+  @@unique([attendeeId, serviceKey])
+  @@index([attendeeId])
+  @@map("lab_statuses")
+}
+
+// ── Supplies (pre-camp estimates only) ───────────────────────────────────────
+
+model Supply {
+  id        String   @id @default(cuid())
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name      String
+  /// ServiceType.key this supply is keyed to (for the calculator).
+  serviceKey String?
+  unit       String  @default("each")
+  perUnit    Float   @default(1) // quantity needed per registered service count
+  buffer     Float   @default(0) // extra fixed buffer
+
+  @@index([eventId])
+  @@map("supplies")
+}
+
+// ── Volunteers (platform-level — NOT camp-scoped, NOT PHI) ───────────────────
+
+model Volunteer {
+  id      String       @id @default(cuid())
+  orgId   String
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name    String
+  email   String
+  phone   String?
+
+  signups VolunteerSignup[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([orgId, email])
+  @@index([orgId])
+  @@map("volunteers")
+}
+
+model VolunteerRole {
+  id       String  @id @default(cuid())
+  orgId    String
+  eventId  String?
+  key      String
+  name     String
+  ageGroup String? // role + age-group config
+  capacity Int     @default(0)
+
+  signups VolunteerSignup[]
+
+  @@index([orgId])
+  @@map("volunteer_roles")
+}
+
+enum SignupStatus {
+  SIGNED_UP
+  CONFIRMED
+  CHECKED_IN
+  CHECKED_OUT
+  NO_SHOW
+}
+
+model VolunteerSignup {
+  id          String        @id @default(cuid())
+  volunteerId String
+  volunteer   Volunteer     @relation(fields: [volunteerId], references: [id], onDelete: Cascade)
+  roleId      String
+  role        VolunteerRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  status      SignupStatus  @default(SIGNED_UP)
+
+  // Day-of hours tracking via QR sign in/out.
+  checkedInAt  DateTime?
+  checkedOutAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@unique([volunteerId, roleId])
+  @@index([roleId])
+  @@map("volunteer_signups")
+}

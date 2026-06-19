@@ -17,3 +17,15 @@ out/
 # OS
 .DS_Store
 Thumbs.db
+
+# Build / tooling
+/tsconfig.tsbuildinfo
+next-env.d.ts
+
+# Playwright / QA artifacts
+.playwright-mcp/
+*-phone.png
+
+# Personal / local notes — never commit
+GROWTH-NOTES.md
+*.local.md
