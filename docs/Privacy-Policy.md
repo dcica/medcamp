@@ -1,6 +1,6 @@
 ---
 title: Privacy & Data Use Policy
-nav_order: 7
+nav_order: 9
 ---
 
 # Privacy & Data Use Policy
@@ -130,6 +130,7 @@ To exercise any of these rights, contact: **admin@dcica.org**
 |---|---|---|
 | Stripe | Payment processing | stripe.com/privacy |
 | Google (OAuth) | Staff login | policies.google.com/privacy |
+| Google (Address Validation) | Standardizing your mailing address so lab results reach you (optional; only the address you enter is sent, once) | policies.google.com/privacy |
 | Vercel | Website hosting | vercel.com/legal/privacy-policy |
 
 ---

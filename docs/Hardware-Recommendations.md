@@ -1,6 +1,6 @@
 ---
 title: Hardware Recommendations
-nav_order: 6
+nav_order: 8
 ---
 
 # MedCamp Hardware Recommendations

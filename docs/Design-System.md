@@ -1,6 +1,6 @@
 ---
 title: Design System
-nav_order: 3
+nav_order: 6
 ---
 
 # Design System

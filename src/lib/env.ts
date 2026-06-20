@@ -44,6 +44,15 @@ const schema = z.object({
   EMAIL_FROM: z.string().default("dcica <no-reply@example.org>"),
   RESEND_API_KEY: z.string().optional(),
   SENDGRID_API_KEY: z.string().optional(),
+
+  // Address validation (Google Address Validation API — optional).
+  // Server-only key. Unset → address fields work as plain inputs.
+  GOOGLE_MAPS_API_KEY: z.string().optional(),
+
+  // Test-only credential login (QA / demos / previews). OFF unless "true".
+  // NEVER enable in a real production tenant. See src/lib/testAccounts.ts.
+  TEST_LOGIN_ENABLED: z.string().optional(),
+  TEST_LOGIN_PASSWORD: z.string().optional(),
 });
 
 // During `next build` without a real DB, fall back so the build doesn't crash.
@@ -64,3 +73,6 @@ export const enabledOidcProviders = {
   microsoft: Boolean(env.MICROSOFT_CLIENT_ID && env.MICROSOFT_CLIENT_SECRET),
   github: Boolean(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET),
 };
+
+/** Address validation is offered only when a Google key is configured. */
+export const addressValidationEnabled = Boolean(env.GOOGLE_MAPS_API_KEY);

@@ -29,3 +29,10 @@ next-env.d.ts
 # Personal / local notes — never commit
 GROWTH-NOTES.md
 *.local.md
+
+# Google OAuth client secret downloads — never commit
+client_secret_*.json
+*.apps.googleusercontent.com.json
+
+# gstack tooling output (QA reports, screenshots)
+.gstack/

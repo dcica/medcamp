@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireRole } from "@/server/session";
 import { getActiveCampStations } from "@/server/stations";
+import { PageHelp } from "@/app/_components/PageHelp";
 
 export const dynamic = "force-dynamic";
 
@@ -11,10 +12,21 @@ export default async function StationPickerPage() {
 
   return (
     <main className="mx-auto max-w-screen-sm px-4 py-8">
-      <h1 className="text-2xl font-bold text-brand">Stations</h1>
-      <p className="mt-1 text-sm text-gray-600">
-        {campName ? `${campName} — pick your station` : "No active camp."}
-      </p>
+      <PageHelp
+        id="station-picker"
+        title="Stations"
+        subtitle={campName ? `${campName} — pick your station` : "No active camp."}
+        items={[
+          {
+            label: "Pick your station",
+            body: "Tap the station you're staffing to open its live patient queue.",
+          },
+          {
+            label: "Color dots",
+            body: "Each station's color matches the dots on patient badges, so you can spot who belongs in your line.",
+          },
+        ]}
+      />
 
       <ul className="mt-6 space-y-2">
         {stations.map((s) => (

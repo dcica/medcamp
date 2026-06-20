@@ -6,6 +6,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 dcica platform — a non-profit event management and commerce system. The medical camp (300–500 patients, half-day) is the first module and primary build target. The platform also covers general events, annual/multi-year membership, onsite merchandise POS, and vendor registration.
 
+## Platform Mandate (foundational — overrides single-org assumptions)
+
+This is an **open-source, multi-tenant SaaS** for any non-profit, not a single-org tool for dcica. dcica is the first tenant and reference deployment. Where any doc hardcodes "dcica," read it as "the tenant organization." Full mandate: `docs/Platform-Mandate.md`.
+
+- **Multi-tenant:** `Organization` is the tenant root; every domain record carries `org_id`. Isolation enforced at the DB via Supabase Postgres **Row-Level Security**, not just app logic. Tenant routing by subdomain/slug. Self-serve org onboarding. No cross-tenant leakage — ever.
+- **OAuth-first:** OIDC is the primary login (Google, Microsoft, GitHub), not just Google Workspace; email/password is a fallback. RBAC is **tenant-scoped** — roles are defined within an org; a user may belong to multiple tenants.
+- **Payments — Stripe Connect:** each tenant connects its own Stripe account; funds settle directly to the org. The platform never holds or remits tenant funds. (Supersedes the single-key setup described below.)
+- **Open source — AGPL-3.0:** self-hostable; modifications run as a network service must be published. Ships `LICENSE`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, issue/PR templates. No secrets in the repo — env-driven, only `.env.example` committed.
+- **Open-core:** core is free + open source; hosted version free/at-cost for verified 501(c)(3)s. Any paid tier never gates the core camp-to-discharge workflow.
+- **Self-hostable, pluggable providers:** near-one-command deploy, env-configured. Auth (OIDC), email (Resend/SendGrid/SMTP), payments (Stripe Connect), DB (Postgres) are swappable. **Configuration over code** — branding, modules, service menus, caps, tiers, layouts are per-tenant settings; tenants customize without forking.
+- **Privacy is a platform guarantee:** the No PHI/HIT rule applies per-tenant for every org, not just dcica.
+
 **Payment split:** Stripe for online pre-registration and membership. Stripe Tap to Pay or **cash** for day-of walk-ins, event tickets, add-ons, and merchandise. Zelle or check for vendors and sponsors. Cash is recorded manually by staff (amount tendered, change due shown on screen) and tracked separately in reconciliation.
 
 **Hard constraint: No PHI/HIT stored.** Patient records are camp-scoped (name, phone, paid services only) and purged after each event. No diagnoses, lab results, clinical notes, or insurance data — ever.
@@ -13,9 +25,9 @@ dcica platform — a non-profit event management and commerce system. The medica
 ## Planned Stack
 
 - **Framework:** Next.js (App Router) — single codebase serves web, tablet, and TV display views
-- **Database:** PostgreSQL via Supabase
-- **Payments:** Stripe Payment Element (online checkout) + Stripe Terminal SDK / Tap to Pay on phone (walk-in, on-site). Org is 501(c)(3) — apply for Stripe non-profit rate (2.2% + $0.30).
-- **Auth:** Google OAuth via NextAuth.js — committee members use existing Google Workspace accounts
+- **Database:** PostgreSQL via Supabase — multi-tenant with Row-Level Security keyed to `org_id`
+- **Payments:** Stripe **Connect** — each tenant org connects its own account; Payment Element (online checkout) + Terminal SDK / Tap to Pay on phone (walk-in, on-site) run against the connected account. Tenants apply for their own 501(c)(3) non-profit rate.
+- **Auth:** OIDC via NextAuth.js — Google / Microsoft / GitHub; tenant-scoped roles. (dcica committee members use existing Google Workspace accounts.)
 - **QR / Badge printing:** `qrcode` npm library + browser print CSS (label printer compatible)
 - **Hosting:** Vercel (app) + Supabase (database)
 
@@ -102,4 +114,5 @@ src/     — application code (Next.js project root goes here)
   - `STRIPE_SECRET_KEY` — server-side only, never exposed to client
   - Test keys stored in `.env` (gitignored). Swap for live keys in Vercel env vars at deploy time.
 - **Google Workspace:** OAuth login only — no Google Forms, no Sheets, no Drive sync. Those are the systems being replaced.
+- **Google Address Validation (optional):** standardizes mailing addresses for lab labels. Off unless `GOOGLE_MAPS_API_KEY` is set; called server-side once per address on field blur (never per-keystroke, never from the browser). Free under 5,000 calls/mo (~500/camp). Sends one address line to Google at submit time — disclosed in the Privacy Policy.
 - **Email:** Confirmation email with QR code sent post-payment (provider TBD; Resend or SendGrid).

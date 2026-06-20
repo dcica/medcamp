@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireAdmin } from "@/server/admin";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
+import { PageHelp } from "@/app/_components/PageHelp";
 import { ServicesManager } from "./ServicesManager";
 
 export const dynamic = "force-dynamic";
@@ -43,6 +44,28 @@ export default async function CampServicesPage({
           Menu is shared across camps; capacity applies to this camp.
         </p>
       </div>
+
+      <PageHelp
+        id="admin-services"
+        items={[
+          {
+            label: "Service menu",
+            body: "Name, price, and color are shared across every camp in this organization — editing one changes it everywhere.",
+          },
+          {
+            label: "Capacity",
+            body: "The cap applies to THIS camp only. Registration stops selling a service once its sold count reaches the cap.",
+          },
+          {
+            label: "Lab",
+            body: "Flag services that produce a result you'll mail back, so they show up in lab tracking.",
+          },
+          {
+            label: "Active",
+            body: "Inactive services are hidden from the registration form without deleting their history.",
+          },
+        ]}
+      />
 
       <ServicesManager
         eventId={id}

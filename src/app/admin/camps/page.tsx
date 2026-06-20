@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/server/admin";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
+import { PageHelp } from "@/app/_components/PageHelp";
 import { CreateCampForm } from "./CreateCampForm";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +28,19 @@ export default async function CampsPage() {
 
   return (
     <div className="space-y-5">
+      <PageHelp
+        id="admin-camps"
+        items={[
+          {
+            label: "Create a camp",
+            body: "Give it a name and dates. A camp code (MC-YYYY[S|W]-NNNN) is generated automatically.",
+          },
+          {
+            label: "Camp list",
+            body: "Tap any camp to set its services, stations, and lifecycle. Newest camps appear first.",
+          },
+        ]}
+      />
       <CreateCampForm />
 
       <ul className="space-y-2">

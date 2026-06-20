@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { PageHelp } from "@/app/_components/PageHelp";
 import { RegisterForm } from "./RegisterForm";
 
 export const dynamic = "force-dynamic";
@@ -33,10 +34,33 @@ export default async function RegisterPage() {
 
   return (
     <main className="mx-auto max-w-screen-sm px-4 py-8">
-      <h1 className="text-2xl font-bold text-brand">{event.name}</h1>
-      <p className="mt-1 text-sm text-gray-600">
-        Register below. You&apos;ll get a QR badge by email after payment.
-      </p>
+      <PageHelp
+        id="register"
+        title={event.name}
+        subtitle="Register below. You'll get a QR badge by email after payment."
+        items={[
+          {
+            label: "Your contact details",
+            body: "The registrant receives the confirmation and QR badges. You don't have to be attending yourself.",
+          },
+          {
+            label: "Attendees",
+            body: "Add one row per person attending. Use “+ Add another attendee” for family members; remove extras with Remove.",
+          },
+          {
+            label: "Services",
+            body: "Tap to select. Sold-out services are disabled, and the total updates live. Prices are confirmed on the server at payment.",
+          },
+          {
+            label: "Mailing address",
+            body: "Only used to post lab results back to the attendee. We check it as you go and may suggest a standardized version — accept it or keep your own. Leave blank if no labs are selected.",
+          },
+          {
+            label: "Refunds",
+            body: "Registration fees are non-refundable, except if the camp is rescheduled — in that case a refund will be considered. Refunds are handled by staff, not online.",
+          },
+        ]}
+      />
       <RegisterForm eventId={event.id} services={services} />
     </main>
   );

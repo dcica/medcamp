@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireAdmin } from "@/server/admin";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
+import { PageHelp } from "@/app/_components/PageHelp";
 import { StationsManager } from "./StationsManager";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +38,24 @@ export default async function CampStationsPage({
           Order is the default route applied to each attendee at confirmation.
         </p>
       </div>
+
+      <PageHelp
+        id="admin-stations"
+        items={[
+          {
+            label: "Order",
+            body: "The sequence here is the default route stamped onto each attendee's badge at confirmation.",
+          },
+          {
+            label: "Colors",
+            body: "Auto-assigned per station. The same color shows on badge dots and the station queue header.",
+          },
+          {
+            label: "Active",
+            body: "Inactive stations are skipped when routing patients — useful when a station isn't running this camp.",
+          },
+        ]}
+      />
 
       <StationsManager
         eventId={id}

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/dcica/medcamp/security/policy
+    about: Do NOT open a public issue for security reports. Follow our Security Policy.
+  - name: Question or discussion
+    url: https://github.com/dcica/medcamp/discussions
+    about: For questions, ideas, and general discussion.

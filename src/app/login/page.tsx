@@ -1,4 +1,7 @@
+import Link from "next/link";
 import { enabledOidcProviders } from "@/lib/env";
+import { testLoginEnabled } from "@/lib/testAccounts";
+import { PageHelp } from "@/app/_components/PageHelp";
 import { LoginButtons } from "./LoginButtons";
 
 export const dynamic = "force-dynamic";
@@ -25,12 +28,44 @@ export default async function LoginPage({
 
   return (
     <main className="mx-auto flex min-h-[80vh] max-w-screen-sm flex-col justify-center px-4">
-      <h1 className="text-2xl font-bold text-brand">Staff sign-in</h1>
-      <p className="mt-1 mb-6 text-sm text-gray-600">
-        Volunteers and coordinators sign in here. Patients don&apos;t need an
-        account — they register from the public portal.
-      </p>
+      <div className="mb-6">
+        <PageHelp
+          id="login"
+          title="Staff sign-in"
+          subtitle="Volunteers and coordinators sign in here. Patients don't need an account — they register from the public portal."
+          items={[
+            {
+              label: "Which button?",
+              body: "Use whichever account your organization gave you — Google, Microsoft, or GitHub. Only configured providers are shown.",
+            },
+            {
+              label: "Patients",
+              body: "Attendees never sign in. They register from the public link and check in with their QR badge.",
+            },
+            {
+              label: "Access",
+              body: "What you can see after signing in depends on the role a coordinator assigned to you.",
+            },
+          ]}
+        />
+      </div>
       <LoginButtons providers={providers} callbackUrl={callbackUrl || "/dashboard"} />
+
+      {testLoginEnabled && (
+        <p className="mt-6 text-center text-xs text-gray-400">
+          <Link
+            href={
+              callbackUrl
+                ? `/test-login?callbackUrl=${encodeURIComponent(callbackUrl)}`
+                : "/test-login"
+            }
+            className="text-brand underline"
+          >
+            Test sign-in
+          </Link>{" "}
+          (QA only)
+        </p>
+      )}
     </main>
   );
 }

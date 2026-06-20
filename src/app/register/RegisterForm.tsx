@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { formatCents } from "@/lib/money";
+import { AddressInput } from "@/app/_components/AddressInput";
 import { submitRegistration } from "./actions";
 
 type Service = {
@@ -149,13 +150,11 @@ export function RegisterForm({
                 value={att.name}
                 onChange={(e) => updateAttendee(i, { name: e.target.value })}
               />
-              <input
+              <AddressInput
                 className={inputCls}
                 placeholder="Mailing address (for mailed labs)"
                 value={att.mailingAddress}
-                onChange={(e) =>
-                  updateAttendee(i, { mailingAddress: e.target.value })
-                }
+                onChange={(v) => updateAttendee(i, { mailingAddress: v })}
               />
               <div className="space-y-2">
                 <p className="text-xs text-gray-500">Select services</p>

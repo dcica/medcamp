@@ -1,6 +1,7 @@
 import QRCode from "qrcode";
 import { db } from "@/lib/db";
 import { formatCents } from "@/lib/money";
+import { PageHelp } from "@/app/_components/PageHelp";
 import { SimulatePayButton } from "./SimulatePayButton";
 
 export const dynamic = "force-dynamic";
@@ -55,10 +56,25 @@ export default async function ConfirmPage({
 
   return (
     <main className="mx-auto max-w-screen-sm px-4 py-8">
-      <h1 className="text-2xl font-bold text-brand">
-        {isConfirmed ? "You're registered!" : "Almost there"}
-      </h1>
-      <p className="mt-1 text-sm text-gray-600">{order.event.name}</p>
+      <PageHelp
+        id="confirm"
+        title={isConfirmed ? "You're registered!" : "Almost there"}
+        subtitle={order.event.name}
+        items={[
+          {
+            label: "Your QR badge",
+            body: "There's one badge per attendee. Bring it printed or on your phone — the check-in desk scans it on camp day.",
+          },
+          {
+            label: "Service dots",
+            body: "The colored dots are the services you paid for; each maps to a station you'll visit.",
+          },
+          {
+            label: "Awaiting payment",
+            body: "If payment hasn't cleared yet, your badge appears here (and arrives by email) as soon as it does.",
+          },
+        ]}
+      />
 
       {!isConfirmed && (
         <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4">

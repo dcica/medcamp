@@ -1,6 +1,6 @@
 ---
 title: Terms of Service
-nav_order: 8
+nav_order: 10
 ---
 
 # Terms of Service

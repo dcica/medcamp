@@ -1,4 +1,5 @@
 import { requireRole } from "@/server/session";
+import { PageHelp } from "@/app/_components/PageHelp";
 import { CheckinStation } from "./CheckinStation";
 
 export const dynamic = "force-dynamic";
@@ -16,10 +17,25 @@ export default async function CheckinPage() {
 
   return (
     <main className="mx-auto max-w-screen-sm px-4 py-8">
-      <h1 className="text-2xl font-bold text-brand">Check-in</h1>
-      <p className="mt-1 text-sm text-gray-600">
-        Scan a patient&apos;s QR badge or enter their camp ID.
-      </p>
+      <PageHelp
+        id="checkin"
+        title="Check-in"
+        subtitle="Scan a patient's QR badge or enter their camp ID."
+        items={[
+          {
+            label: "Scan QR",
+            body: "Point the device camera at the QR on the badge or confirmation email to look the patient up instantly.",
+          },
+          {
+            label: "Camp ID",
+            body: "No camera? Type the MC-… code printed under the QR instead.",
+          },
+          {
+            label: "What happens next",
+            body: "The patient's screen shows payment and waiver status. Check-in only unlocks once both are cleared.",
+          },
+        ]}
+      />
       <CheckinStation />
     </main>
   );

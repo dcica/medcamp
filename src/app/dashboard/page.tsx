@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireRole } from "@/server/session";
 import { getDashboard } from "@/server/dashboard";
 import { formatCents } from "@/lib/money";
+import { PageHelp } from "@/app/_components/PageHelp";
 import { AutoRefresh } from "./AutoRefresh";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +36,28 @@ export default async function DashboardPage() {
         </div>
         <AutoRefresh />
       </div>
+
+      <PageHelp
+        id="dashboard"
+        items={[
+          {
+            label: "Flow stats",
+            body: "Patient counts across the journey. “Needs payment” turns red when on-site add-ons are awaiting payment.",
+          },
+          {
+            label: "Queue depths",
+            body: "Waiting and active counts per station. A red “bottleneck” tag flags a station that's backing up — consider moving help there.",
+          },
+          {
+            label: "Payments",
+            body: "Total collected, broken down by method. Export the reconciliation CSV for the treasurer here.",
+          },
+          {
+            label: "Live view",
+            body: "The page auto-refreshes every 10s. Walk-in registration is opened or held from the camp's admin page.",
+          },
+        ]}
+      />
 
       {/* Flow stats */}
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireAdmin } from "@/server/admin";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
+import { PageHelp } from "@/app/_components/PageHelp";
 import { CampControls } from "./CampControls";
 
 export const dynamic = "force-dynamic";
@@ -61,6 +62,28 @@ export default async function CampDetailPage({
           {camp.walkInOpensAt ? " · walk-in OPEN" : ""}
         </p>
       </div>
+
+      <PageHelp
+        id="admin-camp-detail"
+        items={[
+          {
+            label: "Services & caps",
+            body: "Set the service menu and the per-camp capacity limit for each service.",
+          },
+          {
+            label: "Stations",
+            body: "Define the stations and the order patients route through them (the Care Spine).",
+          },
+          {
+            label: "Lifecycle",
+            body: "Move the camp through DRAFT → OPEN → ACTIVE → CLOSED, and toggle walk-in registration on camp day.",
+          },
+          {
+            label: "Purging",
+            body: "After CLOSED, purging removes camp-scoped patient records. No clinical data (PHI) is ever stored to begin with.",
+          },
+        ]}
+      />
 
       {/* Config sub-screens */}
       <div className="grid grid-cols-2 gap-3">

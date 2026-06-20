@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireRole } from "@/server/session";
 import { getAttendeeForCheckin } from "@/server/checkin";
+import { PageHelp } from "@/app/_components/PageHelp";
 import { WaiverForm } from "./WaiverForm";
 import { CheckinActions } from "./CheckinActions";
 
@@ -53,6 +54,28 @@ export default async function CheckinAttendeePage({
         <span className="font-mono text-sm text-gray-500">{a.campId}</span>
       </div>
       <p className="text-sm text-gray-500">{a.eventName}</p>
+
+      <PageHelp
+        id="checkin-attendee"
+        items={[
+          {
+            label: "Payment",
+            body: "A red banner means payment isn't confirmed — send the patient to the registration desk before checking in.",
+          },
+          {
+            label: "Waiver",
+            body: "Capture the signature here if it's missing. Minors require a parent or guardian to sign.",
+          },
+          {
+            label: "Check in",
+            body: "The button unlocks only once the patient is paid and the waiver is signed.",
+          },
+          {
+            label: "Print badge",
+            body: "After check-in, print the QR badge with the patient's color-coded station route.",
+          },
+        ]}
+      />
 
       {/* Payment guard */}
       {!a.isPaid && (

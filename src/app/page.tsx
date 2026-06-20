@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PageHelp } from "@/app/_components/PageHelp";
 
 /**
  * Placeholder landing. The real app routes by tenant + role; this confirms the
@@ -24,6 +25,20 @@ export default function Home() {
         Non-profit event management &amp; commerce. Scaffold is live — modules
         come online below.
       </p>
+
+      <PageHelp
+        id="home"
+        items={[
+          {
+            label: "Modules",
+            body: "The platform's build order. “ready” modules are live; “soon” ones are still in progress.",
+          },
+          {
+            label: "Getting in",
+            body: "Patients register from the Registration Portal. Staff sign in to reach check-in, stations, the dashboard, and admin setup.",
+          },
+        ]}
+      />
 
       <ul className="mt-8 space-y-2">
         {MODULES.map((m) => (

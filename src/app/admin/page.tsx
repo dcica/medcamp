@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/server/admin";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
+import { PageHelp } from "@/app/_components/PageHelp";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,24 @@ export default async function AdminOverview() {
 
   return (
     <div className="space-y-6">
+      <PageHelp
+        id="admin-overview"
+        items={[
+          {
+            label: "Camps",
+            body: "Each card shows a camp's service, station, and registration counts. Tap one to configure it.",
+          },
+          {
+            label: "Status colors",
+            body: "A camp moves DRAFT → OPEN (taking registrations) → ACTIVE (camp day) → CLOSED → PURGED (patient data removed).",
+          },
+          {
+            label: "Members",
+            body: "The member count reflects everyone with a role in this organization. Manage them under the Members tab.",
+          },
+        ]}
+      />
+
       <div className="grid grid-cols-2 gap-3">
         <Stat label="Camps" value={camps.length} />
         <Stat label="Members" value={memberCount} />

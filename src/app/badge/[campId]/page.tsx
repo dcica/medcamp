@@ -2,6 +2,7 @@ import QRCode from "qrcode";
 import Link from "next/link";
 import { requireRole } from "@/server/session";
 import { getBadge } from "@/server/checkin";
+import { PageHelp } from "@/app/_components/PageHelp";
 import { PrintButton } from "./PrintButton";
 
 export const dynamic = "force-dynamic";
@@ -83,6 +84,23 @@ export default async function BadgePage({
       </div>
 
       <div className="no-print mt-4 space-y-2">
+        <PageHelp
+          id="badge"
+          items={[
+            {
+              label: "Print",
+              body: "Sends to the shared WiFi label/A4 printer at the registration desk. App buttons and help are hidden automatically — only the badge prints.",
+            },
+            {
+              label: "Service dots",
+              body: "The colored dots are the patient's paid services; volunteers match them at each station.",
+            },
+            {
+              label: "Checklist",
+              body: "The boxes are the patient's station route. Volunteers tick them off as the visit progresses.",
+            },
+          ]}
+        />
         <PrintButton />
         <Link
           href={`/checkin/${encodeURIComponent(badge.campId)}`}
