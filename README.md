@@ -77,6 +77,28 @@ cp .env.example .env   # fill in Supabase, OIDC, and Stripe Connect values
 
 Configuration is documented in [`.env.example`](.env.example) (Supabase/Postgres, NextAuth OIDC, Stripe Connect, pluggable email).
 
+### Deploy your own
+
+Spin up your own instance on Vercel + Supabase:
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/dcica/medcamp&env=DATABASE_URL,DIRECT_URL,NEXTAUTH_SECRET,NEXTAUTH_URL,NEXT_PUBLIC_APP_URL,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET&envDescription=Core%20database%2C%20auth%2C%20and%20app%20vars%20(full%20list%20in%20.env.example)&envLink=https://github.com/dcica/medcamp/blob/main/.env.example&project-name=medcamp&repository-name=medcamp)
+
+The button clones the repo into your Vercel + Git account and prompts for the
+core env vars. It is **not** a complete launch on its own — after it deploys:
+
+1. **Provision a database** — create a Supabase project and set `DATABASE_URL`
+   (pooled `:6543`, `?pgbouncer=true&connection_limit=1`) + `DIRECT_URL`
+   (direct `:5432`). See [`docs/Deployment.md`](docs/Deployment.md).
+2. **Migrate + seed** — run `npx prisma migrate deploy` then `npm run db:seed`
+   against the DB (creates the tenant org; the app has no active tenant without
+   it).
+3. **Wire auth + payments** — add your Vercel URL as a Google OAuth redirect
+   (`/api/auth/callback/google`) and a Stripe webhook endpoint
+   (`/api/stripe/webhook`), then set the matching secrets.
+
+For the full multi-environment (test / staging / prod) setup, follow the
+**[Deployment runbook](docs/Deployment.md)**.
+
 ## 📚 Documentation
 
 Full site: **[docs home](docs/index.md)**
