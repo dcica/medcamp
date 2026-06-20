@@ -4,28 +4,42 @@ This runbook stands up three environments on the **free tier ($0/mo)**:
 
 | Env | Vercel project | Branch | Supabase DB | Stripe | Test-login |
 |---|---|---|---|---|---|
-| **test** | `medcamp-test` | `test` | TEST (free) | test mode | **on** |
-| **staging** | `medcamp-staging` | `staging` | _deferred_ | test mode | on |
-| **prod** | `medcamp-prod` | `main` | PROD (free) | **live** | **off** |
+| **test** | `medcamp-test` | `test` | non-prod project, schema `test` | test mode | **on** |
+| **staging** | `medcamp-staging` | `staging` | non-prod project, schema `staging` | test mode | on |
+| **prod** | `medcamp-prod` | `main` | prod project, schema `public` | **live** | **off** |
 
 **Topology:** three separate Vercel **Hobby** projects, all importing the same
-repo, each with its own Production Branch. Isolation comes from **separate
-Supabase projects + separate Stripe/Google credentials per env**, not from the
-Vercel projects themselves.
+repo, each with its own Production Branch. Two Supabase free projects:
 
-**Why staging's DB is deferred:** Supabase's free tier allows only **2 active
-projects per organization**. `test` and `prod` take the two free slots. The
-`medcamp-staging` Vercel project, the [`.env.staging.example`](../.env.staging.example)
-template, and the `staging` CI job all exist and are ready — staging goes fully
-live the moment a 3rd database is added (paid upgrade or a freed slot). Until
-then the staging site deploys but has no DB, and its migrate job self-skips.
+- **`medcamp-nonprod`** — one project shared by all non-prod envs, isolated by
+  Postgres **schema** (`test`, `staging`, and optionally `dev` for Vercel
+  Preview deploys). Set via `&schema=<name>` in the connection URL.
+- **`medcamp-prod`** — a dedicated project for prod, using the default `public`
+  schema. Fully isolated: separate credentials, compute, and blast radius.
+
+**Why schemas instead of 3 projects:** Supabase's free tier allows only **2
+active projects per organization**. Schema separation packs all non-prod envs
+into one project, so all three deployed environments are live on the free tier —
+no deferral. Prisma targets a non-default schema via `&schema=` and **qualifies
+every table name with the schema in the generated SQL**, so it does not rely on a
+persisted `search_path` and works under the shared transaction pooler. Each
+schema keeps its own independent `_prisma_migrations` history.
+
+**Isolation tradeoffs (acceptable for non-prod):** the non-prod envs share one
+project's compute, connection budget, `SUPABASE_SERVICE_ROLE_KEY`, and Realtime
+publication — isolation between them is by schema only, not by credentials. The
+service-role key bypasses RLS and can reach every schema, so treat the non-prod
+key as shared. Bigger blast radius: **never run `prisma migrate reset` against
+the non-prod project casually** — scope every command with the right `&schema=`.
+Prod is unaffected (own project).
 
 > **Free-tier caveats**
 > - Vercel **Hobby** is technically non-commercial in Vercel's ToS — a gray area
 >   for a non-profit reference deploy. Upgrade to Pro before real production use.
-> - **Free Supabase projects auto-pause after ~7 days idle.** Restore the project
->   in the dashboard before any demo; pushing to the branch also wakes it (the CI
->   migrate connects to the DB).
+> - **Free Supabase projects auto-pause after ~7 days idle.** Sharing helps:
+>   activity on any non-prod env keeps that project awake. Restore a paused
+>   project before a demo; pushing to its branch also wakes it (CI migrate
+>   connects to the DB).
 
 ---
 
@@ -47,25 +61,35 @@ are already wired in `prisma/schema.prisma` — no schema change needed.
 
 ---
 
-## Connection strings (per Supabase project)
+## Connection strings
 
 From the Supabase dashboard → Project Settings → Database → Connection string.
+For non-prod envs append `&schema=<env>` (`test` / `staging` / `dev`); prod uses
+the default `public` schema and needs no schema param.
 
 **`DATABASE_URL`** — app runtime on serverless. Use the **Supavisor transaction
-pooler**, port **6543**, and append the two flags:
+pooler**, port **6543**, and append the flags:
 
 ```
-postgresql://postgres.<ref>:<pw>@<region>.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1
+# non-prod (test shown; swap schema=staging / schema=dev)
+postgresql://postgres.<nonprod-ref>:<pw>@<region>.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1&schema=test
+# prod
+postgresql://postgres.<prod-ref>:<pw>@<region>.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1
 ```
 
 - `pgbouncer=true` — disables Prisma prepared statements (the transaction pooler
   can't keep them).
 - `connection_limit=1` — one connection per lambda so the pool isn't exhausted.
+- `schema=<env>` — the env's Postgres schema on the shared non-prod project.
 
-**`DIRECT_URL`** — migrations only. Direct/session connection, port **5432**:
+**`DIRECT_URL`** — migrations only. Direct/session connection, port **5432**
+(same `schema=` param):
 
 ```
-postgresql://postgres.<ref>:<pw>@<region>.pooler.supabase.com:5432/postgres
+# non-prod
+postgresql://postgres.<nonprod-ref>:<pw>@<region>.pooler.supabase.com:5432/postgres?schema=test
+# prod
+postgresql://postgres.<prod-ref>:<pw>@<region>.pooler.supabase.com:5432/postgres
 ```
 
 Migrations need a real non-multiplexed session (DDL + advisory locks +
@@ -75,16 +99,28 @@ prepared statements); the transaction pooler would break them.
 
 ## Setup — ordered checklist
 
-### 1. Supabase (2 free projects now)
+### 1. Supabase (2 free projects)
 
-Create `medcamp-test` and `medcamp-prod` in the same region as Vercel
-(`iad1` → US East). Defer `medcamp-staging`. For each project capture:
+Create `medcamp-nonprod` and `medcamp-prod` in the same region as Vercel
+(`iad1` → US East). For each project capture:
 
-- pooled 6543 string → `DATABASE_URL` (add the two flags)
-- direct 5432 string → `DIRECT_URL`
+- pooled 6543 string → `DATABASE_URL` (add the flags; non-prod also `&schema=<env>`)
+- direct 5432 string → `DIRECT_URL` (non-prod also `?schema=<env>`)
 - Project URL → `NEXT_PUBLIC_SUPABASE_URL`
 - anon public key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - service_role key → `SUPABASE_SERVICE_ROLE_KEY`
+
+Then pre-create the non-prod schemas (Supabase SQL editor on `medcamp-nonprod`):
+
+```sql
+CREATE SCHEMA IF NOT EXISTS test;
+CREATE SCHEMA IF NOT EXISTS staging;
+CREATE SCHEMA IF NOT EXISTS dev;     -- optional: Vercel Preview / cloud dev
+```
+
+The non-prod env vars (`NEXT_PUBLIC_SUPABASE_URL`, anon, service-role) are the
+**same** for test/staging/dev — only `&schema=` in the DB URLs differs. Prod's
+keys come from the separate `medcamp-prod` project.
 
 ### 2. Vercel (3 Hobby projects)
 
@@ -139,23 +175,23 @@ confirmation is webhook-authoritative.)
 ### 6. GitHub (CI migrations)
 
 Repo → Settings → Environments. Create `test`, `staging`, `production`. Add
-secrets **`DATABASE_URL`** + **`DIRECT_URL`** to `test` and `production` now
-(add `staging` when its DB exists). On `production`, add a **required reviewer**
-so prod migrations need manual approval.
+secrets **`DATABASE_URL`** + **`DIRECT_URL`** to all three (non-prod values
+differ only by `&schema=`). On `production`, add a **required reviewer** so prod
+migrations need manual approval.
 
-### 7. Bootstrap each live DB
+### 7. Bootstrap each schema / DB
 
 Either let the first push to the branch run CI, or run manually with that env's
-strings exported:
+strings exported (the `&schema=` in the URL targets the right schema):
 
 ```bash
-npx prisma migrate deploy   # uses DIRECT_URL
+npx prisma migrate deploy   # uses DIRECT_URL → creates tables in the env's schema
 npm run db:seed             # dcica org + service menu + sample camp (idempotent)
-npm run db:seed:test        # test only — NEVER in prod
+npm run db:seed:test        # test/staging only — NEVER in prod
 ```
 
-The dcica org **must** exist or `getActiveOrg()` finds no tenant and the app has
-no active org.
+Run this once per env (test, staging, prod). The dcica org **must** exist in
+each schema or `getActiveOrg()` finds no tenant and the app has no active org.
 
 ### 8. Secrets hygiene
 
@@ -172,16 +208,16 @@ keys live only in prod.
 
 ## Env-var matrix
 
-| Var | test | staging _(deferred)_ | prod |
+| Var | test | staging | prod |
 |---|---|---|---|
 | `NEXT_PUBLIC_APP_URL` / `NEXTAUTH_URL` | test URL | staging URL | prod URL |
 | `NEXT_PUBLIC_ROOT_DOMAIN` | test host | staging host | prod host |
 | `TENANT_ROUTING` | path | path | path |
 | `DEFAULT_ORG_SLUG` | dcica | dcica | dcica |
 | `BOOTSTRAP_ADMIN_EMAILS` | QA emails | team emails | real admins |
-| `DATABASE_URL` | TEST pooled 6543 | (later) | PROD pooled 6543 |
-| `DIRECT_URL` | TEST direct 5432 | (later) | PROD direct 5432 |
-| `NEXT_PUBLIC_SUPABASE_*` / `SUPABASE_SERVICE_ROLE_KEY` | TEST | (later) | PROD |
+| `DATABASE_URL` | nonprod pooled, `&schema=test` | nonprod pooled, `&schema=staging` | prod pooled (`public`) |
+| `DIRECT_URL` | nonprod direct, `?schema=test` | nonprod direct, `?schema=staging` | prod direct (`public`) |
+| `NEXT_PUBLIC_SUPABASE_*` / `SUPABASE_SERVICE_ROLE_KEY` | nonprod (shared) | nonprod (shared) | prod |
 | `NEXTAUTH_SECRET` | unique | unique | unique |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | test client | staging client | prod client |
 | `STRIPE_*` (pk/sk) | test | test | **live** |
@@ -196,9 +232,9 @@ keys live only in prod.
 
 ```
 feature/* ─PR▶ test ─PR▶ staging ─PR▶ main
-test    → medcamp-test    → Supabase TEST
-staging → medcamp-staging → (DB deferred)
-main    → medcamp-prod    → Supabase PROD
+test    → medcamp-test    → nonprod project, schema `test`
+staging → medcamp-staging → nonprod project, schema `staging`
+main    → medcamp-prod    → prod project, schema `public`
 ```
 
 Branch daily work off `test`. Promote forward via PR. Protect `staging` and
@@ -229,6 +265,11 @@ wanted commits into `test` once, then stop using it.
 - **Prisma + pgbouncer** — `DATABASE_URL` must be the 6543 pooler with
   `pgbouncer=true&connection_limit=1`; migrations must use `DIRECT_URL` (5432),
   or they fail under the pooler.
+- **Wrong `&schema=`** — the only thing separating non-prod envs on the shared
+  project. A test URL missing `&schema=test` lands in `public`, and a CI job with
+  the wrong schema migrates/seeds the wrong env. Double-check the param in both
+  `DATABASE_URL` and `DIRECT_URL`, everywhere. Never `prisma migrate reset` the
+  shared non-prod project — it would wipe the targeted schema's data.
 - **Stripe webhook secret mismatch** → payments silently never confirm. Each env
   has its own endpoint + secret.
 - **`env.ts` degrades silently** (`safeParse` → `{}`) — a misconfigured prod boots

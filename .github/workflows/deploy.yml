@@ -5,17 +5,21 @@
 # Vercel build (build stays `prisma generate && next build`). Vercel deploys the
 # app on the same push; this job migrates the matching database in parallel.
 #
-# Branch → GitHub Environment → Supabase project:
-#   test    → environment "test"        → Supabase TEST
-#   staging → environment "staging"     → Supabase STAGING   (deferred: no DB yet)
-#   main    → environment "production"  → Supabase PROD       (required reviewer)
+# Branch → GitHub Environment → Supabase DB (free-tier, schema-separated):
+#   test    → environment "test"        → nonprod project, schema `test`
+#   staging → environment "staging"     → nonprod project, schema `staging`
+#   main    → environment "production"  → prod project, schema `public` (reviewer)
+#
+# Non-prod envs share ONE Supabase project, isolated by Postgres schema (set via
+# &schema=<name> in the connection URL). Prod has its own dedicated project. Each
+# schema keeps an independent _prisma_migrations history.
 #
 # Each GitHub Environment must hold two secrets:
-#   DATABASE_URL  — Supabase pooled (Supavisor transaction, :6543, pgbouncer=true)
-#   DIRECT_URL    — Supabase direct (:5432) — used by `prisma migrate deploy`
+#   DATABASE_URL  — Supabase pooled (Supavisor transaction, :6543, pgbouncer=true,
+#                   &schema=<env> for non-prod)
+#   DIRECT_URL    — Supabase direct (:5432, ?schema=<env>) — used by migrate deploy
 #
-# Jobs self-skip when their secrets are absent, so an env that isn't provisioned
-# yet (e.g. staging while its DB is deferred) is a clean no-op, not a failure.
+# Jobs self-skip when their secrets are absent (clean no-op, not a failure).
 # Seeds are idempotent upserts, so re-running on every push is safe.
 # ─────────────────────────────────────────────────────────────────────────────
 name: DB migrate + seed
@@ -75,7 +79,7 @@ jobs:
         run: |
           if [ -z "$DIRECT_URL" ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::staging environment has no DIRECT_URL secret (DB deferred) — skipping."
+            echo "::notice::staging environment has no DIRECT_URL secret — skipping."
           else
             echo "configured=true" >> "$GITHUB_OUTPUT"
           fi
