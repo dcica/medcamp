@@ -1,0 +1,126 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Database migrate + seed per environment.
+#
+# This workflow OWNS schema migrations — they are deliberately kept OUT of the
+# Vercel build (build stays `prisma generate && next build`). Vercel deploys the
+# app on the same push; this job migrates the matching database in parallel.
+#
+# Branch → GitHub Environment → Supabase project:
+#   test    → environment "test"        → Supabase TEST
+#   staging → environment "staging"     → Supabase STAGING   (deferred: no DB yet)
+#   main    → environment "production"  → Supabase PROD       (required reviewer)
+#
+# Each GitHub Environment must hold two secrets:
+#   DATABASE_URL  — Supabase pooled (Supavisor transaction, :6543, pgbouncer=true)
+#   DIRECT_URL    — Supabase direct (:5432) — used by `prisma migrate deploy`
+#
+# Jobs self-skip when their secrets are absent, so an env that isn't provisioned
+# yet (e.g. staging while its DB is deferred) is a clean no-op, not a failure.
+# Seeds are idempotent upserts, so re-running on every push is safe.
+# ─────────────────────────────────────────────────────────────────────────────
+name: DB migrate + seed
+
+on:
+  push:
+    branches: [test, staging, main]
+
+# Never let two pushes to the same branch migrate the same DB concurrently
+# (avoids the migration advisory-lock race).
+concurrency:
+  group: db-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    if: github.ref == 'refs/heads/test'
+    runs-on: ubuntu-latest
+    environment: test
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        run: |
+          if [ -z "$DIRECT_URL" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::test environment has no DIRECT_URL secret — skipping."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.configured == 'true'
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+        if: steps.check.outputs.configured == 'true'
+      - run: npx prisma migrate deploy
+        if: steps.check.outputs.configured == 'true'
+      - run: npm run db:seed
+        if: steps.check.outputs.configured == 'true'
+      - run: npm run db:seed:test
+        if: steps.check.outputs.configured == 'true'
+
+  staging:
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        run: |
+          if [ -z "$DIRECT_URL" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::staging environment has no DIRECT_URL secret (DB deferred) — skipping."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.configured == 'true'
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+        if: steps.check.outputs.configured == 'true'
+      - run: npx prisma migrate deploy
+        if: steps.check.outputs.configured == 'true'
+      - run: npm run db:seed
+        if: steps.check.outputs.configured == 'true'
+      - run: npm run db:seed:test
+        if: steps.check.outputs.configured == 'true'
+
+  production:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # Add a required reviewer to this Environment in repo settings to gate prod
+    # migrations behind a manual approval.
+    environment: production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        run: |
+          if [ -z "$DIRECT_URL" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::production environment has no DIRECT_URL secret — skipping."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.configured == 'true'
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+        if: steps.check.outputs.configured == 'true'
+      - run: npx prisma migrate deploy
+        if: steps.check.outputs.configured == 'true'
+      # Prod gets the dcica org + service menu ONLY. NEVER db:seed:test in prod.
+      - run: npm run db:seed
+        if: steps.check.outputs.configured == 'true'

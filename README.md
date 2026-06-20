@@ -64,7 +64,7 @@ See the [Platform Mandate](docs/Platform-Mandate.md) for the full architecture s
 
 ## 🚀 Quick start
 
-> **Status: pre-development.** The app (`src/`) is being built toward the winter 2026 camp. A live demo and one-click deploy land with the first release. Until then, the docs are the source of truth.
+> **Status: in development.** The app (`src/`) is being built toward the winter 2026 camp. Deploying to Vercel + Supabase across test / staging / prod is documented in the **[Deployment runbook](docs/Deployment.md)**.
 
 When the MVP ships, getting started will be:
 
@@ -90,6 +90,7 @@ Full site: **[docs home](docs/index.md)**
 | [Design System](docs/Design-System.md) | Color/type/spacing tokens, the Care Spine motif, component anatomy |
 | [Payment Gateway](docs/Payment-Gateway.md) | Stripe integration, payment scenarios, pricing, reconciliation |
 | [Hardware Recommendations](docs/Hardware-Recommendations.md) | Printers, tablets, QR scanners, WiFi, displays, budget |
+| [Deployment](docs/Deployment.md) | Vercel + Supabase across test / staging / prod — runbook, env matrix, smoke tests |
 
 ## 🛣️ Roadmap
 
