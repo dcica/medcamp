@@ -1,0 +1,11 @@
+# Never upload local env files to Vercel CLI deploys — env comes from project env vars.
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+
+# Build/output and deps (Vercel rebuilds these)
+.next
+node_modules
+.git
