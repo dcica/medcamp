@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { stripe } from "@/lib/stripe";
 import { env } from "@/lib/env";
 import { confirmOrderPaid, OverCapacityError } from "@/server/payments";
+import { log } from "@/lib/logger";
 
 /**
  * Stripe webhook — the authoritative confirmation path (locked decision #2).
@@ -53,7 +54,10 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       if (err instanceof OverCapacityError) {
         // Paid but over cap — staff handles refund (no self-serve refund).
-        console.error(`[webhook] over-capacity on order ${orderId}: ${err.serviceKey}`);
+        log.warn("stripe webhook: order over capacity", {
+          orderId,
+          serviceKey: err.serviceKey,
+        });
         return NextResponse.json({ received: true, overCapacity: true });
       }
       throw err;

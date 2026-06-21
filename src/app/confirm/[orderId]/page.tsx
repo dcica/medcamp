@@ -1,10 +1,21 @@
 import QRCode from "qrcode";
 import { db } from "@/lib/db";
-import { formatCents } from "@/lib/money";
+import { stripe } from "@/lib/stripe";
+import { log } from "@/lib/logger";
+import { confirmOrderPaid, OverCapacityError } from "@/server/payments";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { SimulatePayButton } from "./SimulatePayButton";
 
 export const dynamic = "force-dynamic";
+
+const orderInclude = {
+  event: true,
+  attendees: {
+    include: {
+      lineItems: { include: { serviceType: true } },
+    },
+  },
+} as const;
 
 /**
  * Registration confirmation + QR badges (Module 1 tail; feeds Module 2 check-in).
@@ -13,22 +24,59 @@ export const dynamic = "force-dynamic";
  */
 export default async function ConfirmPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ orderId: string }>;
+  searchParams: Promise<{ session_id?: string }>;
 }) {
   const { orderId } = await params;
+  const { session_id } = await searchParams;
 
-  const order = await db.order.findUnique({
+  let order = await db.order.findUnique({
     where: { id: orderId },
-    include: {
-      event: true,
-      attendees: {
-        include: {
-          lineItems: { include: { serviceType: true } },
-        },
-      },
-    },
+    include: orderInclude,
   });
+
+  // ── Race fix ──────────────────────────────────────────────────────────────
+  // Stripe redirects the browser to this page the instant Checkout succeeds,
+  // and the webhook (the authoritative confirmer) is a separate async POST that
+  // usually loses that race — leaving the order PENDING here. So if we arrived
+  // with a Checkout session id and the order is still pending, verify the
+  // session with Stripe and confirm synchronously. confirmOrderPaid is
+  // idempotent + atomically claimed, so whichever path wins, the other is a
+  // no-op (and only the winner sends the email).
+  if (order && order.status !== "CONFIRMED" && session_id && stripe) {
+    try {
+      const session = await stripe.checkout.sessions.retrieve(session_id);
+      // Guard: the session must actually be paid AND belong to THIS order
+      // (metadata.orderId is set when we create the session) — never confirm an
+      // order from a session id pasted in from elsewhere.
+      if (
+        session.payment_status === "paid" &&
+        session.metadata?.orderId === order.id
+      ) {
+        await confirmOrderPaid(order.id, {
+          method: "STRIPE",
+          stripeCheckoutId: session.id,
+          stripePaymentIntentId:
+            typeof session.payment_intent === "string"
+              ? session.payment_intent
+              : undefined,
+          idempotencyKey: `checkout-${session.id}`,
+        });
+        order = await db.order.findUnique({
+          where: { id: orderId },
+          include: orderInclude,
+        });
+      }
+    } catch (err) {
+      // Paid-but-over-capacity is staff-handled; any other error leaves the
+      // page in its pending state. Either way the webhook remains the backstop.
+      if (!(err instanceof OverCapacityError)) {
+        log.error("confirm: stripe session verify failed", { orderId, err });
+      }
+    }
+  }
 
   if (!order) {
     return (

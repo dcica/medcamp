@@ -40,10 +40,15 @@ const schema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
 
   // Email
-  EMAIL_PROVIDER: z.enum(["resend", "sendgrid", "smtp"]).default("resend"),
+  EMAIL_PROVIDER: z.enum(["resend", "sendgrid", "smtp", "ses"]).default("resend"),
   EMAIL_FROM: z.string().default("dcica <no-reply@example.org>"),
   RESEND_API_KEY: z.string().optional(),
   SENDGRID_API_KEY: z.string().optional(),
+  // AWS SES (EMAIL_PROVIDER=ses). Region is required; credentials resolve via
+  // the standard AWS SDK chain (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY env
+  // vars, or an attached IAM role on Vercel/EC2). EMAIL_FROM must be a verified
+  // SES identity (domain or address) in this region.
+  AWS_REGION: z.string().optional(),
 
   // Address validation (Google Address Validation API — optional).
   // Server-only key. Unset → address fields work as plain inputs.
@@ -53,15 +58,22 @@ const schema = z.object({
   // NEVER enable in a real production tenant. See src/lib/testAccounts.ts.
   TEST_LOGIN_ENABLED: z.string().optional(),
   TEST_LOGIN_PASSWORD: z.string().optional(),
+
+  // Logging. Min level emitted by lib/logger (debug | info | warn | error).
+  // Unset ⇒ debug in dev, info in prod. (logger reads process.env directly.)
+  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).optional(),
 });
 
 // During `next build` without a real DB, fall back so the build doesn't crash.
 const parsed = schema.safeParse(process.env);
 
 if (!parsed.success) {
+  // Single-line on purpose; this runs before lib/logger is usable (logger must
+  // not import env — circular), so it stays on a raw console call.
   console.warn(
-    "[env] Invalid or missing environment variables:",
-    parsed.error.flatten().fieldErrors,
+    `[env] invalid/missing environment variables: ${JSON.stringify(
+      parsed.error.flatten().fieldErrors,
+    )}`,
   );
 }
 

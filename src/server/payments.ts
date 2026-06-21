@@ -98,17 +98,17 @@ export async function confirmOrderPaid(
       },
     });
 
-    // Idempotency: already confirmed, or this exact payment already recorded.
-    if (order.status === "CONFIRMED") {
-      return {
-        alreadyConfirmed: true,
-        campIds: order.attendees.map((a) => a.campId).filter(Boolean) as string[],
-      };
-    }
-    const dupe = await tx.payment.findUnique({
-      where: { idempotencyKey: input.idempotencyKey },
+    // Atomic claim (idempotency + concurrency guard). Exactly one caller may
+    // transition PENDING → CONFIRMED. The Stripe webhook, the Checkout success
+    // page (synchronous verify), and a cash till can all race to confirm the
+    // same order; this conditional UPDATE is the lock — Postgres re-checks the
+    // WHERE after any concurrent writer commits, so the loser matches 0 rows.
+    // count === 0 means the order was already confirmed (or never pending) → no-op.
+    const claim = await tx.order.updateMany({
+      where: { id: order.id, status: "PENDING" },
+      data: { status: "CONFIRMED", method: input.method },
     });
-    if (dupe && dupe.status === "SUCCEEDED") {
+    if (claim.count === 0) {
       return {
         alreadyConfirmed: true,
         campIds: order.attendees.map((a) => a.campId).filter(Boolean) as string[],
@@ -169,11 +169,7 @@ export async function confirmOrderPaid(
       }
     }
 
-    // ── Mark order + line items paid ──
-    await tx.order.update({
-      where: { id: order.id },
-      data: { status: "CONFIRMED", method: input.method },
-    });
+    // ── Mark line items paid (order status already claimed above) ──
     await tx.lineItem.updateMany({
       where: { orderId: order.id },
       data: { status: "PAID" },
