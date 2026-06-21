@@ -86,6 +86,33 @@ async function main() {
     });
   }
 
+  // ── Default volunteer roles (config-over-code; per-event) ──
+  const volunteerRoles = [
+    { key: "registration", name: "Registration desk support", minAge: 16, capacity: 8, shift: "8:00–12:00", description: "Help registrants check in." },
+    { key: "greeter", name: "Greeter / wayfinding", minAge: 0, capacity: 6, shift: "7:30–11:30", description: "Welcome and direct people." },
+    { key: "runner", name: "Runner", minAge: 0, capacity: 5, shift: "8:00–14:00", description: "Move supplies between stations." },
+    { key: "translator", name: "Translator", minAge: 18, capacity: 4, shift: "9:00–13:00", description: "Interpret for patients.", requiresClearance: true },
+    { key: "setup", name: "Setup / teardown", minAge: 16, capacity: 10, shift: "6:30–8:30", description: "Set up and break down the venue." },
+  ];
+  for (const r of volunteerRoles) {
+    await db.volunteerRole.upsert({
+      where: { eventId_key: { eventId: event.id, key: r.key } },
+      update: {},
+      create: {
+        orgId: org.id,
+        eventId: event.id,
+        key: r.key,
+        name: r.name,
+        description: r.description,
+        minAge: r.minAge,
+        capacity: r.capacity,
+        shift: r.shift,
+        instructions: `Report to the ${r.name} lead at check-in. Comfortable shoes recommended.`,
+        requiresClearance: Boolean(r.requiresClearance),
+      },
+    });
+  }
+
   console.log(`Seeded org ${org.slug} with camp ${event.code}.`);
 }
 

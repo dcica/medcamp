@@ -13,6 +13,11 @@ const PROTECTED = [
   /^\/station(\/|$)/,
   /^\/checkin(\/|$)/,
   /^\/admin(\/|$)/,
+  // Volunteer coordinator dashboard (plural). The public signup/confirm/cert
+  // pages live under the singular /volunteer and stay open.
+  /^\/volunteers(\/|$)/,
+  // Day-of volunteer sign in/out station (staff-only, under singular /volunteer).
+  /^\/volunteer\/checkin(\/|$)/,
 ];
 
 // NextAuth session cookie names (insecure name in dev/http, __Secure- in https).
@@ -39,5 +44,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/coordinator/:path*", "/station/:path*", "/checkin/:path*", "/admin/:path*"],
+  matcher: ["/dashboard/:path*", "/coordinator/:path*", "/station/:path*", "/checkin/:path*", "/admin/:path*", "/volunteers/:path*", "/volunteer/checkin/:path*"],
 };

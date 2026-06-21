@@ -373,26 +373,29 @@ async function main() {
   // Keep the campId sequence consistent for any future real registrations.
   await db.event.update({ where: { id: camp.id }, data: { nextCampSeq: seq } });
 
-  // ── Volunteer flow (platform-level; roles configured per event) ──
-  // NOTE: no live volunteer screen in the app yet (Module 9). This seeds the
-  // Volunteer / VolunteerRole / VolunteerSignup tables so the data is ready and
-  // inspectable via `npm run db:studio` until that module ships.
+  // ── Volunteer flow (Module 9; platform-level, roles configured per event) ──
+  // Seeds roles + signups across every state so the volunteer dashboard, roster,
+  // counselor rollup, and certificates all render with realistic data. Volunteers
+  // are staff, not patients — retained across events (no PHI purge).
   //
-  // Idempotent: VolunteerRole has no event FK (eventId is a soft field), so the
-  // camp rebuild above doesn't clear it — wipe prior test rows explicitly.
+  // Idempotent: wipe prior test rows explicitly (roles/counselors aren't cleared
+  // by the camp rebuild for past events, though this event's cascade covers them).
   await db.volunteer.deleteMany({
     where: { orgId: org.id, email: { endsWith: "@volunteer.test" } },
   }); // cascades their signups
   await db.volunteerRole.deleteMany({
     where: { orgId: org.id, key: { startsWith: "test-" } },
   }); // cascades any remaining signups
+  await db.counselor.deleteMany({
+    where: { orgId: org.id, email: { endsWith: "@school.test" } },
+  });
 
   const VOL_ROLES = [
-    { key: "test-reg", name: "Registration Helper", ageGroup: "16+", capacity: 8 },
-    { key: "test-greet", name: "Greeter / Wayfinding", ageGroup: "13+", capacity: 6 },
-    { key: "test-translate", name: "Translator", ageGroup: "18+", capacity: 4 },
-    { key: "test-setup", name: "Setup / Teardown", ageGroup: "16+", capacity: 10 },
-    { key: "test-runner", name: "Runner", ageGroup: "13+", capacity: 5 },
+    { key: "test-reg", name: "Registration Helper", ageGroup: "16+", minAge: 16, capacity: 8, shift: "8:00–12:00" },
+    { key: "test-greet", name: "Greeter / Wayfinding", ageGroup: "Any", minAge: 0, capacity: 6, shift: "7:30–11:30" },
+    { key: "test-translate", name: "Translator", ageGroup: "18+", minAge: 18, capacity: 4, shift: "9:00–13:00", requiresClearance: true },
+    { key: "test-setup", name: "Setup / Teardown", ageGroup: "16+", minAge: 16, capacity: 10, shift: "6:30–8:30" },
+    { key: "test-runner", name: "Runner", ageGroup: "Any", minAge: 0, capacity: 5, shift: "8:00–14:00" },
   ];
   const roleByKey = new Map<string, { id: string }>();
   for (const r of VOL_ROLES) {
@@ -403,46 +406,81 @@ async function main() {
         key: r.key,
         name: r.name,
         ageGroup: r.ageGroup,
+        minAge: r.minAge,
         capacity: r.capacity,
+        shift: r.shift,
+        instructions: `Report to the ${r.name} lead at check-in. Wear comfortable shoes; water provided.`,
+        requiresClearance: Boolean(r.requiresClearance),
       },
     });
     roleByKey.set(r.key, row);
   }
 
+  // A handful of persistent school counselors (the recruitment asset).
+  const COUNSELORS = [
+    { name: "Ms. Patel", email: "patel@school.test", title: "NHS Advisor", school: "Edison High" },
+    { name: "Mr. Nguyen", email: "nguyen@school.test", title: "Service-Learning Coordinator", school: "JP Stevens HS" },
+    { name: "Dr. Cohen", email: "cohen@school.test", title: "Counselor", school: "Rutgers Prep" },
+  ];
+  const counselorByEmail = new Map<string, { id: string }>();
+  for (const c of COUNSELORS) {
+    const row = await db.counselor.create({ data: { orgId: org.id, ...c } });
+    counselorByEmail.set(c.email, row);
+  }
+
   type SignupStatus =
     | "SIGNED_UP"
+    | "WAITLISTED"
     | "CONFIRMED"
     | "CHECKED_IN"
     | "CHECKED_OUT"
     | "NO_SHOW";
+  type AgeBand = "UNDER_16" | "AGE_16_17" | "AGE_18_PLUS";
 
-  // (roleKey, status, shift hours for CHECKED_OUT)
-  const volSpecs: { role: string; status: SignupStatus; hours?: number }[] = [
-    { role: "test-reg", status: "CHECKED_OUT", hours: 4.5 },
-    { role: "test-reg", status: "CHECKED_IN" },
-    { role: "test-reg", status: "CONFIRMED" },
-    { role: "test-greet", status: "CHECKED_OUT", hours: 3 },
-    { role: "test-greet", status: "CHECKED_IN" },
-    { role: "test-greet", status: "NO_SHOW" },
-    { role: "test-translate", status: "CONFIRMED" },
-    { role: "test-translate", status: "SIGNED_UP" },
-    { role: "test-setup", status: "CHECKED_OUT", hours: 2.5 },
-    { role: "test-setup", status: "CHECKED_OUT", hours: 5 },
-    { role: "test-setup", status: "CHECKED_IN" },
-    { role: "test-runner", status: "CONFIRMED" },
-    { role: "test-runner", status: "SIGNED_UP" },
-    { role: "test-runner", status: "NO_SHOW" },
+  // (roleKey, status, hours for CHECKED_OUT, age band, school+counselor, source)
+  const volSpecs: {
+    role: string;
+    status: SignupStatus;
+    hours?: number;
+    ageBand: AgeBand;
+    counselor?: string; // counselor email
+    source?: string;
+  }[] = [
+    { role: "test-reg", status: "CHECKED_OUT", hours: 4.5, ageBand: "AGE_16_17", counselor: "patel@school.test", source: "school" },
+    { role: "test-reg", status: "CHECKED_IN", ageBand: "AGE_16_17", counselor: "patel@school.test", source: "school" },
+    { role: "test-reg", status: "CONFIRMED", ageBand: "AGE_18_PLUS", source: "past" },
+    { role: "test-greet", status: "CHECKED_OUT", hours: 3, ageBand: "UNDER_16", counselor: "nguyen@school.test", source: "school" },
+    { role: "test-greet", status: "CHECKED_IN", ageBand: "AGE_16_17", counselor: "nguyen@school.test", source: "school" },
+    { role: "test-greet", status: "NO_SHOW", ageBand: "UNDER_16", counselor: "patel@school.test", source: "school" },
+    { role: "test-translate", status: "CONFIRMED", ageBand: "AGE_18_PLUS", source: "social" },
+    { role: "test-translate", status: "SIGNED_UP", ageBand: "AGE_18_PLUS", source: "org" },
+    { role: "test-setup", status: "CHECKED_OUT", hours: 2.5, ageBand: "AGE_16_17", counselor: "cohen@school.test", source: "school" },
+    { role: "test-setup", status: "CHECKED_OUT", hours: 5, ageBand: "AGE_18_PLUS", source: "past" },
+    { role: "test-setup", status: "CHECKED_IN", ageBand: "AGE_16_17", counselor: "cohen@school.test", source: "school" },
+    { role: "test-runner", status: "CONFIRMED", ageBand: "UNDER_16", counselor: "nguyen@school.test", source: "school" },
+    { role: "test-runner", status: "SIGNED_UP", ageBand: "AGE_16_17", counselor: "patel@school.test", source: "school" },
+    { role: "test-runner", status: "WAITLISTED", ageBand: "UNDER_16", counselor: "cohen@school.test", source: "social" },
   ];
 
+  let volSeq = 1;
   for (let i = 0; i < volSpecs.length; i++) {
     const v = volSpecs[i];
     const name = `${FIRST[(i + 5) % FIRST.length]} ${LAST[(i + 9) % LAST.length]}`;
+    const counselor = v.counselor ? counselorByEmail.get(v.counselor) : null;
+    const school = counselor
+      ? COUNSELORS.find((c) => c.email === v.counselor)?.school ?? null
+      : null;
+    const minor = v.ageBand !== "AGE_18_PLUS";
     const volunteer = await db.volunteer.create({
       data: {
         orgId: org.id,
         name,
         email: `vol${i + 1}@volunteer.test`,
         phone: "(555) 020-" + String(1000 + i).slice(-4),
+        ageBand: v.ageBand,
+        school,
+        emergencyName: "Parent " + LAST[(i + 9) % LAST.length],
+        emergencyPhone: "(555) 030-" + String(1000 + i).slice(-4),
       },
     });
     const checkedInAt =
@@ -456,13 +494,23 @@ async function main() {
     await db.volunteerSignup.create({
       data: {
         volunteerId: volunteer.id,
+        eventId: camp.id,
         roleId: roleByKey.get(v.role)!.id,
+        counselorId: counselor?.id ?? null,
+        code: `VOL-${CAMP_CODE}-${String(volSeq).padStart(4, "0")}`,
         status: v.status,
+        sourceTag: v.source ?? null,
+        guardianName: minor ? "Parent " + LAST[(i + 9) % LAST.length] : null,
+        guardianSignedAt: minor ? new Date(baseTime) : null,
         checkedInAt,
         checkedOutAt,
+        hoursServed: v.status === "CHECKED_OUT" ? (v.hours ?? null) : null,
+        certificateIssuedAt: null,
       },
     });
+    volSeq++;
   }
+  await db.event.update({ where: { id: camp.id }, data: { nextVolSeq: volSeq } });
 
   const volByStatus = volSpecs.reduce<Record<string, number>>((acc, v) => {
     acc[v.status] = (acc[v.status] ?? 0) + 1;

@@ -14,7 +14,7 @@ const MODULES = [
   { n: 6, name: "Checklist Module", href: "#", ready: false },
   { n: 7, name: "Lab Tracking & Patient Portal", href: "#", ready: false },
   { n: 8, name: "Venue Config", href: "#", ready: false },
-  { n: 9, name: "Volunteer Module", href: "#", ready: false },
+  { n: 9, name: "Volunteer Module", href: "/volunteer", ready: true },
 ];
 
 export default function Home() {
