@@ -42,6 +42,7 @@ model Organization {
   events       Event[]
   serviceTypes ServiceType[]
   volunteers   Volunteer[]
+  counselors   Counselor[]
   payments     Payment[]
   ledger       LedgerEntry[]
   orders       Order[]
@@ -185,6 +186,8 @@ model Event {
   /// Monotonic per-event counter for attendee campId sequence (NNNN). Incremented
   /// atomically at payment confirmation so abandoned carts don't burn IDs.
   nextCampSeq Int @default(1)
+  /// Monotonic per-event counter for volunteer signup codes (VOL-<code>-NNNN).
+  nextVolSeq  Int @default(1)
 
   /// Computed when the camp closes; PII is purged but this survives.
   closedAt    DateTime?
@@ -193,12 +196,14 @@ model Event {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  orders     Order[]
-  attendees  Attendee[]
-  stations   Station[]
-  caps       ServiceCap[]
-  supplies   Supply[]
-  checklist  ChecklistItem[]
+  orders           Order[]
+  attendees        Attendee[]
+  stations         Station[]
+  caps             ServiceCap[]
+  supplies         Supply[]
+  checklist        ChecklistItem[]
+  volunteerRoles   VolunteerRole[]
+  volunteerSignups VolunteerSignup[]
 
   @@unique([orgId, code])
   @@index([orgId, status])
@@ -546,14 +551,35 @@ model Supply {
 }
 
 // ── Volunteers (platform-level — NOT camp-scoped, NOT PHI) ───────────────────
+//
+// Volunteers are staff, not patients: the No-PHI purge does NOT apply. Profiles,
+// hours, and school/counselor affiliations persist across events to power
+// recognition and recruitment (docs/Volunteer-Module.md).
 
+/// Age band drives role eligibility + minor-consent. DOB is never stored.
+enum VolunteerAgeBand {
+  UNDER_16 // middle school
+  AGE_16_17 // high school
+  AGE_18_PLUS // college / adult
+}
+
+/// Persistent volunteer profile (deduped per org by email). Survives events.
 model Volunteer {
-  id      String       @id @default(cuid())
-  orgId   String
-  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  name    String
-  email   String
-  phone   String?
+  id    String       @id @default(cuid())
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name  String
+  email String
+  phone String?
+
+  ageBand        VolunteerAgeBand?
+  /// Free-text school / organization affiliation (drives per-school rollup).
+  school         String?
+  skills         String?
+  languages      String?
+  tshirtSize     String?
+  emergencyName  String?
+  emergencyPhone String?
 
   signups VolunteerSignup[]
 
@@ -564,45 +590,107 @@ model Volunteer {
   @@map("volunteers")
 }
 
-model VolunteerRole {
-  id       String  @id @default(cuid())
-  orgId    String
-  eventId  String?
-  key      String
-  name     String
-  ageGroup String? // role + age-group config
-  capacity Int     @default(0)
+/// Persistent, org-scoped school counselor / advisor — the recruitment asset.
+/// Deduped by email; accumulates the student signups (and thereby schools, events
+/// and verified hours) that name it, so the org can reach back each term.
+model Counselor {
+  id     String       @id @default(cuid())
+  orgId  String
+  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name   String
+  email  String
+  title  String? // e.g. "NHS Advisor", "Service-Learning Coordinator"
+  school String?
+  notes  String? // coordinator outreach notes
 
   signups VolunteerSignup[]
 
+  createdAt DateTime @default(now())
+
+  @@unique([orgId, email])
   @@index([orgId])
+  @@map("counselors")
+}
+
+/// Per-event volunteer role configuration (config-over-code, like Station).
+model VolunteerRole {
+  id      String       @id @default(cuid())
+  orgId   String
+  eventId String
+  event   Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  key     String
+  name    String
+  description String?
+  ageGroup String? // human label, e.g. "16+"
+  /// Eligibility gate: minimum age in years (0 = any). Drives age-band matching.
+  minAge   Int     @default(0)
+  /// Target headcount (capacity cap). Role shows "Full" once met.
+  capacity Int     @default(0)
+  shift    String? // simple shift label / time window
+  instructions String?
+  /// Optional Station.key this role supports (camp context).
+  linkedStationKey String?
+  /// Role needs a one-time training / background flag before signup.
+  requiresClearance Boolean @default(false)
+  active   Boolean @default(true)
+
+  signups VolunteerSignup[]
+
+  @@unique([eventId, key])
+  @@index([orgId])
+  @@index([eventId])
   @@map("volunteer_roles")
 }
 
 enum SignupStatus {
   SIGNED_UP
+  WAITLISTED
   CONFIRMED
   CHECKED_IN
   CHECKED_OUT
   NO_SHOW
+  CANCELLED
 }
 
+/// Links a volunteer to one event + role. Day-of QR sign in/out computes hours.
 model VolunteerSignup {
   id          String        @id @default(cuid())
   volunteerId String
   volunteer   Volunteer     @relation(fields: [volunteerId], references: [id], onDelete: Cascade)
+  eventId     String
+  event       Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
   roleId      String
   role        VolunteerRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  status      SignupStatus  @default(SIGNED_UP)
+
+  /// The counselor the student plans to submit these hours to (recruitment link).
+  counselorId String?
+  counselor   Counselor? @relation(fields: [counselorId], references: [id], onDelete: SetNull)
+
+  /// Human QR code for day-of sign in/out: VOL-<eventCode>-NNNN.
+  code   String? @unique
+  status SignupStatus @default(SIGNED_UP)
+  shift  String?
+  /// Outreach attribution from the tagged signup link (school|past|social|org).
+  sourceTag String?
+
+  /// Minor consent (captured when age band is under 18).
+  guardianName     String?
+  guardianSignedAt DateTime?
 
   // Day-of hours tracking via QR sign in/out.
   checkedInAt  DateTime?
   checkedOutAt DateTime?
+  /// Computed from sign in/out; coordinator may adjust (early leave / late stay).
+  hoursServed  Float?
+
+  certificateIssuedAt DateTime?
+  feedbackScore       Int?
 
   createdAt DateTime @default(now())
 
-  @@unique([volunteerId, roleId])
+  @@unique([volunteerId, eventId])
   @@index([roleId])
+  @@index([eventId, status])
   @@map("volunteer_signups")
 }
 

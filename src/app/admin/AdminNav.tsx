@@ -7,6 +7,7 @@ const LINKS = [
   { href: "/admin", label: "Overview", coordinatorOnly: false },
   { href: "/admin/camps", label: "Camps", coordinatorOnly: false },
   { href: "/admin/members", label: "Members", coordinatorOnly: true },
+  { href: "/admin/email", label: "Email", coordinatorOnly: true },
   { href: "/admin/settings", label: "Settings", coordinatorOnly: true },
 ];
 

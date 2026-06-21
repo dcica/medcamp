@@ -99,6 +99,12 @@ export default async function CampDetailPage({
         >
           Stations →
         </Link>
+        <Link
+          href={`/admin/camps/${camp.id}/volunteers`}
+          className="rounded-lg border border-gray-200 bg-white p-3 text-sm font-medium"
+        >
+          Volunteer roles →
+        </Link>
       </div>
 
       {/* Lifecycle */}

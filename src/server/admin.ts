@@ -15,3 +15,11 @@ export function requireAdmin() {
 export function requireCoordinator() {
   return requireRole("COORDINATOR");
 }
+
+/**
+ * Volunteer-module management (role config, roster, certificates, outreach).
+ * Coordinator + committee/admin + the delegated Volunteer Coordinator role.
+ */
+export function requireVolunteerCoordinator() {
+  return requireRole("COORDINATOR", "COMMITTEE_ADMIN", "VOLUNTEER_COORDINATOR");
+}
