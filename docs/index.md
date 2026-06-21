@@ -28,6 +28,7 @@ A clickable, static mockup of the MVP — Patient, Volunteer, Vendor, and Logist
 | [Volunteer Module](Volunteer-Module.md) | Recruitment, signup, confirmation reminders, day-of sign in/out, and certificates — reusable across events |
 | [Payment Gateway](Payment-Gateway.md) | Stripe integration, payment scenarios, pricing, and reconciliation |
 | [Hardware Recommendations](Hardware-Recommendations.md) | Label printer, QR scanners, WiFi, displays, and budget |
+| [QA — Event Gate Flow](QA-Gate-Flow.md) | Repeatable manual test for the `/gate` scan-to-admit station (admission, will-call pickup, pay-at-gate, comp, walk-up) |
 | [Privacy Policy](Privacy-Policy.md) | Data collection, retention, marketing consent, and your rights |
 | [Terms of Service](Terms-of-Service.md) | Registration, waiver, membership, vendor/sponsor, and liability terms |
 
