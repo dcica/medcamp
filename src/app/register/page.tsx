@@ -6,14 +6,25 @@ export const dynamic = "force-dynamic";
 
 /**
  * Public registration portal (Module 1). Loads the open camp + its service menu
- * server-side, then hands off to the phone-first form. For v1 we register into
- * the first OPEN event; multi-event selection is a later enhancement.
+ * server-side, then hands off to the phone-first form. Honours ?event=<id> from
+ * the events listing for multi-event selection; with no id it falls back to the
+ * first OPEN event.
  */
-export default async function RegisterPage() {
-  const event = await db.event.findFirst({
-    where: { status: "OPEN" },
-    orderBy: { startsAt: "asc" },
-  });
+export default async function RegisterPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ event?: string }>;
+}) {
+  const { event: eventId } = await searchParams;
+
+  const event = eventId
+    ? await db.event.findFirst({
+        where: { id: eventId, status: { in: ["OPEN", "ACTIVE"] } },
+      })
+    : await db.event.findFirst({
+        where: { status: "OPEN" },
+        orderBy: { startsAt: "asc" },
+      });
 
   if (!event) {
     return (

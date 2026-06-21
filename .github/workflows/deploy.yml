@@ -63,6 +63,12 @@ jobs:
         if: steps.check.outputs.configured == 'true'
       - run: npm run db:seed
         if: steps.check.outputs.configured == 'true'
+      # Real public event lineup FIRST (it replaces all events for the org)...
+      - run: npm run db:seed:events
+        if: steps.check.outputs.configured == 'true'
+      # ...then the test fixtures (sample ACTIVE camp + test users + orders) on
+      # top — seed-test only touches its own camp, so the real events survive.
+      # Net on test: real events for the public page + test data for staff QA.
       - run: npm run db:seed:test
         if: steps.check.outputs.configured == 'true'
 
@@ -93,6 +99,8 @@ jobs:
       - run: npx prisma migrate deploy
         if: steps.check.outputs.configured == 'true'
       - run: npm run db:seed
+        if: steps.check.outputs.configured == 'true'
+      - run: npm run db:seed:events
         if: steps.check.outputs.configured == 'true'
       - run: npm run db:seed:test
         if: steps.check.outputs.configured == 'true'

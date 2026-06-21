@@ -19,6 +19,7 @@ type RowInput = {
   priceDollars: number;
   colorHex: string;
   hasLab: boolean;
+  fulfillable: boolean;
   active: boolean;
   capacity: number;
 };
@@ -52,6 +53,7 @@ export async function createService(
       priceCents: Math.round(input.priceDollars * 100),
       colorHex: input.colorHex,
       hasLab: input.hasLab,
+      fulfillable: input.fulfillable,
     },
   });
   await db.serviceCap.create({
@@ -99,6 +101,7 @@ export async function saveServiceRow(
         priceCents: Math.round(input.priceDollars * 100),
         colorHex: input.colorHex,
         hasLab: input.hasLab,
+        fulfillable: input.fulfillable,
         active: input.active,
       },
     }),

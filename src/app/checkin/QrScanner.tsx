@@ -6,11 +6,29 @@ import { useEffect, useRef, useState } from "react";
  * Camera QR scanner (progressive enhancement). Uses html5-qrcode, loaded only
  * when the volunteer opts in (camera permission prompt on start). Manual entry
  * is always available on the parent screen for when the camera is unavailable.
+ *
+ * Two modes:
+ *  - default (single-shot): stops after the first decode — the parent navigates.
+ *    Used by medcamp check-in.
+ *  - continuous: the camera stays live and emits every decode (debounced so the
+ *    same code in-frame doesn't re-fire), beeping each time. Used by the gate so
+ *    a volunteer can scan person after person without leaving the camera view.
  */
-export function QrScanner({ onScan }: { onScan: (text: string) => void }) {
+export function QrScanner({
+  onScan,
+  continuous = false,
+}: {
+  onScan: (text: string) => void;
+  continuous?: boolean;
+}) {
   const [active, setActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scannerRef = useRef<{ stop: () => Promise<void> } | null>(null);
+  // Keep the latest onScan without restarting the camera on each render.
+  const onScanRef = useRef(onScan);
+  onScanRef.current = onScan;
+  // Debounce duplicate decodes in continuous mode.
+  const lastRef = useRef<{ text: string; at: number }>({ text: "", at: 0 });
 
   useEffect(() => {
     if (!active) return;
@@ -25,11 +43,21 @@ export function QrScanner({ onScan }: { onScan: (text: string) => void }) {
           { facingMode: "environment" },
           { fps: 10, qrbox: 220 },
           (decoded: string) => {
-            if (!stopped) {
-              stopped = true;
-              scanner.stop().catch(() => {});
-              onScan(decoded);
+            if (stopped) return;
+            if (continuous) {
+              const now = Date.now();
+              const last = lastRef.current;
+              // Ignore the same code seen again within 3s (still in frame).
+              if (decoded === last.text && now - last.at < 3000) return;
+              lastRef.current = { text: decoded, at: now };
+              beep();
+              onScanRef.current(decoded);
+              return;
             }
+            // Single-shot: stop the camera, hand off, let the parent navigate.
+            stopped = true;
+            scanner.stop().catch(() => {});
+            onScanRef.current(decoded);
           },
           () => {},
         );
@@ -43,7 +71,7 @@ export function QrScanner({ onScan }: { onScan: (text: string) => void }) {
       stopped = true;
       scannerRef.current?.stop().catch(() => {});
     };
-  }, [active, onScan]);
+  }, [active, continuous]);
 
   return (
     <div>
@@ -56,7 +84,7 @@ export function QrScanner({ onScan }: { onScan: (text: string) => void }) {
           }}
           className="min-h-tap w-full rounded-lg bg-brand font-semibold text-brand-fg"
         >
-          Scan QR with camera
+          {continuous ? "Start scanning" : "Scan QR with camera"}
         </button>
       ) : (
         <button
@@ -71,4 +99,27 @@ export function QrScanner({ onScan }: { onScan: (text: string) => void }) {
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
     </div>
   );
+}
+
+/** Short confirmation beep via WebAudio (no asset to load). Best-effort. */
+function beep() {
+  try {
+    const Ctx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext })
+        .webkitAudioContext;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "square";
+    osc.frequency.value = 880;
+    gain.gain.value = 0.05;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.12);
+    osc.onended = () => ctx.close().catch(() => {});
+  } catch {
+    /* audio not available — silent is fine */
+  }
 }

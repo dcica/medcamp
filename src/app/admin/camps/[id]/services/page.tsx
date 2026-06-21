@@ -61,6 +61,10 @@ export default async function CampServicesPage({
             body: "Flag services that produce a result you'll mail back, so they show up in lab tracking.",
           },
           {
+            label: "Merch",
+            body: "Flag a physical good (e.g. dandiya sticks, T-shirt) so it shows as a hand-over item at the event gate.",
+          },
+          {
             label: "Active",
             body: "Inactive services are hidden from the registration form without deleting their history.",
           },
@@ -75,6 +79,7 @@ export default async function CampServicesPage({
           priceDollars: s.priceCents / 100,
           colorHex: s.colorHex,
           hasLab: s.hasLab,
+          fulfillable: s.fulfillable,
           active: s.active,
           capacity: s.caps[0]?.capacity ?? 0,
           sold: s.caps[0]?.sold ?? 0,

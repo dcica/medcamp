@@ -464,6 +464,119 @@ async function main() {
     });
   }
 
+  // ── Dandia gate (GENERAL event) — exercises the event gate ──────────────────
+  // A ticketed dance night: admission + fulfillable merch (will-call pickup) and
+  // pre-bought attendees across the gate states (paid, paid+merch, already
+  // admitted, unpaid will-call). Resolved by the gate via getActiveGeneralEvent;
+  // medcamp screens ignore it (getActiveCamp is scoped to type CAMP).
+  const DANDIA_CODE = "GB-2026W";
+  const DANDIA_SERVICES = [
+    { key: "dandia-entry", name: "Dandia Entry", priceCents: 2500, colorHex: "#9333ea", fulfillable: false },
+    { key: "dandiya-sticks", name: "Dandiya Sticks", priceCents: 1500, colorHex: "#f59e0b", fulfillable: true },
+    { key: "event-tshirt", name: "Event T-Shirt", priceCents: 2000, colorHex: "#0ea5e9", fulfillable: true },
+  ];
+  for (const s of DANDIA_SERVICES) {
+    await db.serviceType.upsert({
+      where: { orgId_key: { orgId: org.id, key: s.key } },
+      update: { name: s.name, priceCents: s.priceCents, colorHex: s.colorHex, fulfillable: s.fulfillable },
+      create: { orgId: org.id, ...s },
+    });
+  }
+  const dandiaSvc = new Map(
+    (
+      await db.serviceType.findMany({
+        where: { orgId: org.id, key: { in: DANDIA_SERVICES.map((s) => s.key) } },
+      })
+    ).map((s) => [s.key, s]),
+  );
+
+  const existingDandia = await db.event.findFirst({ where: { orgId: org.id, code: DANDIA_CODE } });
+  if (existingDandia) {
+    await db.payment.deleteMany({ where: { order: { eventId: existingDandia.id } } });
+    await db.event.delete({ where: { id: existingDandia.id } });
+  }
+
+  const dandia = await db.event.create({
+    data: {
+      orgId: org.id,
+      type: "GENERAL",
+      status: "ACTIVE",
+      code: DANDIA_CODE,
+      name: "Dandia Night 2026",
+      startsAt: new Date("2026-10-10T19:00:00Z"),
+      endsAt: new Date("2026-10-10T23:30:00Z"),
+    },
+  });
+  for (const s of dandiaSvc.values()) {
+    // confirmOrderPaid requires a cap row per sellable service; 1000 ≈ uncapped.
+    await db.serviceCap.create({
+      data: { eventId: dandia.id, serviceTypeId: s.id, capacity: 1000 },
+    });
+  }
+
+  const dandiaSpecs: { name: string; services: string[]; paid: boolean; admitted: boolean }[] = [
+    { name: "Asha Mehta", services: ["dandia-entry"], paid: true, admitted: false }, // tkt
+    { name: "Ravi Kapoor", services: ["dandia-entry", "dandiya-sticks"], paid: true, admitted: false }, // tkt + merch
+    { name: "Neha Shah", services: ["dandia-entry", "event-tshirt"], paid: true, admitted: true }, // already admitted
+    { name: "Imran Vora", services: ["dandia-entry"], paid: false, admitted: false }, // unpaid will-call
+  ];
+  let dseq = 1;
+  const dandiaNow = new Date("2026-10-10T19:15:00Z");
+  for (const spec of dandiaSpecs) {
+    const campId = `${DANDIA_CODE}-${String(dseq).padStart(4, "0")}`;
+    dseq++;
+    const items = spec.services.map((k) => dandiaSvc.get(k)!);
+    const total = items.reduce((s, x) => s + x.priceCents, 0);
+
+    const order = await db.order.create({
+      data: {
+        orgId: org.id,
+        eventId: dandia.id,
+        status: spec.paid ? "CONFIRMED" : "PENDING",
+        method: "STRIPE",
+        registrantName: spec.name,
+        registrantEmail: `${spec.name.toLowerCase().replace(/\s+/g, ".")}@example.com`,
+        registrantPhone: "(555) 030-0000",
+      },
+    });
+    if (spec.paid) {
+      await db.payment.create({
+        data: {
+          orgId: org.id,
+          orderId: order.id,
+          method: "STRIPE",
+          status: "SUCCEEDED",
+          amountCents: total,
+          stripePaymentIntentId: `pi_dandia_${order.id}`,
+        },
+      });
+    }
+    const attendee = await db.attendee.create({
+      data: {
+        orgId: org.id,
+        eventId: dandia.id,
+        orderId: order.id,
+        campId,
+        name: spec.name,
+        checkedInAt: spec.admitted ? dandiaNow : null,
+      },
+    });
+    for (const it of items) {
+      await db.lineItem.create({
+        data: {
+          orgId: org.id,
+          orderId: order.id,
+          attendeeId: attendee.id,
+          serviceTypeId: it.id,
+          description: `${it.name} — ${spec.name}`,
+          amountCents: it.priceCents,
+          status: spec.paid ? "PAID" : "PENDING_PAYMENT",
+        },
+      });
+    }
+  }
+  await db.event.update({ where: { id: dandia.id }, data: { nextCampSeq: dseq } });
+
   const volByStatus = volSpecs.reduce<Record<string, number>>((acc, v) => {
     acc[v.status] = (acc[v.status] ?? 0) + 1;
     return acc;
@@ -483,6 +596,9 @@ async function main() {
       demoted.count > 0
         ? `  (demoted ${demoted.count} other ACTIVE camp(s) to CLOSED so this one is the active camp)`
         : ``,
+      `  gate event ${dandia.code} (${dandia.status}) — "${dandia.name}"`,
+      `    ${dandiaSpecs.length} ticket(s): paid / paid+merch / already-admitted / unpaid will-call`,
+      `    gate IDs: ${DANDIA_CODE}-0001 … ${DANDIA_CODE}-${String(dseq - 1).padStart(4, "0")}  → open /gate`,
       ``,
       `  Enable test login:  TEST_LOGIN_ENABLED=true in .env, then visit /test-login`,
       `  Sample camp IDs:    ${CAMP_CODE}-0001 … ${CAMP_CODE}-${String(seq - 1).padStart(4, "0")}`,

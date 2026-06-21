@@ -3,9 +3,15 @@
 @tailwind utilities;
 
 :root {
-  /* Per-tenant branding overrides these (config-over-code). */
-  --brand: #0d6e6e;
+  /* Per-tenant branding overrides these (config-over-code).
+   * dcica palette, pulled from dcica.org — the Indian-flag identity:
+   *   navy wordmark, saffron nav bar, flag-green footer, chakra blue. */
+  --brand: #0c3543; /* deep navy — primary text + button fills (DCICA wordmark) */
   --brand-fg: #ffffff;
+  --accent: #f9a200; /* saffron — dcica.org nav/hero bar */
+  --accent-fg: #16201f; /* dark text: saffron needs a dark foreground */
+  --accent-2: #138808; /* India-flag green — dcica.org footer band */
+  --accent-2-fg: #ffffff;
 }
 
 html,

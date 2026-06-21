@@ -172,6 +172,14 @@ model Event {
   endsAt    DateTime
   /// Venue layout selection + config (Clinic vs Open Space), per-event override.
   venueConfig Json      @default("{}")
+  /// Optional hero image for the public events listing (one pic per event).
+  imageUrl    String?
+  /// Which public actions this event offers (config-over-code). Defaults suit a
+  /// ticketed camp; a community event we only attend turns registration off and
+  /// keeps just volunteer signup, etc.
+  offersRegistration Boolean @default(true)
+  offersVendors      Boolean @default(true)
+  offersVolunteers   Boolean @default(true)
   /// When walk-in registration opens day-of (coordinator toggle). Null = closed.
   walkInOpensAt DateTime?
   /// Monotonic per-event counter for attendee campId sequence (NNNN). Incremented
@@ -212,6 +220,9 @@ model ServiceType {
   colorHex    String       @default("#888888")
   /// Whether this service mails labs (drives lab tracking + purge hold).
   hasLab      Boolean      @default(false)
+  /// A physical good handed over at the gate (merch — dandiya sticks, T-shirts).
+  /// Drives the will-call pickup step; clinical services / admission stay false.
+  fulfillable Boolean      @default(false)
   active      Boolean      @default(true)
 
   caps        ServiceCap[]
@@ -252,6 +263,7 @@ enum PaymentMethod {
   CASH
   ZELLE
   CHECK
+  COMP // membership comp at the gate — $0, attested by a volunteer, no Payment row
 }
 
 /// One per checkout. Registrant is contact only and may not be attending.
@@ -351,6 +363,12 @@ model LineItem {
   status      LineItemStatus @default(PENDING_PAYMENT)
   /// True if added mid-visit by a doctor (routes patient back to registration).
   addedOnsite Boolean        @default(false)
+
+  /// Will-call hand-over (gate pickup of pre-bought merch). Orthogonal to payment
+  /// `status` — a PAID item may still be unfulfilled. Set when handed over so a
+  /// re-scan can't double-issue. Only meaningful when the serviceType is fulfillable.
+  fulfilledAt       DateTime?
+  fulfilledByUserId String?
 
   createdAt DateTime @default(now())
 

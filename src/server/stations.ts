@@ -9,11 +9,19 @@ import { getActiveOrg } from "@/lib/tenant";
  * next non-DONE visit simply becomes current). All reads/writes are org-scoped.
  */
 
-/** The camp staff are working right now: ACTIVE if any, else the OPEN one. */
+/**
+ * The camp staff are working right now: ACTIVE if any, else the OPEN one.
+ * Scoped to type CAMP so a concurrently-ACTIVE general event (e.g. a dandia
+ * gate, resolved separately by the gate) never shadows the medcamp.
+ */
 export async function getActiveCamp(orgId: string) {
   return (
-    (await db.event.findFirst({ where: { orgId, status: "ACTIVE" } })) ??
-    (await db.event.findFirst({ where: { orgId, status: "OPEN" } }))
+    (await db.event.findFirst({
+      where: { orgId, type: "CAMP", status: "ACTIVE" },
+    })) ??
+    (await db.event.findFirst({
+      where: { orgId, type: "CAMP", status: "OPEN" },
+    }))
   );
 }
 

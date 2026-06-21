@@ -9,6 +9,7 @@ export type ServiceRow = {
   priceDollars: number;
   colorHex: string;
   hasLab: boolean;
+  fulfillable: boolean;
   active: boolean;
   capacity: number;
   sold: number;
@@ -67,6 +68,7 @@ function ServiceCard({
   const [price, setPrice] = useState(String(row.priceDollars));
   const [color, setColor] = useState(row.colorHex);
   const [hasLab, setHasLab] = useState(row.hasLab);
+  const [fulfillable, setFulfillable] = useState(row.fulfillable);
   const [active, setActive] = useState(row.active);
   const [capacity, setCapacity] = useState(String(row.capacity));
 
@@ -125,6 +127,15 @@ function ServiceCard({
           <input
             type="checkbox"
             className="h-5 w-5"
+            checked={fulfillable}
+            onChange={(e) => setFulfillable(e.target.checked)}
+          />
+          Merch (hand over)
+        </label>
+        <label className="flex min-h-tap items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="h-5 w-5"
             checked={active}
             onChange={(e) => setActive(e.target.checked)}
           />
@@ -142,6 +153,7 @@ function ServiceCard({
               priceDollars: Number(price) || 0,
               colorHex: color,
               hasLab,
+              fulfillable,
               active,
               capacity: Number(capacity) || 0,
             }),
@@ -169,6 +181,7 @@ function NewService({
   const [price, setPrice] = useState("0");
   const [color, setColor] = useState("#2563b0");
   const [hasLab, setHasLab] = useState(false);
+  const [fulfillable, setFulfillable] = useState(false);
   const [capacity, setCapacity] = useState("200");
 
   if (!open) {
@@ -227,6 +240,15 @@ function NewService({
         />
         Mails labs
       </label>
+      <label className="flex min-h-tap items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="h-5 w-5"
+          checked={fulfillable}
+          onChange={(e) => setFulfillable(e.target.checked)}
+        />
+        Merch (hand over)
+      </label>
       <div className="flex gap-2">
         <button
           type="button"
@@ -238,6 +260,7 @@ function NewService({
                 priceDollars: Number(price) || 0,
                 colorHex: color,
                 hasLab,
+                fulfillable,
                 capacity: Number(capacity) || 0,
               });
               if (res.ok) {

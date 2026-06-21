@@ -41,12 +41,11 @@ export default function Home() {
       />
 
       <ul className="mt-8 space-y-2">
-        {MODULES.map((m) => (
-          <li key={m.n}>
-            <Link
-              href={m.href}
-              className="flex min-h-tap items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm"
-            >
+        {MODULES.map((m) => {
+          const base =
+            "flex min-h-tap items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm";
+          const inner = (
+            <>
               <span>
                 <span className="mr-2 text-gray-400">{m.n}.</span>
                 {m.name}
@@ -55,14 +54,32 @@ export default function Home() {
                 className={
                   m.ready
                     ? "rounded-full bg-brand px-2 py-0.5 text-xs text-brand-fg"
-                    : "text-xs text-gray-400"
+                    : "rounded-full border border-gray-200 px-2 py-0.5 text-xs text-gray-400"
                 }
               >
                 {m.ready ? "ready" : "soon"}
               </span>
-            </Link>
-          </li>
-        ))}
+            </>
+          );
+          return (
+            <li key={m.n}>
+              {m.ready ? (
+                <Link href={m.href} className={`${base} bg-white`}>
+                  {inner}
+                </Link>
+              ) : (
+                // Not yet built — render a non-interactive row, not an <a href="#">
+                // that looks clickable but goes nowhere.
+                <div
+                  aria-disabled="true"
+                  className={`${base} bg-gray-50 text-gray-400`}
+                >
+                  {inner}
+                </div>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </main>
   );
