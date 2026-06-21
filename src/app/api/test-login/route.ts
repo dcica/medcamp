@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { db } from "@/lib/db";
+import { env } from "@/lib/env";
 import { getActiveOrg } from "@/lib/tenant";
 import {
   testLoginEnabled,
@@ -73,11 +74,22 @@ export async function POST(req: NextRequest) {
     username: account.username,
     role: account.role,
   });
-  res.cookies.set("next-auth.session-token", sessionToken, {
+  // Match NextAuth's cookie naming, or getServerSession won't find this session.
+  // Over HTTPS (prod/Vercel) NextAuth uses the "__Secure-" prefixed, Secure
+  // cookie; on plain http (local dev) it uses the bare name. Picking the wrong
+  // one means middleware passes (it checks both) but the page-level session
+  // lookup fails and bounces to /login.
+  const useSecureCookie =
+    (env.NEXTAUTH_URL ?? "").startsWith("https://") || Boolean(process.env.VERCEL);
+  const cookieName = useSecureCookie
+    ? "__Secure-next-auth.session-token"
+    : "next-auth.session-token";
+  res.cookies.set(cookieName, sessionToken, {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
     expires,
+    secure: useSecureCookie,
   });
   return res;
 }
