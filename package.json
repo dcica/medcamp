@@ -17,7 +17,8 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:test": "tsx prisma/seed-test.ts",
-    "db:seed:events": "tsx prisma/seed-events.ts"
+    "db:seed:events": "tsx prisma/seed-events.ts",
+    "db:import:members": "tsx prisma/import-members.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

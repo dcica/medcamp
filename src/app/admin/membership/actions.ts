@@ -1,11 +1,60 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
 import { requireCoordinator } from "@/server/admin";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
+
+export type MemberSearchRow = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  partySize: number;
+  validTo: string; // ISO
+  isCurrent: boolean;
+};
+
+/**
+ * Search the family-member roster by name, email, or phone (coordinator-only,
+ * org-scoped). Phone matches on digits only, so "(972) 555" and "972555" both
+ * hit. Capped at 50 rows — the search is a lookup, not a full export.
+ */
+export async function searchMembers(query: string): Promise<MemberSearchRow[]> {
+  await requireCoordinator();
+  const org = await getActiveOrg();
+  if (!org) return [];
+
+  const q = query.trim();
+  if (q.length < 2) return [];
+
+  const or: Prisma.MemberWhereInput[] = [
+    { name: { contains: q, mode: "insensitive" } },
+    { email: { contains: q, mode: "insensitive" } },
+  ];
+  const digits = q.replace(/\D/g, "");
+  if (digits.length >= 3) or.push({ phone: { contains: digits } });
+
+  const rows = await db.member.findMany({
+    where: { orgId: org.id, OR: or },
+    orderBy: { name: "asc" },
+    take: 50,
+  });
+
+  const now = Date.now();
+  return rows.map((m) => ({
+    id: m.id,
+    name: m.name,
+    email: m.email,
+    phone: m.phone,
+    partySize: m.partySize,
+    validTo: m.validTo.toISOString(),
+    isCurrent: m.validTo.getTime() >= now,
+  }));
+}
 
 function slugify(s: string): string {
   return s

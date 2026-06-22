@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { PlansManager } from "./PlansManager";
+import { MemberSearch } from "./MemberSearch";
 
 export const dynamic = "force-dynamic";
 
@@ -10,15 +11,25 @@ export const dynamic = "force-dynamic";
 export default async function MembershipPage() {
   await requireCoordinator();
   const org = await getActiveOrg();
-  const plans = org
-    ? await db.membershipPlan.findMany({
-        where: { orgId: org.id },
-        orderBy: { termYears: "asc" },
-      })
-    : [];
+  const [plans, memberCount] = org
+    ? await Promise.all([
+        db.membershipPlan.findMany({
+          where: { orgId: org.id },
+          orderBy: { termYears: "asc" },
+        }),
+        db.member.count({ where: { orgId: org.id } }),
+      ])
+    : [[], 0];
 
   return (
-    <div>
+    <div className="space-y-8">
+      <section>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+          Member roster
+        </h2>
+        <MemberSearch total={memberCount} />
+      </section>
+
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
         Family membership plans
       </h2>
