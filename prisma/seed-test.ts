@@ -1,6 +1,7 @@
 import { config } from "dotenv";
-// Override any inherited shell DATABASE_URL so the seed targets this project's DB.
-config({ override: true });
+// Override any inherited shell DATABASE_URL so the seed targets the env file's DB.
+// ENV_FILE overrides which file is loaded (e.g. ENV_FILE=.env.test for the test DB).
+config({ path: process.env.ENV_FILE ?? ".env", override: true });
 
 import { PrismaClient, type Role } from "@prisma/client";
 import { autoStationColor } from "../src/lib/stationColors";

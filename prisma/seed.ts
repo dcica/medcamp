@@ -1,7 +1,8 @@
 import { config } from "dotenv";
-// Override any inherited shell DATABASE_URL so the seed always targets this
-// project's .env DB, not a global var from another project on the machine.
-config({ override: true });
+// Override any inherited shell DATABASE_URL so the seed always targets the env
+// file's DB, not a global var from another project. ENV_FILE overrides which
+// file is loaded (e.g. ENV_FILE=.env.test to seed the deployed test DB).
+config({ path: process.env.ENV_FILE ?? ".env", override: true });
 
 import { PrismaClient } from "@prisma/client";
 import { autoStationColor } from "../src/lib/stationColors";

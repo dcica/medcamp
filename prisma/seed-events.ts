@@ -1,7 +1,7 @@
 import { config } from "dotenv";
 // Override any inherited shell DATABASE_URL so this targets the project's .env
 // DB (the local Docker Postgres), not a global var from another project.
-config({ override: true });
+config({ path: process.env.ENV_FILE ?? ".env", override: true });
 
 import { PrismaClient } from "@prisma/client";
 
