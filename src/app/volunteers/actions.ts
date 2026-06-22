@@ -13,20 +13,20 @@ export type ActionResult =
   | { ok: true; message?: string }
   | { ok: false; error: string };
 
-export async function sendRemindersAction(): Promise<ActionResult> {
+export async function sendRemindersAction(eventId?: string): Promise<ActionResult> {
   await requireVolunteerCoordinator();
   try {
-    const n = await sendReminders();
+    const n = await sendReminders(eventId);
     return { ok: true, message: `Reminders sent to ${n} volunteer(s).` };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Failed." };
   }
 }
 
-export async function issueCertificatesAction(): Promise<ActionResult> {
+export async function issueCertificatesAction(eventId?: string): Promise<ActionResult> {
   await requireVolunteerCoordinator();
   try {
-    const n = await issueCertificates();
+    const n = await issueCertificates(eventId);
     revalidatePath("/volunteers");
     return { ok: true, message: `Issued ${n} certificate(s) + thank-you email(s).` };
   } catch (err) {

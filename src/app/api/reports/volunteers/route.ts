@@ -3,10 +3,11 @@ import { getCurrentMember } from "@/server/session";
 import { getVolunteerReportRows } from "@/server/volunteers";
 
 /**
- * Volunteer roster CSV for the active event. Volunteer-module managers only
- * (server-side role check, not just middleware).
+ * Volunteer roster CSV for an event (?event=<id>, else the default volunteer
+ * event). Volunteer-module managers only (server-side role check, not just
+ * middleware).
  */
-export async function GET() {
+export async function GET(req: Request) {
   const member = await getCurrentMember();
   if (
     !member ||
@@ -15,7 +16,8 @@ export async function GET() {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  const { eventCode, rows } = await getVolunteerReportRows();
+  const eventId = new URL(req.url).searchParams.get("event") ?? undefined;
+  const { eventCode, rows } = await getVolunteerReportRows(eventId);
   if (!eventCode) {
     return NextResponse.json({ error: "no active event" }, { status: 404 });
   }

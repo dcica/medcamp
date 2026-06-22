@@ -1,10 +1,14 @@
 import { z } from "zod";
-import type { SignupStatus, VolunteerAgeBand } from "@prisma/client";
+import type {
+  SignupStatus,
+  VolunteerAgeBand,
+  EventType,
+  EventStatus,
+} from "@prisma/client";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { log } from "@/lib/logger";
 import { getActiveOrg } from "@/lib/tenant";
-import { getActiveCamp } from "@/server/stations";
 import { formatVolCode, normalizeVolCode } from "@/lib/volunteerId";
 import {
   bandMeetsMinAge,
@@ -49,12 +53,75 @@ function computeHours(inAt: Date, outAt: Date): number {
   return Math.max(0, Math.round((ms / 3_600_000) * 10) / 10);
 }
 
-/** The event accepting volunteers right now: ACTIVE if any, else OPEN. */
-export async function activeVolunteerEvent() {
+/**
+ * Resolve the event a volunteer is signing up for. The org can have several
+ * volunteer-accepting events open at once (a camp + community events like the
+ * 4th of July booth), so the public signup is scoped to a specific event:
+ *  - `eventId` (from the ?event= link) → that event, if it's in this org, open,
+ *    and offers volunteers.
+ *  - no id → default to the ACTIVE one, else the soonest upcoming OPEN one.
+ * Camp or general — anything with offersVolunteers qualifies.
+ */
+export async function resolveVolunteerEvent(eventId?: string) {
   const org = await getActiveOrg();
   if (!org) return null;
-  const event = await getActiveCamp(org.id);
+
+  if (eventId) {
+    const event = await db.event.findFirst({
+      where: {
+        id: eventId,
+        orgId: org.id,
+        offersVolunteers: true,
+        status: { in: ["OPEN", "ACTIVE"] },
+      },
+    });
+    return event ? { org, event } : null;
+  }
+
+  const event =
+    (await db.event.findFirst({
+      where: { orgId: org.id, offersVolunteers: true, status: "ACTIVE" },
+      orderBy: { startsAt: "asc" },
+    })) ??
+    (await db.event.findFirst({
+      where: { orgId: org.id, offersVolunteers: true, status: "OPEN" },
+      orderBy: { startsAt: "asc" },
+    }));
   return event ? { org, event } : null;
+}
+
+export type VolunteerEventOption = {
+  id: string;
+  name: string;
+  code: string;
+  type: EventType;
+  status: EventStatus;
+  externallyHosted: boolean;
+};
+
+/**
+ * Every event currently taking volunteers (camp or general, OPEN/ACTIVE) — the
+ * coordinator dashboard's event picker. ACTIVE first, then soonest upcoming.
+ */
+export async function listVolunteerEvents(): Promise<VolunteerEventOption[]> {
+  const org = await getActiveOrg();
+  if (!org) return [];
+  const events = await db.event.findMany({
+    where: { orgId: org.id, offersVolunteers: true, status: { in: ["OPEN", "ACTIVE"] } },
+    orderBy: [{ status: "asc" }, { startsAt: "asc" }],
+  });
+  // status enum order puts ACTIVE before OPEN already (OPEN < ACTIVE in the enum
+  // declaration), so sort ACTIVE to the front explicitly.
+  return events
+    .map((e) => ({
+      id: e.id,
+      name: e.name,
+      code: e.code,
+      type: e.type,
+      status: e.status,
+      externallyHosted: e.externallyHosted,
+    }))
+    .sort((a, b) => (a.status === b.status ? 0 : a.status === "ACTIVE" ? -1 : 1));
 }
 
 // ── Public signup form data ──────────────────────────────────────────────────
@@ -80,11 +147,17 @@ export type SignupView = {
   eventCode: string;
   startsAt: Date;
   endsAt: Date;
+  location: string | null;
+  description: string | null;
+  externallyHosted: boolean;
+  hostedByName: string | null;
   roles: RoleOption[];
 };
 
-export async function getVolunteerSignupView(): Promise<SignupView | null> {
-  const active = await activeVolunteerEvent();
+export async function getVolunteerSignupView(
+  eventId?: string,
+): Promise<SignupView | null> {
+  const active = await resolveVolunteerEvent(eventId);
   if (!active) return null;
   const { event } = active;
 
@@ -102,6 +175,10 @@ export async function getVolunteerSignupView(): Promise<SignupView | null> {
     eventCode: event.code,
     startsAt: event.startsAt,
     endsAt: event.endsAt,
+    location: event.location,
+    description: event.description,
+    externallyHosted: event.externallyHosted,
+    hostedByName: event.hostedByName,
     roles: roles.map((r) => ({
       id: r.id,
       key: r.key,
@@ -184,14 +261,21 @@ export async function createVolunteerSignup(
   input: VolunteerSignupInput,
 ): Promise<CreatedSignup> {
   const data = volunteerSignupSchema.parse(input);
-  const active = await activeVolunteerEvent();
-  if (!active) throw new Error("Volunteer signups are not open right now.");
-  const { org, event } = active;
+  const org = await getActiveOrg();
+  if (!org) throw new Error("Volunteer signups are not open right now.");
 
+  // The role determines the event (one role belongs to exactly one event), so
+  // there's no ambiguity when several events are taking volunteers at once.
   const role = await db.volunteerRole.findFirst({
-    where: { id: data.roleId, eventId: event.id, active: true },
+    where: { id: data.roleId, orgId: org.id, active: true },
+    include: { event: true },
   });
   if (!role) throw new Error("That role is no longer available.");
+
+  const event = role.event;
+  if (!event.offersVolunteers || !["OPEN", "ACTIVE"].includes(event.status)) {
+    throw new Error("Volunteer signups are not open for this event.");
+  }
 
   if (!bandMeetsMinAge(data.ageBand, role.minAge)) {
     throw new Error(`This role requires volunteers aged ${role.minAge}+.`);
@@ -537,8 +621,10 @@ export type VolunteerRoster = {
   rows: RosterRow[];
 };
 
-export async function getVolunteerRoster(): Promise<VolunteerRoster | null> {
-  const active = await activeVolunteerEvent();
+export async function getVolunteerRoster(
+  eventId?: string,
+): Promise<VolunteerRoster | null> {
+  const active = await resolveVolunteerEvent(eventId);
   if (!active) return null;
   const { event } = active;
 
@@ -653,8 +739,8 @@ export async function getCounselorRollup(): Promise<CounselorRollup[]> {
 // ── Reminders + certificates ─────────────────────────────────────────────────
 
 /** Send the 24–48h reminder to everyone not yet checked in. Returns count sent. */
-export async function sendReminders(): Promise<number> {
-  const active = await activeVolunteerEvent();
+export async function sendReminders(eventId?: string): Promise<number> {
+  const active = await resolveVolunteerEvent(eventId);
   if (!active) return 0;
   const { event } = active;
   const signups = await db.volunteerSignup.findMany({
@@ -680,8 +766,8 @@ export async function sendReminders(): Promise<number> {
 }
 
 /** Batch-issue certificates + thank-you emails to checked-out volunteers. */
-export async function issueCertificates(): Promise<number> {
-  const active = await activeVolunteerEvent();
+export async function issueCertificates(eventId?: string): Promise<number> {
+  const active = await resolveVolunteerEvent(eventId);
   if (!active) return 0;
   const { event } = active;
   const signups = await db.volunteerSignup.findMany({
@@ -714,8 +800,8 @@ export async function issueCertificates(): Promise<number> {
 
 // ── CSV report rows ──────────────────────────────────────────────────────────
 
-export async function getVolunteerReportRows() {
-  const active = await activeVolunteerEvent();
+export async function getVolunteerReportRows(eventId?: string) {
+  const active = await resolveVolunteerEvent(eventId);
   if (!active) return { eventCode: null as string | null, rows: [] };
   const { event } = active;
   const signups = await db.volunteerSignup.findMany({

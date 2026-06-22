@@ -118,7 +118,7 @@ export default async function EventsPage() {
                 <div className="bg-accent px-4 py-3 text-accent-fg">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-semibold uppercase tracking-wide opacity-80">
-                      {TYPE_LABEL[e.type] ?? "Event"}
+                      {e.externallyHosted ? "Community booth" : TYPE_LABEL[e.type] ?? "Event"}
                     </span>
                     {e.status === "ACTIVE" && (
                       <span className="rounded-full bg-accent2 px-2 py-0.5 text-xs font-semibold text-accent2-fg">
@@ -132,9 +132,20 @@ export default async function EventsPage() {
                   <p className="mt-0.5 text-sm font-medium">
                     {formatWhen(e.startsAt, e.endsAt)}
                   </p>
+                  {e.location && (
+                    <p className="mt-0.5 text-sm font-medium opacity-90">
+                      {e.location}
+                      {e.externallyHosted && e.hostedByName
+                        ? ` · hosted by ${e.hostedByName}`
+                        : ""}
+                    </p>
+                  )}
                 </div>
 
                 <div className="mt-auto space-y-2 p-4">
+                  {e.description && (
+                    <p className="text-sm text-gray-600">{e.description}</p>
+                  )}
                   {primary && (
                     <Link
                       href={primary.href}

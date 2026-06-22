@@ -177,6 +177,20 @@ model Event {
   venueConfig Json      @default("{}")
   /// Optional hero image for the public events listing (one pic per event).
   imageUrl    String?
+  /// Human-facing location line, shown on the public card + volunteer signup.
+  /// General-purpose (camps + community events all have a "where"), e.g.
+  /// "Town Common, Main St, Westborough MA".
+  location    String?
+  /// Short blurb shown under the title on the public events card.
+  description String?
+  /// We have a presence at an event we do NOT run (e.g. a community booth at the
+  /// town's 4th of July). Drives a "Community booth" badge + guest-appropriate
+  /// copy. Explicit, rather than inferred from the offers* flag combination.
+  externallyHosted Boolean @default(false)
+  /// Who runs the host event (shown when externallyHosted), e.g. "Town of Westborough".
+  hostedByName String?
+  /// Optional link out to the host's official event page.
+  externalUrl  String?
   /// Which public actions this event offers (config-over-code). Defaults suit a
   /// ticketed camp; a community event we only attend turns registration off and
   /// keeps just volunteer signup, etc.

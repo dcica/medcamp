@@ -31,7 +31,41 @@ type Seed = {
   offersRegistration: boolean;
   offersVendors: boolean;
   offersVolunteers: boolean;
+  location?: string;
+  description?: string;
+  externallyHosted?: boolean;
+  hostedByName?: string;
+  externalUrl?: string;
+  volunteerRoles?: {
+    key: string;
+    name: string;
+    ageGroup: string;
+    minAge: number;
+    capacity: number;
+    shift?: string;
+    description?: string;
+  }[];
 };
+
+// Reusable volunteer-role templates. `key` is unique per event, so the same
+// template set can be shared across events without collision.
+type RoleSeed = NonNullable<Seed["volunteerRoles"]>[number];
+
+const COMMUNITY_VOL_ROLES: RoleSeed[] = [
+  { key: "setup", name: "Setup / Teardown", ageGroup: "16+", minAge: 16, capacity: 8, description: "Help set up and pack down stage, seating, and signage." },
+  { key: "reg-desk", name: "Registration / Ticket Desk", ageGroup: "16+", minAge: 16, capacity: 6, description: "Check in guests, scan tickets, and answer questions." },
+  { key: "greeter", name: "Greeter / Usher", ageGroup: "Any", minAge: 0, capacity: 6, description: "Welcome guests and help with seating and wayfinding." },
+  { key: "food", name: "Food Stall Helper", ageGroup: "16+", minAge: 16, capacity: 8, description: "Serve food and drinks and keep the stall stocked and tidy." },
+  { key: "cleanup", name: "Cleanup Crew", ageGroup: "Any", minAge: 0, capacity: 6, description: "Keep the venue tidy during the event and clear up afterward." },
+];
+
+const CAMP_VOL_ROLES: RoleSeed[] = [
+  { key: "reg", name: "Registration Helper", ageGroup: "16+", minAge: 16, capacity: 8, description: "Help patients register and print badges at the front desk." },
+  { key: "greet", name: "Greeter / Wayfinding", ageGroup: "Any", minAge: 0, capacity: 6, description: "Welcome patients and guide them between stations." },
+  { key: "translate", name: "Translator", ageGroup: "18+", minAge: 18, capacity: 4, description: "Interpret for patients and clinical volunteers." },
+  { key: "setup", name: "Setup / Teardown", ageGroup: "16+", minAge: 16, capacity: 10, description: "Set up and pack down stations, tents, and signage." },
+  { key: "runner", name: "Runner", ageGroup: "Any", minAge: 0, capacity: 5, description: "Move supplies and messages between stations as needed." },
+];
 
 const EVENTS: Seed[] = [
   {
@@ -41,10 +75,21 @@ const EVENTS: Seed[] = [
     startsAt: "2026-07-04T14:00:00Z",
     endsAt: "2026-07-04T18:00:00Z",
     imageUrl: null,
-    // Town's event — we attend, so volunteers only.
+    // Not our event — dcica runs a community booth at the town's celebration, so
+    // there is nothing to sell or register and no vendor play; volunteers only.
     offersRegistration: false,
     offersVendors: false,
     offersVolunteers: true,
+    externallyHosted: true,
+    hostedByName: "Town of Westborough",
+    location: "Town Common, Main St, Westborough MA",
+    description:
+      "dcica is hosting a community booth at the town's 4th of July celebration. Come volunteer with us — greet visitors, hand out flyers, and help run kids' activities.",
+    volunteerRoles: [
+      { key: "booth-host", name: "Booth Host", ageGroup: "Any", minAge: 0, capacity: 6, shift: "2:00–6:00 PM", description: "Welcome visitors, share what dcica does, and hand out flyers." },
+      { key: "booth-kids", name: "Kids' Activity Helper", ageGroup: "16+", minAge: 16, capacity: 4, shift: "2:00–6:00 PM", description: "Run face painting / crafts for kids at the booth." },
+      { key: "booth-setup", name: "Setup / Teardown", ageGroup: "16+", minAge: 16, capacity: 4, shift: "1:00–2:30 & 5:30–7:00 PM", description: "Help put up and pack down the booth, tent, and signage." },
+    ],
   },
   {
     code: "IND-2026",
@@ -57,6 +102,7 @@ const EVENTS: Seed[] = [
     offersRegistration: false,
     offersVendors: true,
     offersVolunteers: true,
+    volunteerRoles: COMMUNITY_VOL_ROLES,
   },
   {
     code: "DAN-2026",
@@ -68,6 +114,7 @@ const EVENTS: Seed[] = [
     offersRegistration: true,
     offersVendors: true,
     offersVolunteers: true,
+    volunteerRoles: COMMUNITY_VOL_ROLES,
   },
   {
     code: "DIW-2026",
@@ -79,6 +126,7 @@ const EVENTS: Seed[] = [
     offersRegistration: true,
     offersVendors: true,
     offersVolunteers: true,
+    volunteerRoles: COMMUNITY_VOL_ROLES,
   },
   {
     code: "HOLI-2027",
@@ -90,6 +138,7 @@ const EVENTS: Seed[] = [
     offersRegistration: true,
     offersVendors: true,
     offersVolunteers: true,
+    volunteerRoles: COMMUNITY_VOL_ROLES,
   },
   {
     code: "MC-2027",
@@ -102,6 +151,7 @@ const EVENTS: Seed[] = [
     offersRegistration: true,
     offersVendors: false,
     offersVolunteers: true,
+    volunteerRoles: CAMP_VOL_ROLES,
   },
 ];
 
@@ -134,8 +184,30 @@ async function main() {
         offersRegistration: e.offersRegistration,
         offersVendors: e.offersVendors,
         offersVolunteers: e.offersVolunteers,
+        location: e.location ?? null,
+        description: e.description ?? null,
+        externallyHosted: e.externallyHosted ?? false,
+        hostedByName: e.hostedByName ?? null,
+        externalUrl: e.externalUrl ?? null,
       },
     });
+
+    // Per-event volunteer roles (so the "Volunteer" CTA leads to a real form).
+    for (const r of e.volunteerRoles ?? []) {
+      await db.volunteerRole.create({
+        data: {
+          orgId: org.id,
+          eventId: event.id,
+          key: r.key,
+          name: r.name,
+          ageGroup: r.ageGroup,
+          minAge: r.minAge,
+          capacity: r.capacity,
+          shift: r.shift,
+          description: r.description,
+        },
+      });
+    }
 
     // The camp needs capacity caps so the registration portal can show + cap
     // its service menu, mirroring the base seed.

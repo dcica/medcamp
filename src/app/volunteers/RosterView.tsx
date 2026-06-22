@@ -32,7 +32,13 @@ const STATUS_LABEL: Record<SignupStatus, string> = {
   CANCELLED: "Cancelled",
 };
 
-export function RosterView({ roster }: { roster: VolunteerRoster }) {
+export function RosterView({
+  roster,
+  eventId,
+}: {
+  roster: VolunteerRoster;
+  eventId: string;
+}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -60,7 +66,7 @@ export function RosterView({ roster }: { roster: VolunteerRoster }) {
         <button
           type="button"
           disabled={pending}
-          onClick={() => run(sendRemindersAction)}
+          onClick={() => run(() => sendRemindersAction(eventId))}
           className="min-h-tap rounded-lg border border-gray-300 px-3 text-sm font-medium disabled:opacity-50"
         >
           Send 24–48h reminders
@@ -68,13 +74,13 @@ export function RosterView({ roster }: { roster: VolunteerRoster }) {
         <button
           type="button"
           disabled={pending}
-          onClick={() => run(issueCertificatesAction)}
+          onClick={() => run(() => issueCertificatesAction(eventId))}
           className="min-h-tap rounded-lg border border-gray-300 px-3 text-sm font-medium disabled:opacity-50"
         >
           Issue certificates
         </button>
         <a
-          href="/api/reports/volunteers"
+          href={`/api/reports/volunteers?event=${eventId}`}
           className="min-h-tap rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium"
         >
           Export roster CSV ↓

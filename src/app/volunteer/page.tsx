@@ -13,10 +13,10 @@ export const dynamic = "force-dynamic";
 export default async function VolunteerSignupPage({
   searchParams,
 }: {
-  searchParams: Promise<{ src?: string }>;
+  searchParams: Promise<{ src?: string; event?: string }>;
 }) {
-  const { src } = await searchParams;
-  const view = await getVolunteerSignupView();
+  const { src, event } = await searchParams;
+  const view = await getVolunteerSignupView(event);
 
   if (!view) {
     return (
@@ -39,12 +39,15 @@ export default async function VolunteerSignupPage({
     year: "numeric",
   });
 
+  const subtitleParts = [view.eventName, day];
+  if (view.location) subtitleParts.push(view.location);
+
   return (
     <main className="mx-auto max-w-screen-sm px-4 py-8">
       <PageHelp
         id="volunteer-signup"
         title="Volunteer sign-up"
-        subtitle={`${view.eventName} · ${day}`}
+        subtitle={subtitleParts.join(" · ")}
         items={[
           {
             label: "Service hours",
@@ -64,6 +67,14 @@ export default async function VolunteerSignupPage({
           },
         ]}
       />
+      {view.externallyHosted && (
+        <div className="mt-4 rounded-lg border border-brand/30 bg-brand/5 px-4 py-3 text-sm text-gray-700">
+          <p className="font-semibold text-brand">
+            Community booth{view.hostedByName ? ` · hosted by ${view.hostedByName}` : ""}
+          </p>
+          {view.description && <p className="mt-1">{view.description}</p>}
+        </div>
+      )}
       <VolunteerSignupForm
         roles={view.roles}
         sourceTag={normalizeSourceTag(src)}

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireVolunteerCoordinator } from "@/server/admin";
-import { getVolunteerRoster } from "@/server/volunteers";
+import { getVolunteerRoster, listVolunteerEvents } from "@/server/volunteers";
 import { AutoRefresh } from "@/app/dashboard/AutoRefresh";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { RosterView } from "./RosterView";
@@ -10,10 +10,20 @@ export const dynamic = "force-dynamic";
 /**
  * Volunteer coordinator dashboard (Module 9 §5). Live roster, per-role staffing
  * vs. target, source attribution, hours adjustment, reminders + certificates.
+ * The org can have several events taking volunteers at once (a camp + community
+ * events); the ?event= picker selects which one this dashboard manages.
  */
-export default async function VolunteersDashboardPage() {
+export default async function VolunteersDashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ event?: string }>;
+}) {
   await requireVolunteerCoordinator();
-  const roster = await getVolunteerRoster();
+  const { event: eventId } = await searchParams;
+  const [roster, events] = await Promise.all([
+    getVolunteerRoster(eventId),
+    listVolunteerEvents(),
+  ]);
 
   if (!roster) {
     return (
@@ -41,6 +51,31 @@ export default async function VolunteersDashboardPage() {
         </div>
         <AutoRefresh />
       </div>
+
+      {events.length > 1 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {events.map((e) => {
+            const selected = e.id === roster.eventId;
+            return (
+              <Link
+                key={e.id}
+                href={`/volunteers?event=${e.id}`}
+                aria-current={selected ? "page" : undefined}
+                className={`min-h-tap inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium ${
+                  selected
+                    ? "border-brand bg-brand text-brand-fg"
+                    : "border-gray-300 text-gray-700"
+                }`}
+              >
+                {e.name}
+                {e.status === "ACTIVE" && (
+                  <span className="ml-1.5 text-xs opacity-80">· live</span>
+                )}
+              </Link>
+            );
+          })}
+        </div>
+      )}
 
       <div className="mt-3 flex flex-wrap gap-3 text-sm">
         <Link href="/volunteers/counselors" className="text-brand underline">
@@ -76,7 +111,7 @@ export default async function VolunteersDashboardPage() {
       </div>
 
       <div className="mt-4">
-        <RosterView roster={roster} />
+        <RosterView roster={roster} eventId={roster.eventId} />
       </div>
     </main>
   );
