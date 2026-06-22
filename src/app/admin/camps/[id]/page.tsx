@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { CampControls } from "./CampControls";
+import { EventFlags } from "./EventFlags";
 
 export const dynamic = "force-dynamic";
 
@@ -105,6 +106,22 @@ export default async function CampDetailPage({
         >
           Volunteer roles →
         </Link>
+      </div>
+
+      {/* Registration & policy flags */}
+      <div>
+        <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
+          Registration &amp; policy
+        </h3>
+        <EventFlags
+          id={camp.id}
+          initial={{
+            collectsAttendeeDetails: camp.collectsAttendeeDetails,
+            acceptsDonations: camp.acceptsDonations,
+            honorsMembership: camp.honorsMembership,
+            allowsRefunds: camp.allowsRefunds,
+          }}
+        />
       </div>
 
       {/* Lifecycle */}

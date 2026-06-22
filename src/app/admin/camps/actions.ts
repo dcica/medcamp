@@ -128,6 +128,33 @@ export async function transitionCamp(
   return { ok: true };
 }
 
+/** Per-event configuration flags (registration mode, donation, membership, refund). */
+export async function setEventFlags(
+  id: string,
+  flags: {
+    collectsAttendeeDetails: boolean;
+    acceptsDonations: boolean;
+    honorsMembership: boolean;
+    allowsRefunds: boolean;
+  },
+): Promise<ActionResult> {
+  await requireAdmin();
+  const org = await getActiveOrg();
+  if (!org) return { ok: false, error: "No active org." };
+  const res = await db.event.updateMany({
+    where: { id, orgId: org.id },
+    data: {
+      collectsAttendeeDetails: flags.collectsAttendeeDetails,
+      acceptsDonations: flags.acceptsDonations,
+      honorsMembership: flags.honorsMembership,
+      allowsRefunds: flags.allowsRefunds,
+    },
+  });
+  if (res.count === 0) return { ok: false, error: "Camp not found." };
+  revalidatePath(`/admin/camps/${id}`);
+  return { ok: true };
+}
+
 export async function setWalkIn(
   id: string,
   open: boolean,

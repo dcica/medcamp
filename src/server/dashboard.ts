@@ -99,15 +99,24 @@ export async function getDashboard(): Promise<DashboardData> {
     byMethodMap.set(p.method, m);
   }
 
-  const pendingAddon = await db.lineItem.aggregate({
+  // Quantity-aware sum (a line's total is amountCents × quantity).
+  const pendingAddonItems = await db.lineItem.findMany({
     where: {
       attendee: { eventId: camp.id },
       addedOnsite: true,
       status: "PENDING_PAYMENT",
     },
-    _sum: { amountCents: true },
-    _count: true,
+    select: { amountCents: true, quantity: true },
   });
+  const pendingAddon = {
+    _sum: {
+      amountCents: pendingAddonItems.reduce(
+        (s, li) => s + li.amountCents * li.quantity,
+        0,
+      ),
+    },
+    _count: pendingAddonItems.length,
+  };
 
   return {
     campName: camp.name,
