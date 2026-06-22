@@ -65,21 +65,28 @@ export async function getGateView(rawCode: string): Promise<GateView | null> {
     where: { orgId: org.id, campId },
     include: {
       event: true,
-      order: { include: { lineItems: true } },
-      lineItems: { include: { serviceType: true } },
+      order: { include: { lineItems: { include: { serviceType: true } } } },
     },
   });
   if (!attendee) return null;
 
   const amountOwedCents = attendee.order.lineItems
     .filter((li) => li.status === "PENDING_PAYMENT")
-    .reduce((s, li) => s + li.amountCents, 0);
+    .reduce((s, li) => s + li.amountCents * li.quantity, 0);
 
-  const pickupItems = attendee.lineItems
-    .filter((li) => li.serviceType?.fulfillable)
+  // Merch to hand over: fulfillable items attached to THIS ticket OR to the
+  // order itself (quantity-mode merch is order-level). Quantity shown in name.
+  const pickupItems = attendee.order.lineItems
+    .filter(
+      (li) =>
+        li.serviceType?.fulfillable &&
+        (li.attendeeId === attendee.id || li.attendeeId === null),
+    )
     .map((li) => ({
       lineItemId: li.id,
-      name: li.serviceType?.name ?? li.description,
+      name:
+        (li.serviceType?.name ?? li.description) +
+        (li.quantity > 1 ? ` ×${li.quantity}` : ""),
       fulfilledAt: li.fulfilledAt,
     }));
 
@@ -212,12 +219,18 @@ export async function sellAtGate(
   });
   if (!event) throw new Error("Event not found.");
 
-  const services = await db.serviceType.findMany({
-    where: { id: { in: serviceTypeIds }, orgId: org.id, active: true },
+  // Resolve via this event's offerings so the gate charges the per-event price.
+  const offerings = await db.serviceCap.findMany({
+    where: {
+      eventId: event.id,
+      serviceTypeId: { in: serviceTypeIds },
+      serviceType: { orgId: org.id, active: true },
+    },
+    include: { serviceType: true },
   });
-  const byId = new Map(services.map((s) => [s.id, s]));
+  const byId = new Map(offerings.map((o) => [o.serviceTypeId, o]));
   for (const id of serviceTypeIds) {
-    if (!byId.has(id)) throw new Error("Unknown or inactive item.");
+    if (!byId.has(id)) throw new Error("Item not offered at this event.");
   }
 
   const name = opts.buyerName?.trim() || "Gate sale";
@@ -243,14 +256,14 @@ export async function sellAtGate(
 
   await db.lineItem.createMany({
     data: serviceTypeIds.map((id) => {
-      const st = byId.get(id)!;
+      const offering = byId.get(id)!;
       return {
         orgId: org.id,
         orderId: order.id,
         attendeeId,
-        serviceTypeId: st.id,
-        description: `${st.name} — ${name}`,
-        amountCents: st.priceCents,
+        serviceTypeId: offering.serviceTypeId,
+        description: `${offering.serviceType.name} — ${name}`,
+        amountCents: offering.priceCents,
         status: "PENDING_PAYMENT" as const,
       };
     }),
@@ -305,25 +318,23 @@ export async function getGateCatalog(eventId: string): Promise<{
 }> {
   const org = await getActiveOrg();
   if (!org) return { admission: [], merch: [] };
-  const services = await db.serviceType.findMany({
-    where: {
-      orgId: org.id,
-      active: true,
-      caps: { some: { eventId } },
-    },
-    orderBy: { name: "asc" },
+  // Per-event offerings (caps), priced from the cap not the catalogue.
+  const offerings = await db.serviceCap.findMany({
+    where: { eventId, serviceType: { orgId: org.id, active: true } },
+    include: { serviceType: true },
+    orderBy: { serviceType: { name: "asc" } },
   });
   return {
-    admission: services
-      .filter((s) => !s.fulfillable && !s.hasLab)
-      .map((s) => ({ id: s.id, name: s.name, priceCents: s.priceCents })),
-    merch: services
-      .filter((s) => s.fulfillable)
-      .map((s) => ({
-        id: s.id,
-        name: s.name,
-        priceCents: s.priceCents,
-        colorHex: s.colorHex,
+    admission: offerings
+      .filter((o) => !o.serviceType.fulfillable && !o.serviceType.hasLab)
+      .map((o) => ({ id: o.serviceType.id, name: o.serviceType.name, priceCents: o.priceCents })),
+    merch: offerings
+      .filter((o) => o.serviceType.fulfillable)
+      .map((o) => ({
+        id: o.serviceType.id,
+        name: o.serviceType.name,
+        priceCents: o.priceCents,
+        colorHex: o.serviceType.colorHex,
       })),
   };
 }

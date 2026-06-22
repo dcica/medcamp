@@ -37,10 +37,27 @@ export default async function RegisterPage({
     );
   }
 
-  const services = await db.serviceType.findMany({
+  // Only services offered at THIS event (have a cap), priced per-event from the
+  // cap. Capacity is enforced atomically at payment confirmation, not here.
+  const offerings = await db.serviceCap.findMany({
+    where: { eventId: event.id, serviceType: { active: true } },
+    include: { serviceType: true },
+    orderBy: { serviceType: { name: "asc" } },
+  });
+  const services = offerings.map((o) => ({
+    key: o.serviceType.key,
+    name: o.serviceType.name,
+    priceCents: o.priceCents,
+    colorHex: o.serviceType.colorHex,
+    /** Non-fulfillable services are admission (scannable); merch is fulfillable. */
+    fulfillable: o.serviceType.fulfillable,
+  }));
+
+  // Active family membership plans (shown as an add-on / compare on the form).
+  const plans = await db.membershipPlan.findMany({
     where: { orgId: event.orgId, active: true },
-    orderBy: { name: "asc" },
-    select: { key: true, name: true, priceCents: true, colorHex: true },
+    orderBy: { termYears: "asc" },
+    select: { id: true, name: true, termYears: true, priceCents: true, partySize: true },
   });
 
   return (
@@ -72,7 +89,15 @@ export default async function RegisterPage({
           },
         ]}
       />
-      <RegisterForm eventId={event.id} services={services} />
+      <RegisterForm
+        eventId={event.id}
+        services={services}
+        collectsAttendeeDetails={event.collectsAttendeeDetails}
+        acceptsDonations={event.acceptsDonations}
+        honorsMembership={event.honorsMembership}
+        allowsRefunds={event.allowsRefunds}
+        plans={plans}
+      />
     </main>
   );
 }

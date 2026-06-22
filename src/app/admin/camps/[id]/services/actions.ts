@@ -21,13 +21,15 @@ type RowInput = {
   hasLab: boolean;
   fulfillable: boolean;
   active: boolean;
+  /** Whether this service is offered at THIS event (controls cap existence). */
+  offered: boolean;
   capacity: number;
 };
 
-/** Create a new org service + its cap for this camp. */
+/** Create a new catalogue service + offer it at this camp (cap with price). */
 export async function createService(
   eventId: string,
-  input: Omit<RowInput, "active">,
+  input: Omit<RowInput, "active" | "offered">,
 ): Promise<ActionResult> {
   await requireAdmin();
   const org = await getActiveOrg();
@@ -45,12 +47,14 @@ export async function createService(
   });
   if (exists) return { ok: false, error: `A service "${key}" already exists.` };
 
+  const priceCents = Math.max(0, Math.round(input.priceDollars * 100));
   const service = await db.serviceType.create({
     data: {
       orgId: org.id,
       key,
       name: input.name.trim(),
-      priceCents: Math.round(input.priceDollars * 100),
+      // Catalogue default price (seeds future offerings); per-event price below.
+      priceCents,
       colorHex: input.colorHex,
       hasLab: input.hasLab,
       fulfillable: input.fulfillable,
@@ -60,6 +64,7 @@ export async function createService(
     data: {
       eventId,
       serviceTypeId: service.id,
+      priceCents,
       capacity: Math.max(0, Math.round(input.capacity)),
     },
   });
@@ -67,7 +72,11 @@ export async function createService(
   return { ok: true };
 }
 
-/** Update an org service + upsert its per-camp cap. */
+/**
+ * Update a service's catalogue attributes (org-wide) and its per-event offering.
+ * Price + capacity live on the per-event cap; toggling `offered` adds/removes the
+ * offering (and thus whether the service appears in this event's registration).
+ */
 export async function saveServiceRow(
   eventId: string,
   serviceId: string,
@@ -82,35 +91,53 @@ export async function saveServiceRow(
   });
   if (!service) return { ok: false, error: "Service not found." };
 
+  const priceCents = Math.max(0, Math.round(input.priceDollars * 100));
   const capacity = Math.max(0, Math.round(input.capacity));
   const existingCap = await db.serviceCap.findUnique({
     where: { eventId_serviceTypeId: { eventId, serviceTypeId: serviceId } },
   });
-  if (existingCap && capacity < existingCap.sold) {
-    return {
-      ok: false,
-      error: `Capacity can't be below ${existingCap.sold} already sold.`,
-    };
-  }
 
-  await db.$transaction([
-    db.serviceType.update({
-      where: { id: serviceId },
-      data: {
-        name: input.name.trim(),
-        priceCents: Math.round(input.priceDollars * 100),
-        colorHex: input.colorHex,
-        hasLab: input.hasLab,
-        fulfillable: input.fulfillable,
-        active: input.active,
-      },
-    }),
-    db.serviceCap.upsert({
-      where: { eventId_serviceTypeId: { eventId, serviceTypeId: serviceId } },
-      update: { capacity },
-      create: { eventId, serviceTypeId: serviceId, capacity },
-    }),
-  ]);
+  // Catalogue attributes (org-wide). Price is NOT here — it's per-event.
+  const updateCatalog = db.serviceType.update({
+    where: { id: serviceId },
+    data: {
+      name: input.name.trim(),
+      colorHex: input.colorHex,
+      hasLab: input.hasLab,
+      fulfillable: input.fulfillable,
+      active: input.active,
+    },
+  });
+
+  if (!input.offered) {
+    if (existingCap && existingCap.sold > 0) {
+      return {
+        ok: false,
+        error: `Can't remove — ${existingCap.sold} already sold this camp.`,
+      };
+    }
+    await db.$transaction([
+      updateCatalog,
+      ...(existingCap
+        ? [db.serviceCap.delete({ where: { id: existingCap.id } })]
+        : []),
+    ]);
+  } else {
+    if (existingCap && capacity < existingCap.sold) {
+      return {
+        ok: false,
+        error: `Capacity can't be below ${existingCap.sold} already sold.`,
+      };
+    }
+    await db.$transaction([
+      updateCatalog,
+      db.serviceCap.upsert({
+        where: { eventId_serviceTypeId: { eventId, serviceTypeId: serviceId } },
+        update: { priceCents, capacity },
+        create: { eventId, serviceTypeId: serviceId, priceCents, capacity },
+      }),
+    ]);
+  }
   revalidatePath(`/admin/camps/${eventId}/services`);
   return { ok: true };
 }

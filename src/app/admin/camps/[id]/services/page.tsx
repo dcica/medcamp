@@ -41,7 +41,8 @@ export default async function CampServicesPage({
         </Link>
         <h2 className="mt-2 text-lg font-bold">Services &amp; caps</h2>
         <p className="text-xs text-gray-500">
-          Menu is shared across camps; capacity applies to this camp.
+          Catalogue is shared across camps; price, capacity, and which services
+          are offered apply to this camp only.
         </p>
       </div>
 
@@ -49,8 +50,12 @@ export default async function CampServicesPage({
         id="admin-services"
         items={[
           {
-            label: "Service menu",
-            body: "Name, price, and color are shared across every camp in this organization — editing one changes it everywhere.",
+            label: "Catalogue vs camp",
+            body: "Name, color, lab, and merch are catalogue attributes shared across every camp. Price, capacity, and whether the service is offered are per-camp — the same service can cost different amounts at different events.",
+          },
+          {
+            label: "Offered at this camp",
+            body: "Untick to drop a catalogue service from THIS camp — it won't appear in this event's registration. Not all services are offered at every event.",
           },
           {
             label: "Capacity",
@@ -76,11 +81,14 @@ export default async function CampServicesPage({
         services={services.map((s) => ({
           id: s.id,
           name: s.name,
-          priceDollars: s.priceCents / 100,
+          // Per-event price (cap) when offered here; else the catalogue default
+          // as a starting point for a new offering.
+          priceDollars: (s.caps[0]?.priceCents ?? s.priceCents) / 100,
           colorHex: s.colorHex,
           hasLab: s.hasLab,
           fulfillable: s.fulfillable,
           active: s.active,
+          offered: s.caps.length > 0,
           capacity: s.caps[0]?.capacity ?? 0,
           sold: s.caps[0]?.sold ?? 0,
         }))}

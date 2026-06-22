@@ -119,7 +119,8 @@ export async function confirmOrderPaid(
     const counts = new Map<string, number>(); // serviceTypeId -> qty
     for (const li of order.lineItems) {
       if (li.serviceTypeId) {
-        counts.set(li.serviceTypeId, (counts.get(li.serviceTypeId) ?? 0) + 1);
+        // quantity-aware: a qty-3 admission line consumes 3 cap units.
+        counts.set(li.serviceTypeId, (counts.get(li.serviceTypeId) ?? 0) + li.quantity);
       }
     }
     for (const [serviceTypeId, qty] of counts) {
@@ -175,7 +176,10 @@ export async function confirmOrderPaid(
       data: { status: "PAID" },
     });
 
-    const totalCents = order.lineItems.reduce((s, li) => s + li.amountCents, 0);
+    const totalCents = order.lineItems.reduce(
+      (s, li) => s + li.amountCents * li.quantity,
+      0,
+    );
 
     // ── Record/settle the payment + ledger (decision #6) ──
     const existing = input.stripeCheckoutId

@@ -41,6 +41,8 @@ model Organization {
   memberships  Membership[]
   events       Event[]
   serviceTypes ServiceType[]
+  membershipPlans MembershipPlan[]
+  members      Member[]
   volunteers   Volunteer[]
   counselors   Counselor[]
   payments     Payment[]
@@ -181,6 +183,20 @@ model Event {
   offersRegistration Boolean @default(true)
   offersVendors      Boolean @default(true)
   offersVolunteers   Boolean @default(true)
+  /// Registration mode. True (medcamp/CAMP): collect a per-attendee profile
+  /// (name, mailing address, per-person services) — the "patient" record. False
+  /// (admission/merch events like a dandiya night): quantity-only checkout — N
+  /// anonymous scannable tickets + merch, no per-person details.
+  collectsAttendeeDetails Boolean @default(true)
+  /// Refund policy. False (default): no refunds, including no-shows. True is a
+  /// per-event override (e.g. the org reschedules) that permits refund/reschedule.
+  allowsRefunds      Boolean @default(false)
+  /// Whether the registration form offers an optional, purchaser-entered
+  /// donation (free-form amount → a variable LineItem flagged isDonation).
+  acceptsDonations   Boolean @default(true)
+  /// Whether a current family membership admits the member's party free here
+  /// (drives the "add membership" compare/upsell at registration + gate comp).
+  honorsMembership   Boolean @default(false)
   /// When walk-in registration opens day-of (coordinator toggle). Null = closed.
   walkInOpensAt DateTime?
   /// Monotonic per-event counter for attendee campId sequence (NNNN). Incremented
@@ -212,14 +228,17 @@ model Event {
 
 // ── Service menu & capacity (config-over-code) ───────────────────────────────
 
-/// Org-level catalogue of offerable services. Priced in cents. Reused across
-/// events; per-event availability + caps are set via ServiceCap.
+/// Org-level catalogue of offerable services. Reused across events; the actual
+/// price + capacity for a given event live on the per-event offering (ServiceCap),
+/// so the same catalogue service can be coded at different prices per event.
 model ServiceType {
   id          String       @id @default(cuid())
   orgId       String
   org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   key         String // stable slug, e.g. "vision", "dental", "bloodwork"
   name        String
+  /// Catalogue DEFAULT price (cents). Pre-fills a new per-event offering; the
+  /// authoritative price charged is ServiceCap.priceCents for that event.
   priceCents  Int          @default(0)
   /// Display color for badge service dots.
   colorHex    String       @default("#888888")
@@ -246,12 +265,65 @@ model ServiceCap {
   event         Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
   serviceTypeId String
   serviceType   ServiceType @relation(fields: [serviceTypeId], references: [id], onDelete: Cascade)
+  /// Per-event price (cents) for this service — the authoritative charge. The
+  /// same catalogue service can be coded at different prices per event. Seeded
+  /// from ServiceType.priceCents when an offering is first created.
+  priceCents    Int         @default(0)
   capacity      Int // null-equivalent: very large number for "uncapped"
   sold          Int         @default(0)
 
   @@unique([eventId, serviceTypeId])
   @@index([eventId])
   @@map("service_caps")
+}
+
+// ── Family membership (platform-level — NOT camp-scoped, NOT PHI) ────────────
+//
+// Annual/multi-year family membership. No tiers — one family product sold on
+// 1/2/5-year plans. A current membership admits the family's party free at
+// events that honor it (Event.honorsMembership), and is offered as a compare/
+// upsell against per-event admission on the registration form.
+
+/// A membership plan (catalogue, config-over-code). Term in years; family-only.
+model MembershipPlan {
+  id         String       @id @default(cuid())
+  orgId      String
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  key        String // stable slug, e.g. "family-2yr"
+  name       String // e.g. "Family Membership — 2 Year"
+  termYears  Int
+  priceCents Int          @default(0)
+  /// Family size admitted free at honoring events.
+  partySize  Int          @default(4)
+  active     Boolean      @default(true)
+
+  members   Member[]
+  lineItems LineItem[]
+
+  @@unique([orgId, key])
+  @@index([orgId])
+  @@map("membership_plans")
+}
+
+/// A family membership instance (org-scoped, deduped by email). Persists across
+/// events; NOT subject to the No-PHI purge. validTo extends on renewal.
+model Member {
+  id        String          @id @default(cuid())
+  orgId     String
+  org       Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name      String // primary member / family name
+  email     String
+  phone     String?
+  planId    String?
+  plan      MembershipPlan? @relation(fields: [planId], references: [id], onDelete: SetNull)
+  partySize Int             @default(4)
+  validFrom DateTime        @default(now())
+  validTo   DateTime
+  createdAt DateTime        @default(now())
+
+  @@unique([orgId, email])
+  @@index([orgId])
+  @@map("members")
 }
 
 // ── Orders / Attendees ───────────────────────────────────────────────────────
@@ -363,8 +435,20 @@ model LineItem {
   serviceTypeId String?
   serviceType   ServiceType? @relation(fields: [serviceTypeId], references: [id], onDelete: SetNull)
 
+  /// Set when this line is a membership purchase (links the plan bought). Flags
+  /// membership revenue for reconciliation, like isDonation does for donations.
+  membershipPlanId String?
+  membershipPlan   MembershipPlan? @relation(fields: [membershipPlanId], references: [id], onDelete: SetNull)
+
   description String
+  /// Per-unit price (cents). Line total = amountCents * quantity.
   amountCents Int
+  /// Units bought on this line. >1 for quantity-mode admission/merch
+  /// ("5 sticks" = one line, qty 5). Per-attendee camp services stay qty 1.
+  quantity    Int            @default(1)
+  /// A purchaser-entered donation (variable amount, no serviceType). Flagged so
+  /// reconciliation/reports break donations out from service revenue.
+  isDonation  Boolean        @default(false)
   status      LineItemStatus @default(PENDING_PAYMENT)
   /// True if added mid-visit by a doctor (routes patient back to registration).
   addedOnsite Boolean        @default(false)

@@ -11,6 +11,8 @@ export type ServiceRow = {
   hasLab: boolean;
   fulfillable: boolean;
   active: boolean;
+  /** Offered at THIS camp (has a per-event offering / cap). */
+  offered: boolean;
   capacity: number;
   sold: number;
 };
@@ -70,6 +72,7 @@ function ServiceCard({
   const [hasLab, setHasLab] = useState(row.hasLab);
   const [fulfillable, setFulfillable] = useState(row.fulfillable);
   const [active, setActive] = useState(row.active);
+  const [offered, setOffered] = useState(row.offered);
   const [capacity, setCapacity] = useState(String(row.capacity));
 
   return (
@@ -90,7 +93,7 @@ function ServiceCard({
 
       <div className="grid grid-cols-2 gap-3">
         <label className="text-sm text-gray-600">
-          Price ($)
+          Price ($) — this camp
           <input
             type="number"
             min="0"
@@ -111,6 +114,20 @@ function ServiceCard({
           />
         </label>
       </div>
+      <label className="flex min-h-tap items-center gap-2 text-sm font-medium">
+        <input
+          type="checkbox"
+          className="h-5 w-5"
+          checked={offered}
+          onChange={(e) => setOffered(e.target.checked)}
+        />
+        Offered at this camp
+        {!offered && (
+          <span className="text-xs font-normal text-gray-400">
+            (hidden from this event&apos;s registration)
+          </span>
+        )}
+      </label>
       <p className="text-xs text-gray-400">{row.sold} sold this camp</p>
 
       <div className="flex flex-wrap gap-4">
@@ -155,6 +172,7 @@ function ServiceCard({
               hasLab,
               fulfillable,
               active,
+              offered,
               capacity: Number(capacity) || 0,
             }),
           )

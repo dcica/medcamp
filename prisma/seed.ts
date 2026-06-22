@@ -62,7 +62,7 @@ async function main() {
     await db.serviceCap.upsert({
       where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: s.id } },
       update: {},
-      create: { eventId: event.id, serviceTypeId: s.id, capacity: 200 },
+      create: { eventId: event.id, serviceTypeId: s.id, priceCents: s.priceCents, capacity: 200 },
     });
   }
 

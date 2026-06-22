@@ -145,7 +145,7 @@ async function main() {
       });
       for (const s of services) {
         await db.serviceCap.create({
-          data: { eventId: event.id, serviceTypeId: s.id, capacity: 200 },
+          data: { eventId: event.id, serviceTypeId: s.id, priceCents: s.priceCents, capacity: 200 },
         });
       }
     }

@@ -142,7 +142,7 @@ async function main() {
   }
   for (const s of services) {
     await db.serviceCap.create({
-      data: { eventId: camp.id, serviceTypeId: s.id, capacity: 200 },
+      data: { eventId: camp.id, serviceTypeId: s.id, priceCents: s.priceCents, capacity: 200 },
     });
   }
 
@@ -558,7 +558,7 @@ async function main() {
   for (const s of dandiaSvc.values()) {
     // confirmOrderPaid requires a cap row per sellable service; 1000 ≈ uncapped.
     await db.serviceCap.create({
-      data: { eventId: dandia.id, serviceTypeId: s.id, capacity: 1000 },
+      data: { eventId: dandia.id, serviceTypeId: s.id, priceCents: s.priceCents, capacity: 1000 },
     });
   }
 
