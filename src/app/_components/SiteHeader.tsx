@@ -1,15 +1,21 @@
 import Image from "next/image";
 import Link from "next/link";
+import { getCurrentMember } from "@/server/session";
+import { StaffMenu } from "./StaffMenu";
 
 /**
- * Global top bar. Gives every screen a home anchor and a staff sign-in link —
- * deep-linked sub-pages (e.g. /station, /dashboard) had no way back before
- * this. Hidden on print so badge labels render clean (see .no-print).
+ * Global top bar. Gives every screen a home anchor. For signed-in members it
+ * shows the staff Menu (the operational module index — registration, check-in,
+ * stations, dashboard, admin — that used to sit on the home page); for everyone
+ * else it shows a sign-in link. Hidden on print so badge labels render clean
+ * (see .no-print).
  *
  * The wordmark is the short brand mark ("dcica") so it doesn't duplicate the
  * home page's "dcica platform" h1.
  */
-export function SiteHeader() {
+export async function SiteHeader() {
+  const member = await getCurrentMember();
+
   return (
     // Saffron bar mirrors dcica.org's nav; navy wordmark matches the DCICA logo.
     <header className="no-print bg-accent text-accent-fg">
@@ -34,12 +40,22 @@ export function SiteHeader() {
           >
             Events
           </Link>
-          <Link
-            href="/login"
-            className="flex min-h-tap items-center text-sm font-medium text-brand"
-          >
-            Staff sign in
-          </Link>
+          {member ? (
+            <StaffMenu
+              name={member.name ?? member.email}
+              isAdmin={
+                member.role === "COORDINATOR" ||
+                member.role === "COMMITTEE_ADMIN"
+              }
+            />
+          ) : (
+            <Link
+              href="/login"
+              className="flex min-h-tap items-center text-sm font-medium text-brand"
+            >
+              Staff sign in
+            </Link>
+          )}
         </nav>
       </div>
     </header>
