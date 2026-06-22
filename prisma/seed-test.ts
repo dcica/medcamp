@@ -95,9 +95,56 @@ async function main() {
   const services = await db.serviceType.findMany({ where: { orgId: org.id } });
   const svcByKey = new Map(services.map((s) => [s.key, s]));
 
+  // ── Family membership (platform-level; NOT camp-scoped, NOT PHI) ──
+  // Plans (catalogue) + a few member instances spanning current / expiring /
+  // expired so the membership admin and the gate's membership-comp lookup have
+  // realistic data. A current membership admits the family free at honoring events.
+  const YEAR = 365 * 24 * 3600 * 1000;
+  const now = Date.now();
+  const MEMBERSHIP_PLANS = [
+    { key: "family-1yr", name: "Family Membership — 1 Year", termYears: 1, priceCents: 5100, partySize: 5 },
+    { key: "family-2yr", name: "Family Membership — 2 Year", termYears: 2, priceCents: 10100, partySize: 5 },
+    { key: "family-5yr", name: "Family Membership — 5 Year", termYears: 5, priceCents: 25100, partySize: 5 },
+  ];
+  for (const p of MEMBERSHIP_PLANS) {
+    await db.membershipPlan.upsert({
+      where: { orgId_key: { orgId: org.id, key: p.key } },
+      update: { name: p.name, termYears: p.termYears, priceCents: p.priceCents, partySize: p.partySize },
+      create: { orgId: org.id, ...p },
+    });
+  }
+  const plans = await db.membershipPlan.findMany({ where: { orgId: org.id } });
+  const planByKey = new Map(plans.map((p) => [p.key, p]));
+
+  // Member instances (idempotent by the @member.test domain).
+  await db.member.deleteMany({ where: { orgId: org.id, email: { endsWith: "@member.test" } } });
+  const MEMBERS = [
+    { name: "The Kapoor Family", email: "kapoor@member.test", plan: "family-2yr", validTo: new Date(now + 1.5 * YEAR) }, // current
+    { name: "The Mehta Family", email: "mehta@member.test", plan: "family-1yr", validTo: new Date(now + 0.2 * YEAR) }, // current, expiring soon
+    { name: "The Shah Family", email: "shah@member.test", plan: "family-5yr", validTo: new Date(now + 4 * YEAR) }, // current
+    { name: "The Rao Family", email: "rao@member.test", plan: "family-1yr", validTo: new Date(now - 0.1 * YEAR) }, // expired
+  ];
+  for (const m of MEMBERS) {
+    const plan = planByKey.get(m.plan)!;
+    await db.member.create({
+      data: {
+        orgId: org.id,
+        name: m.name,
+        email: m.email,
+        planId: plan.id,
+        partySize: plan.partySize,
+        validFrom: new Date(m.validTo.getTime() - plan.termYears * YEAR),
+        validTo: m.validTo,
+      },
+    });
+  }
+
   // ── Rebuild the test camp idempotently ──
   const existing = await db.event.findFirst({ where: { orgId: org.id, code: CAMP_CODE } });
   if (existing) {
+    // Ledger entries survive a payment/line-item delete (FK SetNull), so clear the
+    // ones this seed wrote (memo is prefixed with the event code) to stay idempotent.
+    await db.ledgerEntry.deleteMany({ where: { orgId: org.id, memo: { startsWith: CAMP_CODE } } });
     // Payments survive an order delete (orderId SetNull), so clear them first.
     await db.payment.deleteMany({ where: { order: { eventId: existing.id } } });
     await db.event.delete({ where: { id: existing.id } }); // cascades the rest
@@ -154,6 +201,7 @@ async function main() {
     route: { key: string; status: VisitStatus }[];
     addon?: string; // serviceKey added on-site (PENDING_PAYMENT)
     lab?: "PENDING" | "RECEIVED" | "MAILED";
+    donationCents?: number; // optional purchaser-entered donation (isDonation line)
   };
 
   const specs: Spec[] = [];
@@ -253,6 +301,10 @@ async function main() {
     });
   }
 
+  // A couple of registrants add an optional donation at checkout (acceptsDonations).
+  specs[0].donationCents = 2500;
+  specs[10].donationCents = 1000;
+
   // ── Materialize the specs ──
   let seq = 1;
   const baseTime = camp.startsAt.getTime();
@@ -263,7 +315,9 @@ async function main() {
     seq++;
 
     const paidServices = spec.services.map((k) => svcByKey.get(k)!).filter(Boolean);
-    const paidCents = paidServices.reduce((s, x) => s + x.priceCents, 0);
+    const serviceCents = paidServices.reduce((s, x) => s + x.priceCents, 0);
+    const donationCents = spec.donationCents ?? 0;
+    const paidCents = serviceCents + donationCents;
     const checkInAt = spec.checkedIn ? new Date(baseTime + idx * 60_000) : null;
 
     const order = await db.order.create({
@@ -281,7 +335,7 @@ async function main() {
     });
 
     // Payment (SUCCEEDED) — paid total for the order, by method.
-    await db.payment.create({
+    const payment = await db.payment.create({
       data: {
         orgId: org.id,
         orderId: order.id,
@@ -291,6 +345,18 @@ async function main() {
         stripePaymentIntentId: spec.method === "STRIPE" ? `pi_test_${order.id}` : null,
         cashTenderedCents: spec.method === "CASH" ? paidCents : null,
         cashChangeCents: spec.method === "CASH" ? 0 : null,
+      },
+    });
+    // Ledger CREDIT (reconciliation reads ledger_entries; the live PaymentService
+    // writes these, so the seed mirrors it). Memo prefixed with the code for cleanup.
+    await db.ledgerEntry.create({
+      data: {
+        orgId: org.id,
+        paymentId: payment.id,
+        direction: "CREDIT",
+        method: spec.method,
+        amountCents: paidCents,
+        memo: `${CAMP_CODE} ${name}`,
       },
     });
 
@@ -318,6 +384,22 @@ async function main() {
           serviceTypeId: svc.id,
           description: `${svc.name} — ${name}`,
           amountCents: svc.priceCents,
+          status: "PAID",
+        },
+      });
+    }
+
+    // Optional donation (variable amount, no serviceType, flagged isDonation so
+    // reconciliation breaks donations out from service revenue).
+    if (donationCents > 0) {
+      await db.lineItem.create({
+        data: {
+          orgId: org.id,
+          orderId: order.id,
+          attendeeId: attendee.id,
+          description: `Donation — ${name}`,
+          amountCents: donationCents,
+          isDonation: true,
           status: "PAID",
         },
       });
@@ -512,11 +594,13 @@ async function main() {
   }
   await db.event.update({ where: { id: camp.id }, data: { nextVolSeq: volSeq } });
 
-  // ── Dandia gate (GENERAL event) — exercises the event gate ──────────────────
-  // A ticketed dance night: admission + fulfillable merch (will-call pickup) and
-  // pre-bought attendees across the gate states (paid, paid+merch, already
-  // admitted, unpaid will-call). Resolved by the gate via getActiveGeneralEvent;
-  // medcamp screens ignore it (getActiveCamp is scoped to type CAMP).
+  // ── Dandia gate (GENERAL event) — exercises the event gate + new event features ─
+  // A ticketed dance night in QUANTITY-ONLY mode (collectsAttendeeDetails=false):
+  // admission + fulfillable merch sold by quantity, optional donation, a family-
+  // membership comp at the gate (honorsMembership=true → $0, COMP, no Payment row),
+  // a membership upsell purchase, and a refunded order (allowsRefunds=true). Each
+  // money movement writes a Ledger entry. Resolved by the gate via
+  // getActiveGeneralEvent; medcamp screens ignore it (getActiveCamp scopes to CAMP).
   const DANDIA_CODE = "GB-2026W";
   const DANDIA_SERVICES = [
     { key: "dandia-entry", name: "Dandia Entry", priceCents: 2500, colorHex: "#9333ea", fulfillable: false },
@@ -540,6 +624,7 @@ async function main() {
 
   const existingDandia = await db.event.findFirst({ where: { orgId: org.id, code: DANDIA_CODE } });
   if (existingDandia) {
+    await db.ledgerEntry.deleteMany({ where: { orgId: org.id, memo: { startsWith: DANDIA_CODE } } });
     await db.payment.deleteMany({ where: { order: { eventId: existingDandia.id } } });
     await db.event.delete({ where: { id: existingDandia.id } });
   }
@@ -553,6 +638,11 @@ async function main() {
       name: "Dandia Night 2026",
       startsAt: new Date("2026-10-10T19:00:00Z"),
       endsAt: new Date("2026-10-10T23:30:00Z"),
+      // New event-config flags (admin toggles):
+      collectsAttendeeDetails: false, // quantity-only checkout — anon tickets + merch
+      honorsMembership: true, // a current family membership admits the party free
+      acceptsDonations: true,
+      allowsRefunds: true,
     },
   });
   for (const s of dandiaSvc.values()) {
@@ -562,63 +652,164 @@ async function main() {
     });
   }
 
-  const dandiaSpecs: { name: string; services: string[]; paid: boolean; admitted: boolean }[] = [
-    { name: "Asha Mehta", services: ["dandia-entry"], paid: true, admitted: false }, // tkt
-    { name: "Ravi Kapoor", services: ["dandia-entry", "dandiya-sticks"], paid: true, admitted: false }, // tkt + merch
-    { name: "Neha Shah", services: ["dandia-entry", "event-tshirt"], paid: true, admitted: true }, // already admitted
-    { name: "Imran Vora", services: ["dandia-entry"], paid: false, admitted: false }, // unpaid will-call
+  // Each line carries a quantity (qty-mode); fulfillable merch can be picked up
+  // (will-call). A spec may add a donation, buy a membership, be a membership comp,
+  // or be refunded.
+  type DLine = { key: string; qty: number; fulfilled?: boolean };
+  type DandiaSpec = {
+    name: string;
+    lines: DLine[];
+    donationCents?: number;
+    membershipPlan?: string; // a family membership bought as a registration upsell
+    method: "STRIPE" | "CASH" | "COMP";
+    status: "CONFIRMED" | "PENDING" | "REFUNDED";
+    admitted: boolean;
+    comp?: boolean; // membership comp admission ($0, COMP, no Payment row)
+  };
+  const dandiaSpecs: DandiaSpec[] = [
+    // Stripe ticket, not yet admitted.
+    { name: "Asha Mehta", lines: [{ key: "dandia-entry", qty: 1 }], method: "STRIPE", status: "CONFIRMED", admitted: false },
+    // Ticket ×2 + 5 dandiya sticks (quantity line); sticks already picked up.
+    { name: "Ravi Kapoor", lines: [{ key: "dandia-entry", qty: 2 }, { key: "dandiya-sticks", qty: 5, fulfilled: true }], method: "STRIPE", status: "CONFIRMED", admitted: true },
+    // Cash ticket + 2 t-shirts, admitted, shirts NOT yet handed over (will-call pending).
+    { name: "Neha Shah", lines: [{ key: "dandia-entry", qty: 1 }, { key: "event-tshirt", qty: 2 }], method: "CASH", status: "CONFIRMED", admitted: true },
+    // Unpaid will-call (created, awaiting payment at the desk).
+    { name: "Imran Vora", lines: [{ key: "dandia-entry", qty: 1 }], method: "STRIPE", status: "PENDING", admitted: false },
+    // Membership comp: a current member's family admitted free ($0, COMP, no Payment).
+    { name: "The Kapoor Family", lines: [{ key: "dandia-entry", qty: 4 }], method: "COMP", status: "CONFIRMED", admitted: true, comp: true },
+    // Stripe ticket ×2 + an optional donation.
+    { name: "Sara Ali", lines: [{ key: "dandia-entry", qty: 2 }], donationCents: 5000, method: "STRIPE", status: "CONFIRMED", admitted: false },
+    // Registration upsell: buys a 2-year family membership alongside a ticket.
+    { name: "Diego Lopez", lines: [{ key: "dandia-entry", qty: 2 }], membershipPlan: "family-2yr", method: "STRIPE", status: "CONFIRMED", admitted: false },
+    // Refunded order: payment REFUNDED, lines REFUNDED, DEBIT ledger entry.
+    { name: "Mei Chen", lines: [{ key: "dandia-entry", qty: 3 }], method: "STRIPE", status: "REFUNDED", admitted: false },
   ];
+
   let dseq = 1;
   const dandiaNow = new Date("2026-10-10T19:15:00Z");
   for (const spec of dandiaSpecs) {
     const campId = `${DANDIA_CODE}-${String(dseq).padStart(4, "0")}`;
     dseq++;
-    const items = spec.services.map((k) => dandiaSvc.get(k)!);
-    const total = items.reduce((s, x) => s + x.priceCents, 0);
+
+    const email = `${spec.name.toLowerCase().replace(/\s+/g, ".")}@example.com`;
+    const lineRows = spec.lines.map((l) => ({ svc: dandiaSvc.get(l.key)!, qty: l.qty, fulfilled: l.fulfilled }));
+    const isComp = Boolean(spec.comp);
+    const serviceCents = lineRows.reduce((s, l) => s + l.svc.priceCents * l.qty, 0);
+    const donationCents = spec.donationCents ?? 0;
+    const membership = spec.membershipPlan ? planByKey.get(spec.membershipPlan)! : null;
+    const membershipCents = membership?.priceCents ?? 0;
+    const total = isComp ? 0 : serviceCents + donationCents + membershipCents;
 
     const order = await db.order.create({
       data: {
         orgId: org.id,
         eventId: dandia.id,
-        status: spec.paid ? "CONFIRMED" : "PENDING",
-        method: "STRIPE",
+        status: spec.status,
+        method: spec.method,
         registrantName: spec.name,
-        registrantEmail: `${spec.name.toLowerCase().replace(/\s+/g, ".")}@example.com`,
+        registrantEmail: email,
         registrantPhone: "(555) 030-0000",
       },
     });
-    if (spec.paid) {
-      await db.payment.create({
+
+    // Payment + ledger. COMP and unpaid (PENDING) orders move no money → no Payment.
+    if (!isComp && spec.status !== "PENDING") {
+      const refunded = spec.status === "REFUNDED";
+      const method = spec.method as "STRIPE" | "CASH";
+      const payment = await db.payment.create({
         data: {
           orgId: org.id,
           orderId: order.id,
-          method: "STRIPE",
-          status: "SUCCEEDED",
+          method,
+          status: refunded ? "REFUNDED" : "SUCCEEDED",
           amountCents: total,
-          stripePaymentIntentId: `pi_dandia_${order.id}`,
+          stripePaymentIntentId: method === "STRIPE" ? `pi_dandia_${order.id}` : null,
+          cashTenderedCents: method === "CASH" ? total : null,
+          cashChangeCents: method === "CASH" ? 0 : null,
         },
       });
+      await db.ledgerEntry.create({
+        data: { orgId: org.id, paymentId: payment.id, direction: "CREDIT", method, amountCents: total, memo: `${DANDIA_CODE} ${spec.name}` },
+      });
+      if (refunded) {
+        await db.ledgerEntry.create({
+          data: { orgId: org.id, paymentId: payment.id, direction: "DEBIT", method, amountCents: total, memo: `${DANDIA_CODE} ${spec.name} — refund` },
+        });
+      }
     }
+
     const attendee = await db.attendee.create({
       data: {
         orgId: org.id,
         eventId: dandia.id,
         orderId: order.id,
         campId,
+        // Quantity-only event: a light label, no mailing address collected.
         name: spec.name,
         checkedInAt: spec.admitted ? dandiaNow : null,
       },
     });
-    for (const it of items) {
+
+    const lineStatus =
+      spec.status === "REFUNDED" ? "REFUNDED" : spec.status === "PENDING" ? "PENDING_PAYMENT" : "PAID";
+
+    // Admission / merch lines (quantity-aware). A comp admission is $0.
+    for (const l of lineRows) {
       await db.lineItem.create({
         data: {
           orgId: org.id,
           orderId: order.id,
           attendeeId: attendee.id,
-          serviceTypeId: it.id,
-          description: `${it.name} — ${spec.name}`,
-          amountCents: it.priceCents,
-          status: spec.paid ? "PAID" : "PENDING_PAYMENT",
+          serviceTypeId: l.svc.id,
+          description: `${l.svc.name}${l.qty > 1 ? ` ×${l.qty}` : ""} — ${spec.name}`,
+          amountCents: isComp ? 0 : l.svc.priceCents,
+          quantity: l.qty,
+          status: lineStatus,
+          // Will-call hand-over: only meaningful for fulfillable merch.
+          fulfilledAt: l.svc.fulfillable && l.fulfilled ? dandiaNow : null,
+        },
+      });
+    }
+
+    // Optional donation line (variable amount, no serviceType, flagged isDonation).
+    if (donationCents > 0) {
+      await db.lineItem.create({
+        data: {
+          orgId: org.id,
+          orderId: order.id,
+          attendeeId: attendee.id,
+          description: `Donation — ${spec.name}`,
+          amountCents: donationCents,
+          isDonation: true,
+          status: lineStatus,
+        },
+      });
+    }
+
+    // Membership bought as a registration upsell (links the plan) + the Member it creates.
+    if (membership) {
+      await db.lineItem.create({
+        data: {
+          orgId: org.id,
+          orderId: order.id,
+          attendeeId: attendee.id,
+          membershipPlanId: membership.id,
+          description: `${membership.name} — ${spec.name}`,
+          amountCents: membership.priceCents,
+          status: lineStatus,
+        },
+      });
+      await db.member.upsert({
+        where: { orgId_email: { orgId: org.id, email } },
+        update: {},
+        create: {
+          orgId: org.id,
+          name: spec.name,
+          email,
+          planId: membership.id,
+          partySize: membership.partySize,
+          validFrom: dandiaNow,
+          validTo: new Date(dandiaNow.getTime() + membership.termYears * YEAR),
         },
       });
     }
@@ -637,15 +828,16 @@ async function main() {
       `  camp ${camp.code} (${camp.status}) — "${camp.name}"`,
       `  ${TEST_MEMBERS.length} members (one per role)`,
       `  ${specs.length} attendees (${checkedIn} checked in, ${specs.length - checkedIn} awaiting arrival)`,
-      `  consult bottleneck + vitals queue + 3 completed + 2 needs-payment`,
-      `  payments: STRIPE + CASH; labs: pending/received/mailed`,
+      `  consult bottleneck + vitals queue + 3 completed + 2 needs-payment + 2 donations`,
+      `  payments: STRIPE + CASH, each with a CREDIT ledger entry; labs: pending/received/mailed`,
+      `  ${MEMBERSHIP_PLANS.length} membership plans, ${MEMBERS.length} family members (current/expiring/expired)`,
       `  ${VOL_ROLES.length} volunteer roles, ${volSpecs.length} signups ` +
         `(${Object.entries(volByStatus).map(([k, n]) => `${n} ${k.toLowerCase()}`).join(", ")})`,
       demoted.count > 0
         ? `  (demoted ${demoted.count} other ACTIVE camp(s) to CLOSED so this one is the active camp)`
         : ``,
-      `  gate event ${dandia.code} (${dandia.status}) — "${dandia.name}"`,
-      `    ${dandiaSpecs.length} ticket(s): paid / paid+merch / already-admitted / unpaid will-call`,
+      `  gate event ${dandia.code} (${dandia.status}) — "${dandia.name}" [quantity-only, honors membership]`,
+      `    ${dandiaSpecs.length} order(s): qty merch, donation, membership upsell, membership COMP, refund, will-call`,
       `    gate IDs: ${DANDIA_CODE}-0001 … ${DANDIA_CODE}-${String(dseq - 1).padStart(4, "0")}  → open /gate`,
       ``,
       `  Enable test login:  TEST_LOGIN_ENABLED=true in .env, then visit /test-login`,
