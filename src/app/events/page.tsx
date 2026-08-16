@@ -72,7 +72,11 @@ export default async function EventsPage() {
           No upcoming events right now. Check back soon.
         </p>
       ) : (
-        <ul className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2">
+        // items-start: cards size to their own content. Without it a grid row
+        // stretches every card to match its tallest sibling, and the mt-auto
+        // action block below turns that slack into dead white space — a poster
+        // card next to a text-only card opened a 238px void.
+        <ul className="mt-8 grid grid-cols-1 items-start gap-5 sm:grid-cols-2">
           {events.map((e) => {
             // Config-driven action set. First entry is the card's primary CTA.
             const actions: { key: string; label: string; href: string }[] = [];
