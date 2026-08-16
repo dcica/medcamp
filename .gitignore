@@ -37,3 +37,6 @@ client_secret_*.json
 # gstack tooling output (QA reports, screenshots)
 .gstack/
 .env*
+
+# Local design reference sketches (large PNG screenshots, not versioned)
+docs/sketches/
