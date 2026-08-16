@@ -1,8 +1,8 @@
-import Image from "next/image";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
 import { PageHelp } from "@/app/_components/PageHelp";
+import { EventBanner } from "@/app/_components/EventBanner";
 
 export const dynamic = "force-dynamic";
 
@@ -102,17 +102,7 @@ export default async function EventsPage() {
                 key={e.id}
                 className="flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white"
               >
-                {e.imageUrl && (
-                  <div className="relative aspect-[3/2] bg-gray-100">
-                    <Image
-                      src={e.imageUrl}
-                      alt={e.name}
-                      fill
-                      sizes="(min-width: 640px) 50vw, 100vw"
-                      className="object-cover"
-                    />
-                  </div>
-                )}
+                {e.imageUrl && <EventBanner src={e.imageUrl} alt={e.name} />}
 
                 {/* Saffron title/date panel — mirrors dcica.org's events design. */}
                 <div className="bg-accent px-4 py-3 text-accent-fg">
