@@ -340,7 +340,15 @@ async function cleanup(orgId: string): Promise<void> {
   }
   await db.member.deleteMany({ where: { orgId, email: EMAIL } });
   await db.membershipPlan.deleteMany({ where: { orgId, key: "verify-family" } });
-  await db.serviceType.deleteMany({ where: { orgId, key: { in: ["verify-entry", "verify-sticks", "verify-fee"] } } });
+  // Every key this script creates must appear here. A suite that leaks rows into
+  // a shared dev database silently changes what the next manual test sees —
+  // `verify-earlybird` escaped exactly that way.
+  await db.serviceType.deleteMany({
+    where: {
+      orgId,
+      key: { in: ["verify-entry", "verify-sticks", "verify-fee", "verify-earlybird"] },
+    },
+  });
 }
 
 main()
