@@ -336,6 +336,17 @@ Wire the tender through and build the design's screen: quick-tender buttons, cha
 
 **Also:** every walk-up cash sale currently fires a confirmation email to `gate@gate.local` (`src/server/payments.ts:284`). Skip the send for gate-local addresses.
 
+**Also — a walk-up sale admits regardless of what was sold.** Found by Task A3's reviewer, 2026-08-17. `sellAndAdmit` (`src/app/gate/actions.ts:83-98`) calls `admitAttendee` on every attendee a walk-up sale creates, and `sellAtGate` always creates one for a no-`attendeeId` sale. So selling **only** a competition entry — or only a pair of sticks — stamps `checkedInAt`, increments the headcount, and shows the volunteer a button reading "Take cash $30 & admit."
+
+That directly contradicts the promise Task A3's own caption makes on the same screen (`NOT A TICKET · NO FLOOR ACCESS`). The defect is pre-existing — merch-only door sales have always auto-admitted — and A3's brief explicitly forbade touching it, which is why it lands here.
+
+Gate the admit on the sale actually containing an `admits` item:
+
+- No admission item in the sale → do not call `admitAttendee`, do not stamp `checkedInAt`, and label the button **"Take cash $30"** with no "& admit".
+- Admission present → unchanged behaviour.
+
+This is separate from E4's headcount fix and neither substitutes for the other: E4 stops a receipt-only attendee being *counted*, while this stops one being *admitted* in the first place. Fixing only E4 leaves wrong `checkedInAt` data and a lying button; fixing only this leaves the existing bad rows counted.
+
 ### Task E4: Comp at the door, done properly
 
 `compAdmit` today creates a $0 CONFIRMED order with **no line items, no payment, no ledger entry, and no capacity decrement** — comps are invisible to both reconciliation and capacity. It clamps 1–4 regardless of the household's actual allowance, verifies no membership, and records no actor.

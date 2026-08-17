@@ -195,17 +195,23 @@ Note for whoever runs this: until Task B2 fixes the fixtures, **this test cannot
 
 Mis-scan, then undo inside the 2-minute window. Assert `checkedInAt` returns to null, the code becomes valid again, the headcount drops by one, and an `UNDO_ADMIT` audit row exists naming the actor. Past the window, assert a coordinator is required.
 
-### C-4 · Cash with change
+### C-4 · A door sale admits only what it sold
+
+Sell **only** a competition entry at the door. Assert `checkedInAt` is not stamped, the headcount does not move, and the button never reads "& admit". Repeat with sticks only. Then sell admission + sticks together and assert the admit *does* happen.
+
+Today all three cases admit: `sellAndAdmit` calls `admitAttendee` on every attendee a walk-up sale creates, and `sellAtGate` always creates one. So the screen currently shows `NOT A TICKET · NO FLOOR ACCESS` above the item and "Take cash $30 & admit" below it. Task E3.
+
+### C-5 · Cash with change
 
 `regdesk` sells at the door with a tender above the price. Assert `Payment.cashTenderedCents` is stored and change due is computed and displayed. It is `null` on every path today because all three till actions call `confirmGateCash` with one argument. Also assert a short tender reads "Short $12" and that no confirmation email fires to `gate@gate.local`.
 
-### C-5 · Comp at the door
+### C-6 · Comp at the door
 
 Assert the comped admission produces line items at $0 so **capacity decrements**, a matched CREDIT+DEBIT ledger pair at list price so totals still foot and revenue foregone is readable, a `MemberComp` row, and a recorded actor. `compAdmit` today creates none of these — it discards its `userId` with `void userId`.
 
 **The collision case is the one that matters:** the household already claimed online. The volunteer is never the one who says no — it routes to a board member present at the event.
 
-### C-6 · Cross-event ticket
+### C-7 · Cross-event ticket
 
 Present a valid ticket from a *different* event in the same org. Assert it is refused. `getGateView` is not scoped to the active event today, so it resolves and can be admitted.
 
@@ -265,8 +271,8 @@ No task is complete without its row:
 | D1–D6 member verification | ✅ | claim uniqueness; allowance arithmetic | B-4 | — |
 | E1 audit trail | ✅ | a row per gate action | — | — |
 | E2 undo | ✅ | `checkedInAt` nulled + audit row | C-3 | ✅ |
-| E3 cash | ✅ | tender + change stored | C-4 | ✅ |
-| E4 comp at door | ✅ | line items, ledger pair, capacity | C-5 | — |
+| E3 cash + admit-gate | ✅ | tender + change stored; no `checkedInAt` on a fee-only sale | C-4, C-5 | ✅ |
+| E4 comp at door | ✅ | line items, ledger pair, capacity | C-6 | — |
 | E5 override | ✅ | reason code required | role matrix | — |
 | E6 close-out | ✅ | Suite E arithmetic | export read-back | — |
 | **E7 partial fulfilment** | ✅ | `fulfilledQty` 0→2→4, clamp at 4 | C-2 | ✅ two doors |
