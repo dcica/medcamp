@@ -14,12 +14,22 @@ function slugify(s: string): string {
     .replace(/^-|-$/g, "");
 }
 
+/** Blank/absent door price means "same as online" — stored as NULL, not 0. */
+function onsiteCents(dollars: number | null): number | null {
+  if (dollars === null || Number.isNaN(dollars)) return null;
+  return Math.max(0, Math.round(dollars * 100));
+}
+
 type RowInput = {
   name: string;
   priceDollars: number;
   colorHex: string;
   hasLab: boolean;
   fulfillable: boolean;
+  /** Issues a scannable ticket. Off for a pure fee (e.g. competition entry). */
+  admits: boolean;
+  /** Door price in dollars. Null/blank = charge the online price at the door. */
+  onsitePriceDollars: number | null;
   active: boolean;
   /** Whether this service is offered at THIS event (controls cap existence). */
   offered: boolean;
@@ -58,6 +68,7 @@ export async function createService(
       colorHex: input.colorHex,
       hasLab: input.hasLab,
       fulfillable: input.fulfillable,
+      admits: input.admits,
     },
   });
   await db.serviceCap.create({
@@ -65,6 +76,7 @@ export async function createService(
       eventId,
       serviceTypeId: service.id,
       priceCents,
+      onsitePriceCents: onsiteCents(input.onsitePriceDollars),
       capacity: Math.max(0, Math.round(input.capacity)),
     },
   });
@@ -92,6 +104,7 @@ export async function saveServiceRow(
   if (!service) return { ok: false, error: "Service not found." };
 
   const priceCents = Math.max(0, Math.round(input.priceDollars * 100));
+  const onsitePriceCents = onsiteCents(input.onsitePriceDollars);
   const capacity = Math.max(0, Math.round(input.capacity));
   const existingCap = await db.serviceCap.findUnique({
     where: { eventId_serviceTypeId: { eventId, serviceTypeId: serviceId } },
@@ -105,6 +118,7 @@ export async function saveServiceRow(
       colorHex: input.colorHex,
       hasLab: input.hasLab,
       fulfillable: input.fulfillable,
+      admits: input.admits,
       active: input.active,
     },
   });
@@ -133,8 +147,8 @@ export async function saveServiceRow(
       updateCatalog,
       db.serviceCap.upsert({
         where: { eventId_serviceTypeId: { eventId, serviceTypeId: serviceId } },
-        update: { priceCents, capacity },
-        create: { eventId, serviceTypeId: serviceId, priceCents, capacity },
+        update: { priceCents, onsitePriceCents, capacity },
+        create: { eventId, serviceTypeId: serviceId, priceCents, onsitePriceCents, capacity },
       }),
     ]);
   }

@@ -254,6 +254,12 @@ export async function sellAtGate(
 
   const attendeeId = opts.attendeeId ?? order.attendees[0].id;
 
+  // Walk-ups pay the door price; a pre-bought will-call order settled here keeps
+  // its original online price, because that path confirms existing lines and
+  // never routes through this function.
+  const doorPrice = (o: (typeof offerings)[number]) =>
+    o.onsitePriceCents ?? o.priceCents;
+
   await db.lineItem.createMany({
     data: serviceTypeIds.map((id) => {
       const offering = byId.get(id)!;
@@ -263,16 +269,16 @@ export async function sellAtGate(
         attendeeId,
         serviceTypeId: offering.serviceTypeId,
         description: `${offering.serviceType.name} — ${name}`,
-        amountCents: offering.priceCents,
+        amountCents: doorPrice(offering),
         status: "PENDING_PAYMENT" as const,
       };
     }),
   });
 
-  const totalCents = serviceTypeIds.reduce(
-    (s, id) => s + (byId.get(id)?.priceCents ?? 0),
-    0,
-  );
+  const totalCents = serviceTypeIds.reduce((s, id) => {
+    const offering = byId.get(id);
+    return s + (offering ? doorPrice(offering) : 0);
+  }, 0);
   return { orderId: order.id, totalCents };
 }
 
@@ -315,26 +321,35 @@ export async function getEventHeadcount(eventId: string): Promise<number> {
 export async function getGateCatalog(eventId: string): Promise<{
   admission: { id: string; name: string; priceCents: number }[];
   merch: { id: string; name: string; priceCents: number; colorHex: string }[];
+  fees: { id: string; name: string; priceCents: number }[];
 }> {
   const org = await getActiveOrg();
-  if (!org) return { admission: [], merch: [] };
+  if (!org) return { admission: [], merch: [], fees: [] };
   // Per-event offerings (caps), priced from the cap not the catalogue.
   const offerings = await db.serviceCap.findMany({
     where: { eventId, serviceType: { orgId: org.id, active: true } },
     include: { serviceType: true },
     orderBy: { serviceType: { name: "asc" } },
   });
+  // The gate menu shows DOOR prices — $20 walk-up where online was $15.
+  const doorPrice = (o: (typeof offerings)[number]) =>
+    o.onsitePriceCents ?? o.priceCents;
   return {
     admission: offerings
-      .filter((o) => !o.serviceType.fulfillable && !o.serviceType.hasLab)
-      .map((o) => ({ id: o.serviceType.id, name: o.serviceType.name, priceCents: o.priceCents })),
+      .filter((o) => o.serviceType.admits && !o.serviceType.hasLab)
+      .map((o) => ({ id: o.serviceType.id, name: o.serviceType.name, priceCents: doorPrice(o) })),
     merch: offerings
       .filter((o) => o.serviceType.fulfillable)
       .map((o) => ({
         id: o.serviceType.id,
         name: o.serviceType.name,
-        priceCents: o.priceCents,
+        priceCents: doorPrice(o),
         colorHex: o.serviceType.colorHex,
       })),
+    // Neither admission nor merch: a competition entry sold at the desk. Buying
+    // one admits nobody and hands over nothing.
+    fees: offerings
+      .filter((o) => !o.serviceType.admits && !o.serviceType.fulfillable && !o.serviceType.hasLab)
+      .map((o) => ({ id: o.serviceType.id, name: o.serviceType.name, priceCents: doorPrice(o) })),
   };
 }

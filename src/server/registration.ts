@@ -94,7 +94,10 @@ export async function createRegistration(
   if (data.membershipPlanId && !plan) {
     throw new Error("Membership plan is not available.");
   }
-  const comp = Boolean(plan) && event.honorsMembership;
+  // How many admission units the membership comps — the plan's family party
+  // size, NOT an unlimited discount. Previously a boolean that zeroed every
+  // admission line on the order, so one membership could comp 200 tickets.
+  const compUnits = plan && event.honorsMembership ? plan.partySize : 0;
 
   const baseOrder: BaseOrder = {
     orgId: event.orgId,
@@ -109,8 +112,8 @@ export async function createRegistration(
 
   // Mode-specific: create the order + attendees + service line items.
   const { orderId, serviceTotalCents } = event.collectsAttendeeDetails
-    ? await createAttendeeOrder(event.orgId, event.id, baseOrder, data, byKey, comp)
-    : await createQuantityOrder(event.orgId, event.id, baseOrder, data, byKey, comp);
+    ? await createAttendeeOrder(event.orgId, event.id, baseOrder, data, byKey, compUnits)
+    : await createQuantityOrder(event.orgId, event.id, baseOrder, data, byKey, compUnits);
 
   let total = serviceTotalCents;
 
@@ -130,9 +133,10 @@ export async function createRegistration(
     total += donationCents;
   }
 
-  // Membership: create/extend the family member + a membership line item.
+  // Membership: a line item only. The Member row is created/extended by
+  // confirmOrderPaid, NOT here — an unpaid PENDING order must never mint a
+  // membership term (decision #2: payment confirmation is authoritative).
   if (plan) {
-    await upsertMember(event.orgId, plan, data.registrant);
     await db.lineItem.create({
       data: {
         orgId: event.orgId,
@@ -155,43 +159,6 @@ export async function createRegistration(
   return { orderId, totalCents: total };
 }
 
-/** Create/extend a family membership for this registrant (org-scoped, by email). */
-async function upsertMember(
-  orgId: string,
-  plan: { id: string; termYears: number; partySize: number },
-  registrant: { name: string; email: string; phone: string },
-): Promise<void> {
-  const now = new Date();
-  const existing = await db.member.findUnique({
-    where: { orgId_email: { orgId, email: registrant.email } },
-  });
-  // Extend from the later of now / current expiry (renewal stacks).
-  const base = existing && existing.validTo > now ? existing.validTo : now;
-  const validTo = new Date(base);
-  validTo.setFullYear(validTo.getFullYear() + plan.termYears);
-
-  await db.member.upsert({
-    where: { orgId_email: { orgId, email: registrant.email } },
-    update: {
-      name: registrant.name,
-      phone: registrant.phone,
-      planId: plan.id,
-      partySize: plan.partySize,
-      validTo,
-    },
-    create: {
-      orgId,
-      name: registrant.name,
-      email: registrant.email,
-      phone: registrant.phone,
-      planId: plan.id,
-      partySize: plan.partySize,
-      validFrom: now,
-      validTo,
-    },
-  });
-}
-
 /** ATTENDEE mode: one attendee per person, per-person services (camp/patient). */
 async function createAttendeeOrder(
   orgId: string,
@@ -199,7 +166,7 @@ async function createAttendeeOrder(
   baseOrder: BaseOrder,
   data: RegistrationInput,
   byKey: Map<string, Offering>,
-  comp: boolean,
+  compUnits: number,
 ): Promise<{ orderId: string; serviceTotalCents: number }> {
   const attendees = data.attendees ?? [];
   if (attendees.length === 0) throw new Error("Add at least one attendee.");
@@ -212,15 +179,23 @@ async function createAttendeeOrder(
     }
   }
 
-  // Membership comps admission (non-fulfillable) services for this order.
-  const priceFor = (o: Offering) =>
-    comp && !o.serviceType.fulfillable ? 0 : o.priceCents;
-
-  const serviceTotalCents = attendees.reduce(
-    (sum, att) =>
-      sum + att.serviceKeys.reduce((s, k) => s + priceFor(byKey.get(k)!), 0),
-    0,
+  // Membership comps the first `compUnits` admission (non-fulfillable) units;
+  // everything beyond the family's party size is charged. Priced in ONE pass so
+  // the allowance is spent once — the totals and the line items read the same
+  // array rather than each re-running the allocation.
+  let compRemaining = compUnits;
+  const priced = attendees.map((att) =>
+    att.serviceKeys.map((key) => {
+      const offering = byKey.get(key)!;
+      const comped = offering.serviceType.admits && compRemaining > 0;
+      if (comped) compRemaining -= 1;
+      return { offering, amountCents: comped ? 0 : offering.priceCents };
+    }),
   );
+
+  const serviceTotalCents = priced
+    .flat()
+    .reduce((s, p) => s + p.amountCents, 0);
 
   const order = await db.order.create({
     data: {
@@ -239,18 +214,17 @@ async function createAttendeeOrder(
 
   const lineItemData = attendees.flatMap((att, i) => {
     const attendee = order.attendees[i];
-    return att.serviceKeys.map((key) => {
-      const offering = byKey.get(key)!;
-      return {
-        orgId,
-        orderId: order.id,
-        attendeeId: attendee.id,
-        serviceTypeId: offering.serviceType.id,
-        description: `${offering.serviceType.name} — ${att.name}`,
-        amountCents: priceFor(offering),
-        status: "PENDING_PAYMENT" as const,
-      };
-    });
+    return priced[i].map(({ offering, amountCents }) => ({
+      orgId,
+      orderId: order.id,
+      attendeeId: attendee.id,
+      serviceTypeId: offering.serviceType.id,
+      description:
+        `${offering.serviceType.name} — ${att.name}` +
+        (amountCents === 0 && offering.priceCents > 0 ? " (member comp)" : ""),
+      amountCents,
+      status: "PENDING_PAYMENT" as const,
+    }));
   });
   await db.lineItem.createMany({ data: lineItemData });
 
@@ -269,7 +243,7 @@ async function createQuantityOrder(
   baseOrder: BaseOrder,
   data: RegistrationInput,
   byKey: Map<string, Offering>,
-  comp: boolean,
+  compUnits: number,
 ): Promise<{ orderId: string; serviceTotalCents: number }> {
   const picked = (data.quantities ?? []).filter((q) => q.quantity > 0);
   if (picked.length === 0) throw new Error("Pick at least one item.");
@@ -280,17 +254,51 @@ async function createQuantityOrder(
     }
   }
 
-  const priceFor = (o: Offering) =>
-    comp && !o.serviceType.fulfillable ? 0 : o.priceCents;
+  // Membership comps the first `compUnits` admission units; the rest are
+  // charged. A partially-comped pick splits into TWO lines (qty N @ $0 and
+  // qty M @ price) because a LineItem carries one unit price for its quantity —
+  // a family of 6 with a 4-person membership pays for 2.
+  let compRemaining = compUnits;
+  const priced = picked.flatMap((q) => {
+    const offering = byKey.get(q.serviceKey)!;
+    const isAdmission = offering.serviceType.admits;
+    const compQty = isAdmission ? Math.min(compRemaining, q.quantity) : 0;
+    compRemaining -= compQty;
+    const paidQty = q.quantity - compQty;
 
-  const serviceTotalCents = picked.reduce(
-    (s, q) => s + priceFor(byKey.get(q.serviceKey)!) * q.quantity,
+    const lines: {
+      offering: Offering;
+      amountCents: number;
+      quantity: number;
+      comped: boolean;
+    }[] = [];
+    if (compQty > 0) {
+      lines.push({ offering, amountCents: 0, quantity: compQty, comped: true });
+    }
+    if (paidQty > 0) {
+      lines.push({
+        offering,
+        amountCents: offering.priceCents,
+        quantity: paidQty,
+        comped: false,
+      });
+    }
+    return lines;
+  });
+
+  const serviceTotalCents = priced.reduce(
+    (s, p) => s + p.amountCents * p.quantity,
     0,
   );
 
+  // Only admission units mint a scannable ticket. A fee (competition entry —
+  // neither admission nor merch) mints none: 3 groups entering the competition
+  // is one line, not 3 tickets, and grants nobody floor access.
   const admissionUnits = picked
-    .filter((q) => !byKey.get(q.serviceKey)!.serviceType.fulfillable)
+    .filter((q) => byKey.get(q.serviceKey)!.serviceType.admits)
     .reduce((s, q) => s + q.quantity, 0);
+  // Merch- or fee-only orders still get ONE code so the buyer has something to
+  // scan at the desk — a receipt, not an admission.
   const ticketCount = admissionUnits > 0 ? admissionUnits : 1;
 
   const order = await db.order.create({
@@ -304,19 +312,17 @@ async function createQuantityOrder(
     include: { attendees: true },
   });
 
-  const lineItemData = picked.map((q) => {
-    const offering = byKey.get(q.serviceKey)!;
-    return {
-      orgId,
-      orderId: order.id,
-      // Order-level (not per-person): the charge for N units of this service.
-      serviceTypeId: offering.serviceType.id,
-      description: offering.serviceType.name,
-      amountCents: priceFor(offering),
-      quantity: q.quantity,
-      status: "PENDING_PAYMENT" as const,
-    };
-  });
+  const lineItemData = priced.map((p) => ({
+    orgId,
+    orderId: order.id,
+    // Order-level (not per-person): the charge for N units of this service.
+    serviceTypeId: p.offering.serviceType.id,
+    description:
+      p.offering.serviceType.name + (p.comped ? " (member comp)" : ""),
+    amountCents: p.amountCents,
+    quantity: p.quantity,
+    status: "PENDING_PAYMENT" as const,
+  }));
   await db.lineItem.createMany({ data: lineItemData });
 
   return { orderId: order.id, serviceTotalCents };

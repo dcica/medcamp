@@ -87,6 +87,11 @@ export default async function CampServicesPage({
           colorHex: s.colorHex,
           hasLab: s.hasLab,
           fulfillable: s.fulfillable,
+          admits: s.admits,
+          onsitePriceDollars:
+            s.caps[0]?.onsitePriceCents == null
+              ? null
+              : s.caps[0].onsitePriceCents / 100,
           active: s.active,
           offered: s.caps.length > 0,
           capacity: s.caps[0]?.capacity ?? 0,

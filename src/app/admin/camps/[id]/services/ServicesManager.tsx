@@ -10,6 +10,10 @@ export type ServiceRow = {
   colorHex: string;
   hasLab: boolean;
   fulfillable: boolean;
+  /** Issues a scannable ticket. Off for a pure fee. */
+  admits: boolean;
+  /** Door price, or null when the door charges the online price. */
+  onsitePriceDollars: number | null;
   active: boolean;
   /** Offered at THIS camp (has a per-event offering / cap). */
   offered: boolean;
@@ -71,6 +75,10 @@ function ServiceCard({
   const [color, setColor] = useState(row.colorHex);
   const [hasLab, setHasLab] = useState(row.hasLab);
   const [fulfillable, setFulfillable] = useState(row.fulfillable);
+  const [admits, setAdmits] = useState(row.admits);
+  const [onsitePrice, setOnsitePrice] = useState(
+    row.onsitePriceDollars === null ? "" : String(row.onsitePriceDollars),
+  );
   const [active, setActive] = useState(row.active);
   const [offered, setOffered] = useState(row.offered);
   const [capacity, setCapacity] = useState(String(row.capacity));
@@ -113,6 +121,18 @@ function ServiceCard({
             onChange={(e) => setCapacity(e.target.value)}
           />
         </label>
+        <label className="text-sm text-gray-600">
+          Door price
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="same as online"
+            className={`w-full ${inputCls}`}
+            value={onsitePrice}
+            onChange={(e) => setOnsitePrice(e.target.value)}
+          />
+        </label>
       </div>
       <label className="flex min-h-tap items-center gap-2 text-sm font-medium">
         <input
@@ -153,6 +173,15 @@ function ServiceCard({
           <input
             type="checkbox"
             className="h-5 w-5"
+            checked={admits}
+            onChange={(e) => setAdmits(e.target.checked)}
+          />
+          Issues a ticket
+        </label>
+        <label className="flex min-h-tap items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="h-5 w-5"
             checked={active}
             onChange={(e) => setActive(e.target.checked)}
           />
@@ -171,6 +200,8 @@ function ServiceCard({
               colorHex: color,
               hasLab,
               fulfillable,
+              admits,
+              onsitePriceDollars: onsitePrice.trim() === "" ? null : Number(onsitePrice) || 0,
               active,
               offered,
               capacity: Number(capacity) || 0,
@@ -200,6 +231,8 @@ function NewService({
   const [color, setColor] = useState("#2563b0");
   const [hasLab, setHasLab] = useState(false);
   const [fulfillable, setFulfillable] = useState(false);
+  const [admits, setAdmits] = useState(true);
+  const [onsitePrice, setOnsitePrice] = useState("");
   const [capacity, setCapacity] = useState("200");
 
   if (!open) {
@@ -248,6 +281,15 @@ function NewService({
           value={capacity}
           onChange={(e) => setCapacity(e.target.value)}
         />
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          className={inputCls}
+          placeholder="Door price $ (optional)"
+          value={onsitePrice}
+          onChange={(e) => setOnsitePrice(e.target.value)}
+        />
       </div>
       <label className="flex min-h-tap items-center gap-2 text-sm">
         <input
@@ -267,6 +309,18 @@ function NewService({
         />
         Merch (hand over)
       </label>
+      <label className="flex min-h-tap items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="h-5 w-5"
+          checked={admits}
+          onChange={(e) => setAdmits(e.target.checked)}
+        />
+        Issues a ticket
+        <span className="text-xs font-normal text-gray-400">
+          (off for a fee, e.g. competition entry)
+        </span>
+      </label>
       <div className="flex gap-2">
         <button
           type="button"
@@ -279,6 +333,8 @@ function NewService({
                 colorHex: color,
                 hasLab,
                 fulfillable,
+                admits,
+                onsitePriceDollars: onsitePrice.trim() === "" ? null : Number(onsitePrice) || 0,
                 capacity: Number(capacity) || 0,
               });
               if (res.ok) {

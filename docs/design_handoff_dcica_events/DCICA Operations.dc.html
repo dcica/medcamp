@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="_ds/modernist-949fda96-bb6e-4e15-b019-48ec42201a5b/styles.css">
+<script src="_ds/modernist-949fda96-bb6e-4e15-b019-48ec42201a5b/_ds_bundle.js"></script>
+<style>
+  body { margin: 0; background: var(--color-neutral-300); }
+  a { color: var(--color-accent-700); text-underline-offset: 3px; }
+  a:hover { color: var(--color-accent-800); }
+</style>
+</helmet>
+
+<div style="display:flex;align-items:flex-start;min-height:100vh;font-family:var(--font-body);color:var(--color-text)">
+
+  <aside style="width:256px;flex:none;position:sticky;top:0;height:100vh;overflow:auto;background:var(--color-bg);border-right:2px solid var(--color-text);padding:24px 0 40px">
+    <div style="padding:0 20px 16px">
+      <div style="font:700 11px/1 var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-accent-700)">DCICA</div>
+      <div style="font:700 20px/1.15 var(--font-heading);letter-spacing:-.02em;margin-top:6px">Operations</div>
+      <div style="font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--color-neutral-600);margin-top:7px">Roster · volunteers · close-out</div>
+    </div>
+    <div style="height:2px;background:var(--color-text)"></div>
+
+    <div style="padding:14px 20px 6px;font:700 10px/1 var(--font-heading);letter-spacing:.16em;text-transform:uppercase;color:var(--color-neutral-600)">Membership roster</div>
+    <nav style="display:flex;flex-direction:column">
+      <button type="button" onClick="{{ nav.roster }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">01 · Roster, scoped to event</button>
+      <button type="button" onClick="{{ nav.household }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">02 · Household detail</button>
+      <button type="button" onClick="{{ nav.linkOrder }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">03 · Link an order by hand</button>
+    </nav>
+
+    <div style="padding:16px 20px 6px;font:700 10px/1 var(--font-heading);letter-spacing:.16em;text-transform:uppercase;color:var(--color-neutral-600)">Volunteers</div>
+    <nav style="display:flex;flex-direction:column">
+      <button type="button" onClick="{{ nav.volSignup }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">04 · Sign up for a shift</button>
+      <button type="button" onClick="{{ nav.volRoster }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">05 · Coordinator roster</button>
+      <button type="button" onClick="{{ nav.volCheck }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">06 · Check in and out</button>
+      <button type="button" onClick="{{ nav.volThanks }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">07 · Hours and certificate</button>
+    </nav>
+
+    <div style="padding:16px 20px 6px;font:700 10px/1 var(--font-heading);letter-spacing:.16em;text-transform:uppercase;color:var(--color-neutral-600)">Coordinator</div>
+    <nav style="display:flex;flex-direction:column">
+      <button type="button" onClick="{{ nav.lifecycle }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">08 · Event lifecycle</button>
+      <button type="button" onClick="{{ nav.closeout }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">09 · Close-out</button>
+    </nav>
+
+    <div style="padding:16px 20px 6px;font:700 10px/1 var(--font-heading);letter-spacing:.16em;text-transform:uppercase;color:var(--color-neutral-600)">Emails &amp; public states</div>
+    <nav style="display:flex;flex-direction:column">
+      <button type="button" onClick="{{ nav.emailOrder }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">10 · Email · order &amp; pass</button>
+      <button type="button" onClick="{{ nav.emailCode }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">11 · Email · one-time code</button>
+      <button type="button" onClick="{{ nav.listEmpty }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">12 · Events list · empty</button>
+      <button type="button" onClick="{{ nav.listPast }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">13 · Events list · past</button>
+    </nav>
+  </aside>
+
+  <main style="flex:1;display:flex;flex-direction:column;align-items:center;padding:44px 32px 64px;min-width:0">
+    <div style="width:390px;display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:14px">
+      <div style="font:700 13px/1.3 var(--font-heading);letter-spacing:.08em;text-transform:uppercase">{{ label }}</div>
+      <div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-neutral-700);flex:none">{{ role }}</div>
+    </div>
+
+    <div style="width:390px;height:844px;flex:none;background:var(--color-bg);border:2px solid var(--color-text);display:flex;flex-direction:column;overflow:hidden;box-shadow:var(--shadow-lg)">
+
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 20px 6px;font:600 12px var(--font-heading);flex:none;color:{{ barInk }};background:{{ barBg }}">
+        <span>4:12</span>
+        <span style="display:flex;align-items:center;gap:5px">
+          <span style="width:17px;height:9px;border:1.5px solid currentColor;display:block"></span>
+          <span style="width:2px;height:5px;background:currentColor;display:block"></span>
+        </span>
+      </div>
+
+      <!-- ===== 01 ROSTER, SCOPED TO EVENT ===== -->
+      <sc-if value="{{ is.roster }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="flex:none;border-bottom:2px solid var(--color-text)">
+          <div style="padding:6px 20px 11px">
+            <h1 style="font-size:23px;letter-spacing:-.03em;margin:0">Membership roster</h1>
+            <button type="button" style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:48px;padding:11px 13px;margin-top:10px;border:2px solid var(--color-text);background:var(--color-bg);cursor:pointer;text-align:left;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+              <span style="min-width:0"><span style="display:block;font:700 9.5px var(--font-heading);letter-spacing:.13em;text-transform:uppercase;color:var(--color-neutral-600)">Showing against</span><span style="display:block;font:700 14px var(--font-heading);margin-top:2px">Navratri · Sat 26 Sep</span></span>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="flex:none"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+          </div>
+
+          <div style="padding:0 20px 11px">
+            <div style="display:flex;align-items:center;gap:9px;border:1.5px solid var(--color-divider);background:var(--color-bg);padding:0 12px">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--color-neutral-600)" stroke-width="2.4" style="flex:none"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <input type="text" placeholder="Name, email or phone" style="flex:1;min-width:0;border:0;background:transparent;font-size:15px;min-height:48px;padding:0;font-family:var(--font-body);color:var(--color-text);outline:none">
+            </div>
+          </div>
+
+          <div style="display:flex;gap:6px;padding:0 20px 11px;overflow:auto">
+            <button type="button" onClick="{{ setFilter.all }}" style="flex:none;min-height:44px;padding:9px 12px;border:1.5px solid {{ f.allBorder }};background:{{ f.allBg }};color:{{ f.allInk }};font:700 11.5px var(--font-heading);letter-spacing:.03em;cursor:pointer;white-space:nowrap">All 214</button>
+            <button type="button" onClick="{{ setFilter.noOrder }}" style="flex:none;min-height:44px;padding:9px 12px;border:1.5px solid {{ f.noOrderBorder }};background:{{ f.noOrderBg }};color:{{ f.noOrderInk }};font:700 11.5px var(--font-heading);letter-spacing:.03em;cursor:pointer;white-space:nowrap">No order found 19</button>
+            <button type="button" onClick="{{ setFilter.paidFull }}" style="flex:none;min-height:44px;padding:9px 12px;border:1.5px solid {{ f.paidFullBorder }};background:{{ f.paidFullBg }};color:{{ f.paidFullInk }};font:700 11.5px var(--font-heading);letter-spacing:.03em;cursor:pointer;white-space:nowrap">Paid full, allowance left 7</button>
+            <button type="button" onClick="{{ setFilter.arrived }}" style="flex:none;min-height:44px;padding:9px 12px;border:1.5px solid {{ f.arrivedBorder }};background:{{ f.arrivedBg }};color:{{ f.arrivedInk }};font:700 11.5px var(--font-heading);letter-spacing:.03em;cursor:pointer;white-space:nowrap">Checked in 96</button>
+          </div>
+        </header>
+
+        <div style="flex:1;overflow:auto">
+          <div style="padding:11px 20px;background:var(--color-surface);border-bottom:1px solid var(--color-divider);font-size:12px;line-height:1.5;color:var(--color-neutral-700)">{{ filterNote }}</div>
+
+          <sc-for list="{{ rows }}" as="row" hint-placeholder-count="5">
+            <button type="button" onClick="{{ row.open }}" style="display:flex;align-items:flex-start;gap:12px;width:100%;text-align:left;padding:13px 20px;background:transparent;border:0;border-bottom:1px solid var(--color-divider);cursor:pointer;font-family:var(--font-body);color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <span style="font:700 16px var(--font-heading);letter-spacing:-.015em">{{ row.name }}</span>
+                  <span style="font:700 9px var(--font-heading);letter-spacing:.09em;text-transform:uppercase;background:{{ row.tagBg }};color:{{ row.tagInk }};padding:4px 6px;flex:none">{{ row.tag }}</span>
+                </div>
+                <div style="font-size:12px;color:var(--color-neutral-600);margin-top:3px">{{ row.contact }}</div>
+                <div style="font-size:12.5px;color:{{ row.orderInk }};margin-top:6px;line-height:1.45">{{ row.order }}</div>
+              </div>
+              <div style="flex:none;text-align:right">
+                <div style="font:700 10px var(--font-heading);letter-spacing:.1em;text-transform:uppercase;color:var(--color-neutral-600)">Free</div>
+                <div style="font:700 20px var(--font-heading);margin-top:2px">{{ row.allowance }}</div>
+                <div style="font-size:10.5px;color:var(--color-neutral-600);margin-top:2px">{{ row.usedLine }}</div>
+              </div>
+            </button>
+          </sc-for>
+
+          <div style="padding:18px 20px 28px;font-size:12px;line-height:1.55;color:var(--color-neutral-600)">Households are matched to orders by email. Someone who checked out under a different address shows as no order found — link it by hand from their detail page.</div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== 02 HOUSEHOLD DETAIL ===== -->
+      <sc-if value="{{ is.household }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="display:flex;align-items:center;gap:12px;padding:8px 20px 12px;border-bottom:2px solid var(--color-text);flex:none">
+          <button type="button" onClick="{{ nav.roster }}" aria-label="Back to roster" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;flex:none;margin-left:-4px;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div style="font:700 12px var(--font-heading);letter-spacing:.1em;text-transform:uppercase">Household</div>
+        </header>
+
+        <div style="flex:1;overflow:auto">
+          <div style="padding:18px 20px 16px;border-bottom:2px solid var(--color-text)">
+            <div style="font:700 27px/1.15 var(--font-heading);letter-spacing:-.03em">Krishnan</div>
+            <div style="display:flex;gap:7px;margin-top:9px;flex-wrap:wrap">
+              <span style="font:700 10px var(--font-heading);letter-spacing:.09em;text-transform:uppercase;background:var(--color-accent);color:var(--color-on-accent);padding:5px 8px">Lifetime</span>
+              <span style="font:700 10px var(--font-heading);letter-spacing:.09em;text-transform:uppercase;border:1.5px solid var(--color-divider);padding:4px 8px;color:var(--color-neutral-700)">Since 2011</span>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:104px 1fr;border-bottom:2px solid var(--color-text)">
+            <div style="padding:12px 0 12px 20px;font:700 9.5px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600);border-bottom:1px solid var(--color-divider)">Valid through</div>
+            <div style="padding:12px 20px;font-size:14px;font-weight:600;border-bottom:1px solid var(--color-divider)">Lifetime<div style="font-size:11.5px;font-weight:400;color:var(--color-neutral-600);margin-top:2px">Never expires · no renewal needed</div></div>
+
+            <div style="padding:12px 0 12px 20px;font:700 9.5px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600);border-bottom:1px solid var(--color-divider)">Allowance</div>
+            <div style="padding:12px 20px;font-size:14px;font-weight:600;border-bottom:1px solid var(--color-divider)">6 free admissions<div style="font-size:11.5px;font-weight:400;color:var(--color-neutral-600);margin-top:2px">Per event · household of 6</div></div>
+
+            <div style="padding:12px 0 12px 20px;font:700 9.5px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600);border-bottom:1px solid var(--color-divider)">Email</div>
+            <div style="padding:12px 20px;font-size:14px;border-bottom:1px solid var(--color-divider);color:var(--color-neutral-600)">No email on file<div style="font-size:11.5px;color:var(--color-accent-700);margin-top:3px">Joined before we collected one. They can't use the online code check.</div></div>
+
+            <div style="padding:12px 0 12px 20px;font:700 9.5px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600)">Phone</div>
+            <div style="padding:12px 20px;font-size:14px;font-weight:600">(940) 555-0113</div>
+          </div>
+
+          <div style="padding:16px 20px 0">
+            <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:9px">Navratri · Sat 26 Sep</div>
+            <div style="border:2px solid var(--color-accent-700);background:var(--color-accent-100);padding:14px">
+              <div style="font:700 15px var(--font-heading);color:var(--color-accent-700)">No order found under this household</div>
+              <p style="font-size:12.5px;line-height:1.55;color:var(--color-neutral-800);margin:6px 0 0">With no email on file we can't match them automatically. They may well have bought — check by phone number, or link their order by hand.</p>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:9px;margin-top:14px">
+              <button type="button" onClick="{{ nav.linkOrder }}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:56px;padding:15px 16px;background:var(--color-text);color:var(--color-bg);border:0;font:700 15px var(--font-heading);cursor:pointer;box-sizing:border-box;text-align:left" style-hover="background:var(--color-neutral-800)">
+                <span>Link an order to this household</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="flex:none"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </button>
+              <a href="tel:+19405550113" style="display:flex;align-items:center;gap:10px;width:100%;min-height:52px;padding:14px 16px;border:1.5px solid var(--color-divider);font:700 14px var(--font-heading);color:var(--color-text);text-decoration:none;box-sizing:border-box" style-hover="background:var(--color-neutral-200)">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="flex:none"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.6a2 2 0 0 1-.5 2.1L8.1 9.7a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.8.3 1.7.6 2.6.7a2 2 0 0 1 1.7 2Z"/></svg>
+                Call about tonight
+              </a>
+              <button type="button" style="display:flex;align-items:center;width:100%;min-height:52px;padding:14px 16px;background:transparent;border:1.5px solid var(--color-divider);font:600 14px var(--font-body);cursor:pointer;color:var(--color-neutral-700);box-sizing:border-box;text-align:left" style-hover="border-color:var(--color-text);color:var(--color-text)">Add an email to this household</button>
+            </div>
+          </div>
+
+          <div style="padding:18px 20px 0">
+            <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:9px">Another household, for contrast</div>
+            <div style="border:1.5px solid var(--color-divider);padding:13px">
+              <div style="font:700 15px var(--font-heading)">Rao</div>
+              <div style="font-size:12px;color:var(--color-neutral-600);margin-top:3px">s.rao@outlook.com · (972) 555-0166</div>
+              <div style="display:flex;gap:7px;margin-top:8px;flex-wrap:wrap">
+                <span style="font:700 9.5px var(--font-heading);letter-spacing:.09em;text-transform:uppercase;border:1.5px solid var(--color-neutral-500);padding:4px 7px;color:var(--color-neutral-700)">Expiry never recorded</span>
+              </div>
+              <p style="font-size:12px;line-height:1.5;color:var(--color-neutral-700);margin:8px 0 0">Paid-up in our books but no end date was ever entered. Treat as current and ask the membership chair to set one — don't turn them away over a missing field.</p>
+            </div>
+          </div>
+          <div style="height:20px"></div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== 03 LINK AN ORDER BY HAND ===== -->
+      <sc-if value="{{ is.linkOrder }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="display:flex;align-items:center;gap:12px;padding:8px 20px 12px;border-bottom:2px solid var(--color-text);flex:none">
+          <button type="button" onClick="{{ nav.household }}" aria-label="Back" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;flex:none;margin-left:-4px;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div>
+            <div style="font:700 12px var(--font-heading);letter-spacing:.1em;text-transform:uppercase">Link an order</div>
+            <div style="font-size:11px;color:var(--color-neutral-600);margin-top:1px">to the Krishnan household</div>
+          </div>
+        </header>
+
+        <div style="flex:1;overflow:auto;padding:16px 20px 8px">
+          <p style="font-size:13px;line-height:1.55;color:var(--color-neutral-700);margin:0 0 14px">Search tonight's orders by any name, phone or order code the family gives you. Linking applies their allowance retroactively.</p>
+
+          <div style="display:flex;align-items:center;gap:9px;border:2px solid var(--color-text);background:var(--color-bg);padding:0 12px;margin-bottom:16px">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--color-neutral-600)" stroke-width="2.4" style="flex:none"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input type="text" defaultValue="krishnan" style="flex:1;min-width:0;border:0;background:transparent;font-size:16px;min-height:52px;padding:0;font-family:var(--font-body);color:var(--color-text);outline:none">
+          </div>
+
+          <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:9px">2 possible matches</div>
+
+          <button type="button" style="display:flex;align-items:flex-start;gap:12px;width:100%;text-align:left;padding:13px;border:2px solid var(--color-text);background:var(--color-bg);cursor:pointer;margin-bottom:9px;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+            <div style="flex:1;min-width:0">
+              <div style="font:700 15px var(--font-heading)">NAV-6B21 · Krishnan</div>
+              <div style="font-size:12px;color:var(--color-neutral-600);margin-top:3px">k.suresh1958@yahoo.com · (940) 555-0113</div>
+              <div style="font-size:12.5px;color:var(--color-neutral-800);margin-top:6px;line-height:1.45">4 admissions · paid $60 online · 2 pairs of sticks</div>
+              <div style="font:700 11.5px var(--font-heading);color:var(--color-accent-700);margin-top:6px">Phone matches this household</div>
+            </div>
+            <span style="font:700 10px var(--font-heading);letter-spacing:.09em;text-transform:uppercase;border:1.5px solid var(--color-text);padding:5px 8px;flex:none">Link</span>
+          </button>
+
+          <button type="button" style="display:flex;align-items:flex-start;gap:12px;width:100%;text-align:left;padding:13px;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;margin-bottom:9px;color:var(--color-text)" style-hover="border-color:var(--color-text)">
+            <div style="flex:1;min-width:0">
+              <div style="font:700 15px var(--font-heading)">NAV-8J04 · S Krishnan</div>
+              <div style="font-size:12px;color:var(--color-neutral-600);margin-top:3px">skrish@gmail.com · (214) 555-0904</div>
+              <div style="font-size:12.5px;color:var(--color-neutral-800);margin-top:6px;line-height:1.45">2 admissions · paid $30 online</div>
+              <div style="font-size:11.5px;color:var(--color-neutral-600);margin-top:6px">Name only · different phone</div>
+            </div>
+            <span style="font:700 10px var(--font-heading);letter-spacing:.09em;text-transform:uppercase;border:1.5px solid var(--color-divider);padding:5px 8px;flex:none;color:var(--color-neutral-700)">Link</span>
+          </button>
+
+          <div style="padding:12px 13px;background:var(--color-surface);margin-top:6px">
+            <div style="font:700 11.5px var(--font-heading)">Linking is reversible</div>
+            <div style="font-size:12px;line-height:1.5;color:var(--color-neutral-700);margin-top:4px">It records who linked it and when. If you pick the wrong one, unlink it from the household page — nothing is charged or refunded either way.</div>
+          </div>
+        </div>
+
+        <div style="flex:none;border-top:2px solid var(--color-text);padding:13px 20px 18px;background:var(--color-bg)">
+          <button type="button" onClick="{{ nav.household }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:16px 20px;background:var(--color-accent);color:var(--color-on-accent);border:0;font:700 15px var(--font-heading);cursor:pointer;box-sizing:border-box" style-hover="background:var(--color-accent-600)" style-active="background:var(--color-accent-700)">
+            Link NAV-6B21 to Krishnan
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== 04 VOLUNTEER SIGNUP ===== -->
+      <sc-if value="{{ is.volSignup }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="flex:none;background:var(--color-accent);padding:14px 20px 15px;border-bottom:2px solid var(--color-text)">
+          <div style="font:700 10px/1 var(--font-heading);letter-spacing:.16em;text-transform:uppercase;color:var(--color-on-accent)">Navratri · Sat 26 September</div>
+          <div style="font:700 22px/1.15 var(--font-heading);letter-spacing:-.025em;margin-top:7px;color:var(--color-on-accent)">Lend us two hours</div>
+          <div style="font-size:12.5px;color:var(--color-on-accent);margin-top:5px;line-height:1.4;opacity:.86">Every DCICA event runs on volunteers. Pick a job and a shift.</div>
+        </header>
+
+        <div style="flex:1;overflow:auto;padding:16px 20px 8px">
+          <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:9px">Where you'd like to help</div>
+
+          <button type="button" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:14px;border:2px solid var(--color-accent);background:var(--color-accent-100);cursor:pointer;margin-bottom:9px;color:var(--color-text)">
+            <div style="flex:1;min-width:0">
+              <div style="font:700 16px var(--font-heading)">Registration desk</div>
+              <div style="font-size:12.5px;color:var(--color-neutral-700);margin-top:3px;line-height:1.45">Scan codes, sell walk-ups, hand over sticks</div>
+              <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+                <div style="flex:1;max-width:120px;height:8px;background:var(--color-neutral-300);position:relative"><div style="position:absolute;inset:0 33% 0 0;background:var(--color-accent-700)"></div></div>
+                <span style="font:700 11.5px var(--font-heading);color:var(--color-accent-700);flex:none">4 of 6 filled</span>
+              </div>
+            </div>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-700)" stroke-width="3" style="flex:none"><path d="M20 6 9 17l-5-5"/></svg>
+          </button>
+
+          <button type="button" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:14px;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;margin-bottom:9px;color:var(--color-text)" style-hover="border-color:var(--color-text)">
+            <div style="flex:1;min-width:0">
+              <div style="font:700 16px var(--font-heading)">Food court</div>
+              <div style="font-size:12.5px;color:var(--color-neutral-700);margin-top:3px;line-height:1.45">Help vendors set up and keep the queues moving</div>
+              <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+                <div style="flex:1;max-width:120px;height:8px;background:var(--color-neutral-300);position:relative"><div style="position:absolute;inset:0 75% 0 0;background:var(--color-text)"></div></div>
+                <span style="font:700 11.5px var(--font-heading);color:var(--color-neutral-700);flex:none">2 of 8 filled</span>
+              </div>
+            </div>
+          </button>
+
+          <div style="display:flex;align-items:center;gap:12px;width:100%;padding:14px;border:1.5px solid var(--color-divider);background:var(--color-surface);margin-bottom:9px;opacity:.6">
+            <div style="flex:1;min-width:0">
+              <div style="font:700 16px var(--font-heading)">Stage crew</div>
+              <div style="font-size:12.5px;color:var(--color-neutral-700);margin-top:3px;line-height:1.45">Sound checks and running order for the competition</div>
+              <div style="font:700 11.5px var(--font-heading);color:var(--color-neutral-700);margin-top:8px">Full · 5 of 5</div>
+            </div>
+          </div>
+
+          <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600);margin:16px 0 9px">Which shift</div>
+          <div style="display:flex;flex-direction:column;gap:2px;margin-bottom:16px">
+            <button type="button" style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:56px;padding:14px;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;color:var(--color-text)" style-hover="border-color:var(--color-text)">
+              <span style="font:700 15px var(--font-heading)">2:00 – 4:30 PM</span><span style="font-size:12px;color:var(--color-neutral-600)">Set-up · 1 space</span>
+            </button>
+            <button type="button" style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:56px;padding:14px;border:2px solid var(--color-accent);background:var(--color-accent);color:var(--color-on-accent);cursor:pointer">
+              <span style="font:700 15px var(--font-heading)">6:30 – 9:00 PM</span><span style="font-size:12px">Doors · selected</span>
+            </button>
+            <button type="button" style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:56px;padding:14px;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;color:var(--color-text)" style-hover="border-color:var(--color-text)">
+              <span style="font:700 15px var(--font-heading)">9:00 – 11:30 PM</span><span style="font-size:12px;color:var(--color-neutral-600)">Late · 3 spaces</span>
+            </button>
+          </div>
+
+          <label style="display:block;font:700 10px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:6px">Your name</label>
+          <input type="text" placeholder="First and last" style="width:100%;box-sizing:border-box;font-size:16px;min-height:56px;padding:15px;border:2px solid var(--color-text);background:var(--color-bg);font-family:var(--font-body);border-radius:0;color:var(--color-text);margin-bottom:12px">
+          <label style="display:block;font:700 10px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:6px">Mobile</label>
+          <input type="tel" placeholder="(972) 555-0100" style="width:100%;box-sizing:border-box;font-size:16px;min-height:56px;padding:15px;border:1.5px solid var(--color-divider);background:var(--color-bg);font-family:var(--font-body);border-radius:0;color:var(--color-text)">
+          <div style="font-size:11.5px;color:var(--color-neutral-600);margin-top:7px;line-height:1.45">We text you a check-in code the morning of the event. Nothing else, ever.</div>
+
+          <label style="display:flex;align-items:flex-start;gap:10px;padding:14px 0 20px;margin-top:8px;border-top:1px solid var(--color-divider);cursor:pointer">
+            <input type="checkbox" style="width:22px;height:22px;accent-color:var(--color-accent);margin-top:1px;flex:none">
+            <span style="font-size:12.5px;line-height:1.5;color:var(--color-neutral-700)">I'm a student and need volunteer hours recorded</span>
+          </label>
+        </div>
+
+        <div style="flex:none;border-top:2px solid var(--color-text);padding:13px 20px 18px;background:var(--color-bg)">
+          <button type="button" onClick="{{ nav.volCheck }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:16px 20px;background:var(--color-accent);color:var(--color-on-accent);border:0;font:700 15px var(--font-heading);cursor:pointer;box-sizing:border-box" style-hover="background:var(--color-accent-600)" style-active="background:var(--color-accent-700)">
+            Sign me up · doors shift
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== 05 COORDINATOR ROSTER ===== -->
+      <sc-if value="{{ is.volRoster }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="flex:none;padding:6px 20px 12px;border-bottom:2px solid var(--color-text)">
+          <h1 style="font-size:23px;letter-spacing:-.03em;margin:0">Volunteer roster</h1>
+          <div style="font-size:11.5px;color:var(--color-neutral-600);margin-top:4px">Navratri · Sat 26 Sep · updated a moment ago</div>
+        </header>
+
+        <div style="flex:1;overflow:auto">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:2px solid var(--color-text)">
+            <div style="padding:13px 0 13px 20px;border-right:1px solid var(--color-divider)">
+              <div style="font:700 9.5px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600)">Signed up</div>
+              <div style="font:700 26px/1 var(--font-heading);margin-top:5px">19</div>
+            </div>
+            <div style="padding:13px 0 13px 14px;border-right:1px solid var(--color-divider)">
+              <div style="font:700 9.5px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600)">On site</div>
+              <div style="font:700 26px/1 var(--font-heading);margin-top:5px;color:var(--color-accent-2-700)">12</div>
+            </div>
+            <div style="padding:13px 0 13px 14px">
+              <div style="font:700 9.5px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600)">Not arrived</div>
+              <div style="font:700 26px/1 var(--font-heading);margin-top:5px;color:var(--color-accent-700)">3</div>
+            </div>
+          </div>
+
+          <div style="padding:14px 20px 8px;font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600)">Doors · 6:30–9:00 PM</div>
+          <div style="border-top:1px solid var(--color-divider)">
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--color-divider)">
+              <div style="flex:1;min-width:0">
+                <div style="font:700 15px var(--font-heading)">Ravi Kulkarni</div>
+                <div style="font-size:12px;color:var(--color-neutral-600);margin-top:2px">In 6:24 PM · 1h 48m · till holder</div>
+              </div>
+              <span style="font:700 9.5px var(--font-heading);letter-spacing:.09em;text-transform:uppercase;background:var(--color-accent-2);color:#ffffff;padding:5px 8px;flex:none">On site</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--color-divider)">
+              <div style="flex:1;min-width:0">
+                <div style="font:700 15px var(--font-heading)">Sunita Mehta</div>
+                <div style="font-size:12px;color:var(--color-neutral-600);margin-top:2px">In 6:02 PM · 2h 10m</div>
+              </div>
+              <span style="font:700 9.5px var(--font-heading);letter-spacing:.09em;text-transform:uppercase;background:var(--color-accent-2);color:#ffffff;padding:5px 8px;flex:none">On site</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--color-divider)">
+              <div style="flex:1;min-width:0">
+                <div style="font:700 15px var(--font-heading)">Aditya Nair</div>
+                <div style="font-size:12px;color:var(--color-neutral-600);margin-top:2px">Student · needs hours recorded</div>
+              </div>
+              <button type="button" onClick="{{ nav.volCheck }}" style="font:700 9.5px var(--font-heading);letter-spacing:.09em;text-transform:uppercase;border:1.5px solid var(--color-text);background:transparent;padding:0 10px;min-height:44px;cursor:pointer;flex:none;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">Check in</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:2px solid var(--color-divider);background:var(--color-accent-100)">
+              <div style="flex:1;min-width:0">
+                <div style="font:700 15px var(--font-heading)">Priya Shah</div>
+                <div style="font-size:12px;color:var(--color-accent-700);margin-top:2px">40 minutes late · texted, no reply</div>
+              </div>
+              <a href="tel:+19725550147" style="font:700 9.5px var(--font-heading);letter-spacing:.09em;text-transform:uppercase;border:1.5px solid var(--color-accent-700);color:var(--color-accent-700);padding:0 10px;min-height:44px;display:flex;align-items:center;text-decoration:none;flex:none" style-hover="background:var(--color-accent-200)">Call</a>
+            </div>
+          </div>
+
+          <div style="padding:14px 20px 8px;font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600)">Late · 9:00–11:30 PM</div>
+          <div style="border-top:1px solid var(--color-divider);border-bottom:2px solid var(--color-divider)">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 20px">
+              <div style="font-size:13px;color:var(--color-neutral-700);min-width:0">5 signed up · 3 spaces open</div>
+              <span style="font:700 9.5px var(--font-heading);letter-spacing:.09em;text-transform:uppercase;border:1.5px solid var(--color-divider);padding:5px 8px;flex:none;color:var(--color-neutral-700)">Later</span>
+            </div>
+          </div>
+
+          <div style="padding:16px 20px 24px;display:flex;flex-direction:column;gap:9px">
+            <button type="button" style="display:flex;align-items:center;width:100%;min-height:52px;padding:14px 16px;background:transparent;border:1.5px solid var(--color-divider);font:700 14px var(--font-heading);cursor:pointer;color:var(--color-text);box-sizing:border-box" style-hover="background:var(--color-neutral-200)">Text everyone on the doors shift</button>
+            <button type="button" style="display:flex;align-items:center;width:100%;min-height:52px;padding:14px 16px;background:transparent;border:1.5px solid var(--color-divider);font:700 14px var(--font-heading);cursor:pointer;color:var(--color-text);box-sizing:border-box" style-hover="background:var(--color-neutral-200)">Export hours for the year</button>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== 06 CHECK IN AND OUT ===== -->
+      <sc-if value="{{ is.volCheck }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0;background:var(--color-neutral-900)">
+        <header style="flex:none;padding:6px 20px 12px;border-bottom:2px solid var(--color-neutral-700)">
+          <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-accent-400)">Volunteer check-in</div>
+          <div style="font:700 17px var(--font-heading);letter-spacing:-.02em;color:var(--color-bg);margin-top:4px">Navratri · doors shift</div>
+        </header>
+
+        <div style="flex:1;overflow:auto;display:flex;flex-direction:column;padding:16px 20px 8px;color:var(--color-bg)">
+          <div style="background:var(--color-accent-2);padding:18px;margin-bottom:14px">
+            <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:#ffffff;opacity:.9">You're on the clock</div>
+            <div style="display:flex;align-items:baseline;gap:10px;margin-top:8px">
+              <span style="font:700 52px/1 var(--font-heading);letter-spacing:-.04em;color:#ffffff">1:48</span>
+              <span style="font:700 17px var(--font-heading);color:#ffffff;opacity:.9">so far</span>
+            </div>
+            <div style="font-size:12.5px;color:#ffffff;margin-top:8px;opacity:.9">In at 6:24 PM · Ravi Kulkarni · Registration desk</div>
+          </div>
+
+          <button type="button" style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:64px;padding:18px;background:var(--color-accent);color:var(--color-on-accent);border:0;font:700 17px var(--font-heading);cursor:pointer;box-sizing:border-box;margin-bottom:16px" style-hover="background:var(--color-accent-600)" style-active="background:var(--color-accent-700)">
+            Check out now
+          </button>
+
+          <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-400);margin-bottom:10px">Checking someone else in</div>
+
+          <div style="display:flex;justify-content:center;margin-bottom:14px">
+            <div style="width:180px;height:180px;position:relative">
+              <div style="position:absolute;inset:0;background:var(--color-neutral-800)"></div>
+              <div style="position:absolute;top:0;left:0;width:34px;height:34px;border-top:4px solid var(--color-accent);border-left:4px solid var(--color-accent)"></div>
+              <div style="position:absolute;top:0;right:0;width:34px;height:34px;border-top:4px solid var(--color-accent);border-right:4px solid var(--color-accent)"></div>
+              <div style="position:absolute;bottom:0;left:0;width:34px;height:34px;border-bottom:4px solid var(--color-accent);border-left:4px solid var(--color-accent)"></div>
+              <div style="position:absolute;bottom:0;right:0;width:34px;height:34px;border-bottom:4px solid var(--color-accent);border-right:4px solid var(--color-accent)"></div>
+              <div style="position:absolute;left:8%;right:8%;top:50%;height:2px;background:var(--color-accent)"></div>
+            </div>
+          </div>
+          <div style="text-align:center;font-size:12.5px;color:var(--color-neutral-400);line-height:1.5;margin-bottom:14px">Scan the code from their text, or find them by name.</div>
+
+          <button type="button" onClick="{{ nav.volRoster }}" style="display:flex;align-items:center;justify-content:center;gap:9px;width:100%;min-height:56px;padding:15px;background:transparent;border:1.5px solid var(--color-neutral-600);color:var(--color-bg);font:700 14px var(--font-heading);cursor:pointer;box-sizing:border-box;margin-bottom:14px" style-hover="background:var(--color-neutral-800)">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            Find by name instead
+          </button>
+
+          <div style="padding:13px;background:var(--color-neutral-800);margin-bottom:16px">
+            <div style="font:700 11px var(--font-heading);letter-spacing:.1em;text-transform:uppercase;color:var(--color-neutral-400)">If someone forgets to check out</div>
+            <p style="font-size:12.5px;line-height:1.55;margin:6px 0 0;color:var(--color-neutral-300)">A coordinator can close their shift later from the roster. Hours are editable until the event is closed, then they're locked.</p>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== 07 HOURS AND CERTIFICATE ===== -->
+      <sc-if value="{{ is.volThanks }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <div style="flex:1;overflow:auto">
+          <div style="background:var(--color-accent-2);color:#ffffff;padding:28px 20px 24px">
+            <div style="width:46px;height:46px;border:3px solid #ffffff;display:flex;align-items:center;justify-content:center;margin-bottom:16px">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg>
+            </div>
+            <div style="font:700 10px var(--font-heading);letter-spacing:.16em;text-transform:uppercase;opacity:.9">Shift closed · 9:04 PM</div>
+            <h1 style="font-size:30px;letter-spacing:-.035em;margin:10px 0 0;color:#ffffff">Thank you, Aditya.</h1>
+            <p style="font-size:14px;line-height:1.55;margin:11px 0 0;opacity:.92">Two and a half hours on the registration desk. Around 400 people got in tonight because people like you turned up.</p>
+          </div>
+
+          <div style="padding:18px 20px 0">
+            <div style="border:3px solid var(--color-text)">
+              <div style="padding:14px;border-bottom:2px solid var(--color-text)">
+                <div style="font:700 9.5px var(--font-heading);letter-spacing:.13em;text-transform:uppercase;color:var(--color-neutral-600)">Tonight</div>
+                <div style="display:flex;align-items:baseline;gap:9px;margin-top:5px">
+                  <span style="font:700 38px/1 var(--font-heading);letter-spacing:-.04em">2:34</span>
+                  <span style="font:700 15px var(--font-heading);color:var(--color-neutral-600)">hours</span>
+                </div>
+                <div style="font-size:12px;color:var(--color-neutral-600);margin-top:6px">6:30 – 9:04 PM · Registration desk</div>
+              </div>
+              <div style="padding:14px">
+                <div style="font:700 9.5px var(--font-heading);letter-spacing:.13em;text-transform:uppercase;color:var(--color-neutral-600)">This school year</div>
+                <div style="display:flex;align-items:baseline;gap:9px;margin-top:5px">
+                  <span style="font:700 30px/1 var(--font-heading);letter-spacing:-.03em">14:12</span>
+                  <span style="font:700 14px var(--font-heading);color:var(--color-neutral-600)">across 5 events</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-top:16px;padding:14px;background:var(--color-surface)">
+              <div style="font:700 12.5px var(--font-heading)">For your school</div>
+              <div style="font-size:12.5px;line-height:1.55;color:var(--color-neutral-700);margin-top:4px">A signed certificate listing every shift and its hours, on DCICA letterhead. Counts for NHS and community-service credit.</div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:9px;margin-top:16px">
+              <button type="button" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:16px 18px;background:var(--color-text);color:var(--color-bg);border:0;font:700 15px var(--font-heading);cursor:pointer;box-sizing:border-box" style-hover="background:var(--color-neutral-800)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex:none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
+                Download my certificate
+              </button>
+              <button type="button" style="display:flex;align-items:center;width:100%;min-height:52px;padding:14px 18px;background:transparent;border:1.5px solid var(--color-divider);font:700 14px var(--font-heading);cursor:pointer;color:var(--color-text);box-sizing:border-box" style-hover="background:var(--color-neutral-200)">Email it to my counsellor</button>
+              <button type="button" onClick="{{ nav.volSignup }}" style="display:flex;align-items:center;width:100%;min-height:52px;padding:14px 18px;background:transparent;border:1.5px solid var(--color-divider);font:700 14px var(--font-heading);cursor:pointer;color:var(--color-text);box-sizing:border-box" style-hover="background:var(--color-neutral-200)">Sign up for Diwali</button>
+            </div>
+          </div>
+          <div style="height:22px"></div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== 08 EVENT LIFECYCLE ===== -->
+      <sc-if value="{{ is.lifecycle }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="flex:none;padding:6px 20px 12px;border-bottom:2px solid var(--color-text)">
+          <h1 style="font-size:22px;letter-spacing:-.03em;margin:0">Navratri · Sat 26 Sep</h1>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+            <span style="font:700 10px var(--font-heading);letter-spacing:.1em;text-transform:uppercase;background:var(--color-accent-2);color:#ffffff;padding:5px 8px">Live</span>
+            <span style="font-size:12px;color:var(--color-neutral-600)">Since 4:00 PM today</span>
+          </div>
+        </header>
+
+        <div style="flex:1;overflow:auto">
+          <div style="padding:14px 20px 8px;font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600)">Where this event is</div>
+          <div style="padding:0 20px">
+            <div style="display:flex;gap:12px;padding:11px 0;border-top:1px solid var(--color-divider)">
+              <div style="width:22px;flex:none;color:var(--color-neutral-500);display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></div>
+              <div style="min-width:0"><div style="font:700 13.5px var(--font-body);color:var(--color-neutral-600)">Draft</div><div style="font-size:11.5px;color:var(--color-neutral-600);margin-top:2px">Nobody could see it</div></div>
+            </div>
+            <div style="display:flex;gap:12px;padding:11px 0;border-top:1px solid var(--color-divider)">
+              <div style="width:22px;flex:none;color:var(--color-neutral-500);display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></div>
+              <div style="min-width:0"><div style="font:700 13.5px var(--font-body);color:var(--color-neutral-600)">Open for registration</div><div style="font-size:11.5px;color:var(--color-neutral-600);margin-top:2px">14 Aug – 26 Sep · 338 sold</div></div>
+            </div>
+            <div style="display:flex;gap:12px;padding:11px 0;border-top:1px solid var(--color-divider);background:var(--color-accent-2-100);margin:0 -8px;padding-left:8px;padding-right:8px">
+              <div style="width:22px;flex:none;color:var(--color-accent-2-700);display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/></svg></div>
+              <div style="min-width:0"><div style="font:700 13.5px var(--font-body)">Live · happening now</div><div style="font-size:11.5px;color:var(--color-accent-2-700);margin-top:2px">Doors scanning · walk-ins open</div></div>
+            </div>
+            <div style="display:flex;gap:12px;padding:11px 0;border-top:1px solid var(--color-divider);border-bottom:2px solid var(--color-divider);opacity:.5">
+              <div style="width:22px;flex:none;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><circle cx="12" cy="12" r="9"/></svg></div>
+              <div style="min-width:0"><div style="font:700 13.5px var(--font-body)">Closed</div><div style="font-size:11.5px;color:var(--color-neutral-600);margin-top:2px">After close-out is reconciled</div></div>
+            </div>
+          </div>
+
+          <div style="padding:16px 20px 8px;font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600)">Walk-in sales</div>
+          <div style="margin:0 20px;border:2px solid var(--color-accent);background:var(--color-accent-100);padding:14px">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+              <div style="min-width:0">
+                <div style="font:700 15px var(--font-heading)">Open · door price applies</div>
+                <div style="font-size:12.5px;line-height:1.5;color:var(--color-neutral-800);margin-top:4px">Volunteers with a till can sell at $20. Turning this off leaves scanning working but stops all new sales.</div>
+              </div>
+              <button type="button" onClick="{{ toggleWalkin }}" aria-label="Turn walk-in sales off" style="flex:none;width:64px;height:36px;border:2px solid var(--color-text);background:var(--color-accent);cursor:pointer;padding:0;position:relative" style-hover="background:var(--color-accent-600)">
+                <span style="position:absolute;top:2px;right:2px;bottom:2px;width:28px;background:var(--color-text)"></span>
+              </button>
+            </div>
+          </div>
+
+          <div style="padding:18px 20px 8px;font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600)">Next step</div>
+          <div style="padding:0 20px 24px">
+            <div style="border:2px solid var(--color-text);padding:14px;margin-bottom:12px">
+              <div style="font:700 16px var(--font-heading)">Close the event</div>
+              <div style="font-size:12.5px;line-height:1.55;color:var(--color-neutral-700);margin-top:6px">Here is exactly what happens, before you tap it:</div>
+              <div style="border-top:1px solid var(--color-divider);margin-top:10px">
+                <div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--color-divider)"><span style="color:var(--color-accent-700);flex:none">·</span><span style="font-size:12.5px;line-height:1.45;color:var(--color-neutral-800);min-width:0">All scanning stops. Codes still show, but the door app refuses them.</span></div>
+                <div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--color-divider)"><span style="color:var(--color-accent-700);flex:none">·</span><span style="font-size:12.5px;line-height:1.45;color:var(--color-neutral-800);min-width:0">Walk-in sales end and tills are frozen for counting.</span></div>
+                <div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--color-divider)"><span style="color:var(--color-accent-700);flex:none">·</span><span style="font-size:12.5px;line-height:1.45;color:var(--color-neutral-800);min-width:0">Volunteer hours lock. Fix any missing check-outs first.</span></div>
+                <div style="display:flex;gap:10px;padding:8px 0"><span style="color:var(--color-accent-700);flex:none">·</span><span style="font-size:12.5px;line-height:1.45;color:var(--color-neutral-800);min-width:0">The event leaves the public list and moves to past events.</span></div>
+              </div>
+              <div style="margin-top:12px;padding:11px 12px;background:var(--color-accent-100);border-left:5px solid var(--color-accent)">
+                <div style="font:700 12px var(--font-heading);color:var(--color-accent-700)">3 volunteers are still on the clock</div>
+                <div style="font-size:12px;line-height:1.45;color:var(--color-neutral-800);margin-top:3px">Close their shifts from the roster or their hours will be cut off at this moment.</div>
+              </div>
+              <button type="button" onClick="{{ nav.closeout }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:16px 18px;margin-top:13px;background:var(--color-text);color:var(--color-bg);border:0;font:700 15px var(--font-heading);cursor:pointer;box-sizing:border-box" style-hover="background:var(--color-neutral-800)">
+                Close and start counting
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </button>
+            </div>
+            <div style="font-size:11.5px;line-height:1.5;color:var(--color-neutral-600)">Only a coordinator can change state. Every change is logged with a name and a time.</div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== 09 CLOSE-OUT ===== -->
+      <sc-if value="{{ is.closeout }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="flex:none;padding:6px 20px 12px;border-bottom:2px solid var(--color-text)">
+          <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-accent-700)">Close-out · 11:42 PM</div>
+          <h1 style="font-size:22px;letter-spacing:-.03em;margin:5px 0 0">Navratri · Sat 26 Sep</h1>
+        </header>
+
+        <div style="flex:1;overflow:auto">
+          <div style="background:var(--color-text);color:var(--color-bg);padding:16px 20px">
+            <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-accent-400)">Taken tonight</div>
+            <div style="font:700 38px/1 var(--font-heading);letter-spacing:-.04em;margin-top:7px">$9,340</div>
+            <div style="font-size:12.5px;color:var(--color-neutral-400);margin-top:6px">Across Stripe, cash and Zelle · 468 admissions</div>
+          </div>
+
+          <div style="padding:14px 20px 8px;font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600)">By payment method</div>
+          <div style="padding:0 20px 8px">
+            <div style="border-top:2px solid var(--color-text)">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;padding:11px 0;border-bottom:1px solid var(--color-divider)">
+                <div><div style="font:700 14px var(--font-body)">Stripe · online</div><div style="font-size:11.5px;color:var(--color-neutral-600);margin-top:2px">338 admissions · settles in 2 days</div></div>
+                <div style="font:700 16px var(--font-heading)">$5,070</div>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;padding:11px 0;border-bottom:1px solid var(--color-divider)">
+                <div><div style="font:700 14px var(--font-body)">Stripe · door readers</div><div style="font-size:11.5px;color:var(--color-neutral-600);margin-top:2px">72 admissions at $20</div></div>
+                <div style="font:700 16px var(--font-heading)">$1,440</div>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;padding:11px 0;border-bottom:1px solid var(--color-divider)">
+                <div><div style="font:700 14px var(--font-body)">Cash · all tills</div><div style="font-size:11.5px;color:var(--color-neutral-600);margin-top:2px">Counted below</div></div>
+                <div style="font:700 16px var(--font-heading)">$1,930</div>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;padding:11px 0;border-bottom:2px solid var(--color-text)">
+                <div><div style="font:700 14px var(--font-body)">Zelle · booths</div><div style="font-size:11.5px;color:var(--color-neutral-600);margin-top:2px">4 booths matched, 1 outstanding</div></div>
+                <div style="font:700 16px var(--font-heading)">$900</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="padding:14px 20px 8px;font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600)">Cash counted against expected</div>
+          <div style="padding:0 20px 8px">
+            <div style="border:2px solid var(--color-text)">
+              <div style="display:grid;grid-template-columns:1fr 78px 78px;background:var(--color-text);color:var(--color-bg)">
+                <div style="padding:9px 12px;font:700 9.5px var(--font-heading);letter-spacing:.1em;text-transform:uppercase">Till</div>
+                <div style="padding:9px 8px;font:700 9.5px var(--font-heading);letter-spacing:.1em;text-transform:uppercase;text-align:right">Expected</div>
+                <div style="padding:9px 8px;font:700 9.5px var(--font-heading);letter-spacing:.1em;text-transform:uppercase;text-align:right">Counted</div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 78px 78px;border-bottom:1px solid var(--color-divider)">
+                <div style="padding:11px 12px;min-width:0"><div style="font:700 13.5px var(--font-body)">Door 1</div><div style="font-size:11px;color:var(--color-neutral-600);margin-top:2px">Sunita M</div></div>
+                <div style="padding:11px 8px;text-align:right;font:700 14px var(--font-heading)">$1,120</div>
+                <div style="padding:11px 8px;text-align:right;font:700 14px var(--font-heading)">$1,120</div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 78px 78px;border-bottom:1px solid var(--color-divider);background:var(--color-accent-100)">
+                <div style="padding:11px 12px;min-width:0"><div style="font:700 13.5px var(--font-body)">Door 2</div><div style="font-size:11px;color:var(--color-accent-700);margin-top:2px">Ravi K · short $20</div></div>
+                <div style="padding:11px 8px;text-align:right;font:700 14px var(--font-heading)">$830</div>
+                <div style="padding:11px 8px;text-align:right;font:700 14px var(--font-heading);color:var(--color-accent-700)">$810</div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 156px;background:var(--color-surface)">
+                <div style="padding:11px 12px;font:700 13px var(--font-heading);letter-spacing:.06em;text-transform:uppercase">Variance</div>
+                <div style="padding:11px 8px;text-align:right;font:700 17px var(--font-heading);color:var(--color-accent-700)">−$20</div>
+              </div>
+            </div>
+            <div style="font-size:11.5px;line-height:1.5;color:var(--color-neutral-600);margin-top:8px">One $20 short at Door 2. Common and usually a change error — note it and move on. Anything over $50 goes to the treasurer.</div>
+          </div>
+
+          <div style="padding:14px 20px 8px;font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600)">Not money, but worth recording</div>
+          <div style="padding:0 20px">
+            <div style="border-top:2px solid var(--color-text)">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;padding:11px 0;border-bottom:1px solid var(--color-divider)">
+                <div><div style="font:700 14px var(--font-body)">Comped admissions</div><div style="font-size:11.5px;color:var(--color-neutral-600);margin-top:2px">44 member admissions · revenue foregone</div></div>
+                <div style="font:700 16px var(--font-heading);color:var(--color-neutral-600)">$660</div>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;padding:11px 0;border-bottom:1px solid var(--color-divider)">
+                <div><div style="font:700 14px var(--font-body)">Competition entries</div><div style="font-size:11.5px;color:var(--color-neutral-600);margin-top:2px">7 groups at $30</div></div>
+                <div style="font:700 16px var(--font-heading)">$210</div>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;padding:11px 0;border-bottom:2px solid var(--color-divider)">
+                <div><div style="font:700 14px var(--font-body)">Sticks: sold vs handed over</div><div style="font-size:11.5px;color:var(--color-accent-700);margin-top:2px">61 sold · 58 handed over · 3 unclaimed</div></div>
+                <div style="font:700 16px var(--font-heading)">$305</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="padding:16px 20px 24px;display:flex;flex-direction:column;gap:9px">
+            <button type="button" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:16px 18px;background:var(--color-accent);color:var(--color-on-accent);border:0;font:700 15px var(--font-heading);cursor:pointer;box-sizing:border-box" style-hover="background:var(--color-accent-600)" style-active="background:var(--color-accent-700)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex:none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
+              Export for the treasurer
+            </button>
+            <button type="button" style="display:flex;align-items:center;width:100%;min-height:52px;padding:14px 18px;background:transparent;border:1.5px solid var(--color-divider);font:700 14px var(--font-heading);cursor:pointer;color:var(--color-text);box-sizing:border-box" style-hover="background:var(--color-neutral-200)">Chase the outstanding Zelle booth</button>
+            <div style="font-size:11.5px;line-height:1.5;color:var(--color-neutral-600);margin-top:2px">Signing off locks the event. Volunteer hours and till counts can't be edited afterwards.</div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== 10 EMAIL · ORDER AND PASS ===== -->
+      <sc-if value="{{ is.emailOrder }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0;background:var(--color-neutral-200)">
+        <div style="flex:none;padding:8px 16px 10px;background:var(--color-bg);border-bottom:1px solid var(--color-divider)">
+          <div style="display:flex;align-items:center;gap:10px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-neutral-600)" stroke-width="2.4" style="flex:none"><path d="m15 18-6-6 6-6"/></svg>
+            <div style="flex:1;min-width:0">
+              <div style="font:700 13px var(--font-heading);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">DCICA Events</div>
+              <div style="font-size:11px;color:var(--color-neutral-600)">to me · 14 Sep</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:2px;margin-top:9px">
+            <button type="button" onClick="{{ setMail.rich }}" style="flex:1;min-height:44px;border:0;cursor:pointer;font:700 11px var(--font-heading);letter-spacing:.06em;text-transform:uppercase;background:{{ m.richBg }};color:{{ m.richInk }}">As designed</button>
+            <button type="button" onClick="{{ setMail.plain }}" style="flex:1;min-height:44px;border:0;cursor:pointer;font:700 11px var(--font-heading);letter-spacing:.06em;text-transform:uppercase;background:{{ m.plainBg }};color:{{ m.plainInk }}">Plain-text fallback</button>
+          </div>
+        </div>
+
+        <div style="flex:1;overflow:auto;padding:12px">
+          <sc-if value="{{ mailRich }}" hint-placeholder-val="{{ true }}">
+          <div style="background:var(--color-bg);border:1px solid var(--color-divider)">
+            <div style="background:var(--color-accent);padding:14px 16px">
+              <div style="font:700 10px var(--font-heading);letter-spacing:.16em;text-transform:uppercase;color:var(--color-on-accent)">Denton County India Cultural Association</div>
+              <div style="font:700 19px var(--font-heading);letter-spacing:-.02em;margin-top:6px;color:var(--color-on-accent)">You're in — Navratri</div>
+            </div>
+            <div style="padding:16px">
+              <p style="font-size:14px;line-height:1.6;margin:0 0 14px;color:var(--color-text)">Hello Patel family,<br>Your order is confirmed. Show the code below at the door and a volunteer will count your party through.</p>
+
+              <div style="border:3px solid var(--color-text)">
+                <div style="padding:14px;display:flex;justify-content:center;border-bottom:2px solid var(--color-text)">
+                  <div style="width:150px;height:150px;border:2px solid var(--color-text);background-image:repeating-conic-gradient(var(--color-text) 0% 25%, #ffffff 0% 50%);background-size:10px 10px"></div>
+                </div>
+                <div style="padding:13px 14px;border-bottom:2px solid var(--color-text)">
+                  <div style="font:700 9.5px var(--font-heading);letter-spacing:.13em;text-transform:uppercase;color:var(--color-neutral-600)">Your code</div>
+                  <div style="font:700 22px var(--font-heading);letter-spacing:.1em;margin-top:4px">NAV-A19F</div>
+                </div>
+                <div style="display:flex;align-items:stretch">
+                  <div style="flex:1;padding:13px 14px;border-right:2px solid var(--color-text);min-width:0">
+                    <div style="font:700 9.5px var(--font-heading);letter-spacing:.13em;text-transform:uppercase;color:var(--color-neutral-600)">People</div>
+                    <div style="font:700 32px/1 var(--font-heading);letter-spacing:-.03em;margin-top:4px">6</div>
+                  </div>
+                  <div style="flex:none;width:120px;background:var(--color-accent);color:var(--color-on-accent);padding:13px 12px;display:flex;flex-direction:column;justify-content:center">
+                    <div style="font:700 22px/1 var(--font-heading)">PAID</div>
+                    <div style="font-size:11.5px;margin-top:4px">$40 · card</div>
+                  </div>
+                </div>
+              </div>
+
+              <div style="margin-top:14px;padding:12px 13px;background:var(--color-surface);font-size:13px;line-height:1.55;color:var(--color-text)">
+                <strong>4 member admissions</strong> and <strong>2 paid</strong>. Plus <strong>2 pairs of sticks</strong> to collect at the door.
+              </div>
+
+              <div style="margin-top:14px;font-size:13px;line-height:1.6;color:var(--color-text)">
+                <strong>Saturday 26 September</strong><br>
+                Doors 6:00 PM · Dandiya from 7:15 PM<br>
+                McKamy Middle School, 4051 Justin Rd, Flower Mound
+              </div>
+
+              <div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--color-divider);font-size:12px;line-height:1.55;color:var(--color-neutral-700)">
+                One code covers your whole party — it works once, so travel with whoever holds it. It works without signal; screenshot it if you like.
+              </div>
+            </div>
+            <div style="padding:13px 16px;background:var(--color-surface);border-top:1px solid var(--color-divider);font-size:11.5px;line-height:1.55;color:var(--color-neutral-600)">
+              DCICA · P.O. Box 270663, Flower Mound TX 75028<br>
+              Questions? Reply to this email or call 214-699-8608.<br>
+              All sales are final, including no-shows.
+            </div>
+          </div>
+          </sc-if>
+
+          <sc-if value="{{ mailPlain }}" hint-placeholder-val="{{ false }}">
+          <div style="background:var(--color-bg);border:1px solid var(--color-divider);padding:16px">
+            <div style="font:700 10px var(--font-heading);letter-spacing:.13em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:11px">What a text-only client shows</div>
+            <pre style="margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.65;color:var(--color-text);white-space:pre-wrap;word-break:break-word">DCICA — YOU'RE IN, NAVRATRI
+
+Hello Patel family,
+
+Your order is confirmed. Show this code at the
+door and a volunteer will count your party through.
+
+  YOUR CODE:  NAV-A19F
+  PEOPLE:     6
+  PAID:       $40 (card)
+
+  4 member admissions, 2 paid
+  2 pairs of sticks to collect at the door
+
+Saturday 26 September
+Doors 6:00 PM, Dandiya from 7:15 PM
+McKamy Middle School
+4051 Justin Rd, Flower Mound TX
+
+One code covers your whole party. It works once,
+so travel with whoever holds it.
+
+Can't see the code above? Open this link:
+https://dcica.org/pass/NAV-A19F
+
+--
+DCICA, P.O. Box 270663, Flower Mound TX 75028
+Questions? Reply here or call 214-699-8608.
+All sales are final, including no-shows.</pre>
+          </div>
+          </sc-if>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== 11 EMAIL · ONE-TIME CODE ===== -->
+      <sc-if value="{{ is.emailCode }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0;background:var(--color-neutral-200)">
+        <div style="flex:none;padding:8px 16px 10px;background:var(--color-bg);border-bottom:1px solid var(--color-divider)">
+          <div style="display:flex;align-items:center;gap:10px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-neutral-600)" stroke-width="2.4" style="flex:none"><path d="m15 18-6-6 6-6"/></svg>
+            <div style="flex:1;min-width:0">
+              <div style="font:700 13px var(--font-heading)">DCICA Membership</div>
+              <div style="font-size:11px;color:var(--color-neutral-600)">to me · just now · Promotions</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:2px;margin-top:9px">
+            <button type="button" onClick="{{ setMail.rich }}" style="flex:1;min-height:44px;border:0;cursor:pointer;font:700 11px var(--font-heading);letter-spacing:.06em;text-transform:uppercase;background:{{ m.richBg }};color:{{ m.richInk }}">As designed</button>
+            <button type="button" onClick="{{ setMail.plain }}" style="flex:1;min-height:44px;border:0;cursor:pointer;font:700 11px var(--font-heading);letter-spacing:.06em;text-transform:uppercase;background:{{ m.plainBg }};color:{{ m.plainInk }}">Plain-text fallback</button>
+          </div>
+        </div>
+
+        <div style="flex:1;overflow:auto;padding:12px">
+          <sc-if value="{{ mailRich }}" hint-placeholder-val="{{ true }}">
+          <div style="background:var(--color-bg);border:1px solid var(--color-divider)">
+            <div style="background:var(--color-text);padding:14px 16px">
+              <div style="font:700 10px var(--font-heading);letter-spacing:.16em;text-transform:uppercase;color:var(--color-accent-400)">DCICA Membership</div>
+              <div style="font:700 19px var(--font-heading);letter-spacing:-.02em;margin-top:6px;color:var(--color-bg)">Your one-time code</div>
+            </div>
+            <div style="padding:16px">
+              <div style="border:3px solid var(--color-text);padding:18px;text-align:center;margin-bottom:16px">
+                <div style="font:700 9.5px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600)">Enter this in the app</div>
+                <div style="font:700 40px/1 var(--font-heading);letter-spacing:.16em;margin-top:9px">418 302</div>
+                <div style="font-size:12px;color:var(--color-neutral-600);margin-top:9px">Good for 30 minutes</div>
+              </div>
+
+              <p style="font-size:13.5px;line-height:1.6;margin:0 0 12px;color:var(--color-text)">If this address is on our membership list, this code will confirm it and apply your household's free admissions to your order.</p>
+
+              <div style="padding:12px 13px;background:var(--color-surface);font-size:12.5px;line-height:1.55;color:var(--color-neutral-700)">
+                Didn't ask for this? Someone typed this address into our checkout. Ignore the email and nothing happens — no account exists to access, and the code expires on its own.
+              </div>
+
+              <div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--color-divider);font-size:12.5px;line-height:1.55;color:var(--color-neutral-700)">
+                Nothing arrived earlier and now two codes have turned up? Use the newest one; older codes stop working as soon as a new one is sent.
+              </div>
+            </div>
+            <div style="padding:13px 16px;background:var(--color-surface);border-top:1px solid var(--color-divider);font-size:11.5px;line-height:1.55;color:var(--color-neutral-600)">
+              DCICA · P.O. Box 270663, Flower Mound TX 75028<br>
+              We never ask for a password or card details by email.
+            </div>
+          </div>
+          </sc-if>
+
+          <sc-if value="{{ mailPlain }}" hint-placeholder-val="{{ false }}">
+          <div style="background:var(--color-bg);border:1px solid var(--color-divider);padding:16px">
+            <div style="font:700 10px var(--font-heading);letter-spacing:.13em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:11px">What a text-only client shows</div>
+            <pre style="margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.65;color:var(--color-text);white-space:pre-wrap;word-break:break-word">DCICA MEMBERSHIP — YOUR ONE-TIME CODE
+
+  418 302
+
+Good for 30 minutes.
+
+If this address is on our membership list, this
+code will confirm it and apply your household's
+free admissions to your order.
+
+Didn't ask for this? Someone typed this address
+into our checkout. Ignore this email and nothing
+happens. The code expires on its own.
+
+Two codes arrived? Use the newest one. Older
+codes stop working as soon as a new one is sent.
+
+--
+DCICA, P.O. Box 270663, Flower Mound TX 75028
+We never ask for a password or card details
+by email.</pre>
+          </div>
+          </sc-if>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== 12 EVENTS LIST · EMPTY ===== -->
+      <sc-if value="{{ is.listEmpty }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 20px 12px;border-bottom:2px solid var(--color-text);flex:none">
+          <div style="min-width:0">
+            <div style="font:700 10px/1 var(--font-heading);letter-spacing:.16em;text-transform:uppercase;color:var(--color-accent-700)">DCICA</div>
+            <h1 style="font-size:24px;letter-spacing:-.03em;margin:5px 0 0">Events</h1>
+          </div>
+          <div style="width:38px;height:38px;background:var(--color-text);color:var(--color-bg);display:flex;align-items:center;justify-content:center;font:700 13px var(--font-heading);flex:none">PS</div>
+        </header>
+
+        <div style="flex:1;overflow:auto;padding:0">
+          <div style="padding:34px 20px 26px;border-bottom:2px solid var(--color-text)">
+            <div style="width:54px;height:54px;border:2.5px solid var(--color-neutral-400);display:flex;align-items:center;justify-content:center;margin-bottom:18px;color:var(--color-neutral-500)">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="4" width="18" height="17"/><path d="M3 10h18M8 2v4M16 2v4"/></svg>
+            </div>
+            <div style="font:700 22px/1.25 var(--font-heading);letter-spacing:-.025em;text-wrap:pretty">Nothing on the calendar just yet</div>
+            <p style="font-size:14px;line-height:1.6;color:var(--color-neutral-700);margin:11px 0 0">The committee is planning the next season. Diwali is usually early November and Holi in March — we open registration about six weeks ahead.</p>
+          </div>
+
+          <div style="padding:18px 20px 0">
+            <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:10px">Hear about it first</div>
+            <button type="button" style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:60px;padding:16px 18px;background:var(--color-accent);color:var(--color-on-accent);border:0;font:700 15px var(--font-heading);cursor:pointer;box-sizing:border-box;text-align:left;margin-bottom:9px" style-hover="background:var(--color-accent-600)">
+              <span>Text me when registration opens<span style="display:block;font:400 12px var(--font-body);margin-top:3px;opacity:.82">One message per event, nothing else</span></span>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="flex:none"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+            <button type="button" onClick="{{ nav.listPast }}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:56px;padding:15px 18px;background:transparent;border:1.5px solid var(--color-divider);font:700 14px var(--font-heading);cursor:pointer;color:var(--color-text);box-sizing:border-box;text-align:left" style-hover="background:var(--color-neutral-200)">
+              <span>Look back at past events</span>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex:none"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+          </div>
+
+          <div style="padding:20px 20px 0">
+            <div style="height:2px;background:var(--color-divider);margin-bottom:16px"></div>
+            <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:10px">Meanwhile</div>
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <a href="#" style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:52px;padding:14px 16px;border:1.5px solid var(--color-divider);font:700 14px var(--font-heading);color:var(--color-text);text-decoration:none;box-sizing:border-box" style-hover="background:var(--color-neutral-200)">
+                Become a member
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex:none"><path d="m9 18 6-6-6-6"/></svg>
+              </a>
+              <a href="#" style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:52px;padding:14px 16px;border:1.5px solid var(--color-divider);font:700 14px var(--font-heading);color:var(--color-text);text-decoration:none;box-sizing:border-box" style-hover="background:var(--color-neutral-200)">
+                Volunteer with us
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex:none"><path d="m9 18 6-6-6-6"/></svg>
+              </a>
+            </div>
+          </div>
+          <div style="height:24px"></div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== 13 EVENTS LIST · PAST ===== -->
+      <sc-if value="{{ is.listPast }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 20px 12px;border-bottom:2px solid var(--color-text);flex:none">
+          <div style="min-width:0">
+            <div style="font:700 10px/1 var(--font-heading);letter-spacing:.16em;text-transform:uppercase;color:var(--color-accent-700)">DCICA</div>
+            <h1 style="font-size:24px;letter-spacing:-.03em;margin:5px 0 0">Events</h1>
+          </div>
+          <div style="width:38px;height:38px;background:var(--color-text);color:var(--color-bg);display:flex;align-items:center;justify-content:center;font:700 13px var(--font-heading);flex:none">PS</div>
+        </header>
+
+        <div style="flex:1;overflow:auto">
+          <div style="background:var(--color-text);color:var(--color-bg);padding:16px 20px 18px">
+            <div style="font:700 10px/1 var(--font-heading);letter-spacing:.18em;text-transform:uppercase;color:var(--color-accent-400)">Next up</div>
+            <div style="display:flex;align-items:flex-start;gap:14px;margin-top:13px">
+              <div style="flex:none;width:56px;border-right:2px solid var(--color-neutral-700);padding-right:12px">
+                <div style="font:700 12px/1 var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-accent-400)">Nov</div>
+                <div style="font:700 40px/1 var(--font-heading);letter-spacing:-.05em;margin-top:3px">07</div>
+              </div>
+              <div style="min-width:0;flex:1">
+                <div style="font:700 20px/1.1 var(--font-heading);letter-spacing:-.03em">Diwali Dhamaka</div>
+                <div style="font-size:12.5px;color:var(--color-neutral-300);margin-top:6px;line-height:1.45">Coppell Arts Center · registration opens 20 Sep</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="padding:16px 20px 8px;font:700 10px var(--font-heading);letter-spacing:.16em;text-transform:uppercase;color:var(--color-neutral-600)">Just finished</div>
+
+          <div style="margin:0 20px 14px;border:1.5px solid var(--color-divider);background:var(--color-surface)">
+            <div style="display:flex;align-items:flex-start;gap:13px;padding:14px">
+              <div style="flex:none;width:44px;opacity:.6">
+                <div style="font:700 10px/1 var(--font-heading);letter-spacing:.1em;text-transform:uppercase;color:var(--color-neutral-600)">Sep</div>
+                <div style="font:700 24px/1 var(--font-heading);letter-spacing:-.03em;margin-top:2px;color:var(--color-neutral-700)">26</div>
+              </div>
+              <div style="flex:1;min-width:0">
+                <div style="font:700 16px/1.2 var(--font-heading);letter-spacing:-.015em;color:var(--color-neutral-700)">Navratri at the Grand</div>
+                <div style="font-size:12px;color:var(--color-neutral-600);margin-top:4px;line-height:1.45">468 people came · thank you</div>
+                <div style="display:flex;gap:7px;margin-top:9px;flex-wrap:wrap">
+                  <span style="font:700 9.5px var(--font-heading);letter-spacing:.09em;text-transform:uppercase;border:1.5px solid var(--color-neutral-500);padding:4px 7px;color:var(--color-neutral-700)">Finished</span>
+                  <span style="font:700 9.5px var(--font-heading);letter-spacing:.09em;text-transform:uppercase;background:var(--color-text);color:var(--color-bg);padding:5px 7px">Photos up</span>
+                </div>
+              </div>
+            </div>
+            <div style="border-top:1.5px solid var(--color-divider);display:flex">
+              <a href="#" style="flex:1;min-height:48px;display:flex;align-items:center;justify-content:center;font:700 12.5px var(--font-heading);color:var(--color-text);text-decoration:none;border-right:1.5px solid var(--color-divider)" style-hover="background:var(--color-neutral-200)">See photos</a>
+              <a href="#" style="flex:1;min-height:48px;display:flex;align-items:center;justify-content:center;font:700 12.5px var(--font-heading);color:var(--color-text);text-decoration:none" style-hover="background:var(--color-neutral-200)">Competition results</a>
+            </div>
+          </div>
+
+          <div style="padding:6px 20px 8px;font:700 10px var(--font-heading);letter-spacing:.16em;text-transform:uppercase;color:var(--color-neutral-600)">Earlier this year</div>
+          <div style="border-top:1px solid var(--color-divider)">
+            <a href="#" style="display:flex;align-items:center;gap:13px;padding:12px 20px;border-bottom:1px solid var(--color-divider);text-decoration:none;color:var(--color-neutral-700)" style-hover="background:var(--color-neutral-200)">
+              <div style="flex:none;width:40px;font:700 11px var(--font-heading);letter-spacing:.06em;text-transform:uppercase">Aug 15</div>
+              <div style="flex:1;min-width:0;font:700 14px var(--font-heading)">India Independence Day</div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="flex:none"><path d="m9 18 6-6-6-6"/></svg>
+            </a>
+            <a href="#" style="display:flex;align-items:center;gap:13px;padding:12px 20px;border-bottom:1px solid var(--color-divider);text-decoration:none;color:var(--color-neutral-700)" style-hover="background:var(--color-neutral-200)">
+              <div style="flex:none;width:40px;font:700 11px var(--font-heading);letter-spacing:.06em;text-transform:uppercase">Mar 21</div>
+              <div style="flex:1;min-width:0;font:700 14px var(--font-heading)">Holi</div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="flex:none"><path d="m9 18 6-6-6-6"/></svg>
+            </a>
+          </div>
+
+          <div style="padding:18px 20px 28px">
+            <div style="font-size:12px;line-height:1.55;color:var(--color-neutral-600)">A finished event stays here for a season, then moves to the archive. Tickets for past events no longer scan.</div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+    </div>
+  </main>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:1000}}">
+class Component extends DCLogic {
+  state = { screen: 'roster', filter: 'all', mail: 'rich', walkin: true };
+
+  go = (s) => () => this.setState({ screen: s });
+
+  renderVals() {
+    const s = this.state;
+
+    const titles = {
+      roster: 'Roster, scoped to event', household: 'Household detail',
+      linkOrder: 'Link an order by hand', volSignup: 'Sign up for a shift',
+      volRoster: 'Coordinator roster', volCheck: 'Check in and out',
+      volThanks: 'Hours and certificate', lifecycle: 'Event lifecycle',
+      closeout: 'Close-out and reconciliation', emailOrder: 'Email · order and pass',
+      emailCode: 'Email · one-time code', listEmpty: 'Events list · empty',
+      listPast: 'Events list · past'
+    };
+    const roles = {
+      roster: 'Coordinator', household: 'Coordinator', linkOrder: 'Coordinator',
+      volSignup: 'Public', volRoster: 'Coordinator', volCheck: 'Volunteer',
+      volThanks: 'Volunteer', lifecycle: 'Coordinator', closeout: 'Treasurer',
+      emailOrder: 'Attendee inbox', emailCode: 'Attendee inbox',
+      listEmpty: 'Public', listPast: 'Public'
+    };
+
+    const is = {};
+    Object.keys(titles).forEach(k => { is[k] = s.screen === k; });
+
+    const dark = s.screen === 'volCheck';
+    const chip = (on) => ({
+      bg: on ? 'var(--color-text)' : 'transparent',
+      ink: on ? 'var(--color-bg)' : 'var(--color-neutral-700)',
+      border: on ? 'var(--color-text)' : 'var(--color-divider)'
+    });
+    const cAll = chip(s.filter === 'all'), cNo = chip(s.filter === 'noOrder');
+    const cPaid = chip(s.filter === 'paidFull'), cArr = chip(s.filter === 'arrived');
+
+    // Rows are phrased so a missing match is never asserted as a fact about the person.
+    const ALL = [
+      { name: 'Desai', contact: 'r.desai@gmail.com', tag: 'Current', allowance: 4, used: 2,
+        order: '6 admissions · 2 of 4 free used · 2 pairs of sticks', state: 'arrived',
+        orderInk: 'var(--color-accent-2-700)', arrived: 'Checked in 7:22 PM' },
+      { name: 'Krishnan', contact: 'No email on file · (940) 555-0113', tag: 'Lifetime', allowance: 6, used: 0,
+        order: 'No order found under this household', state: 'noOrder',
+        orderInk: 'var(--color-accent-700)' },
+      { name: 'Rao', contact: 's.rao@outlook.com', tag: 'No expiry set', allowance: 4, used: 0,
+        order: '2 admissions · paid full · 4 free still available', state: 'paidFull',
+        orderInk: 'var(--color-accent-700)' },
+      { name: 'Iyer', contact: 'm.iyer@gmail.com', tag: 'Current', allowance: 2, used: 2,
+        order: '2 admissions · both free · not arrived yet', state: 'purchased',
+        orderInk: 'var(--color-neutral-700)' },
+      { name: 'Shah', contact: 'priya.shah@gmail.com', tag: 'Current', allowance: 4, used: 4,
+        order: '6 admissions · 4 of 4 free used · 1 competition entry', state: 'arrived',
+        orderInk: 'var(--color-accent-2-700)' },
+      { name: 'Nair', contact: 'a.nair@yahoo.com', tag: 'Current', allowance: 1, used: 0,
+        order: 'No order found under this email', state: 'noOrder',
+        orderInk: 'var(--color-accent-700)' }
+    ];
+
+    const keep = s.filter === 'all' ? ALL
+      : s.filter === 'arrived' ? ALL.filter(r => r.state === 'arrived')
+      : ALL.filter(r => r.state === s.filter);
+
+    const notes = {
+      all: '214 households on the roll. Tap any row for detail, allowance and their order for this event.',
+      noOrder: 'No order matched their email. They may have bought under another address — check by phone, then link it by hand.',
+      paidFull: 'These paid full price with free admissions still available. Worth a call before the event — they are the ones who feel short-changed afterwards.',
+      arrived: 'Already scanned in at a door tonight.'
+    };
+
+    const rows = keep.map((r) => ({
+      name: r.name,
+      contact: r.contact,
+      order: r.order,
+      orderInk: r.orderInk,
+      allowance: r.allowance,
+      usedLine: r.used > 0 ? r.used + ' used' : 'none used',
+      tag: r.tag,
+      tagBg: r.tag === 'Lifetime' ? 'var(--color-accent)'
+        : r.tag === 'No expiry set' ? 'transparent' : 'var(--color-text)',
+      tagInk: r.tag === 'Lifetime' ? 'var(--color-on-accent)'
+        : r.tag === 'No expiry set' ? 'var(--color-neutral-700)' : 'var(--color-bg)',
+      open: this.go('household')
+    }));
+
+    return {
+      is,
+      label: titles[s.screen] || '',
+      role: roles[s.screen] || '',
+      barBg: dark ? 'var(--color-neutral-900)' : 'transparent',
+      barInk: dark ? 'var(--color-bg)' : 'var(--color-text)',
+      nav: Object.fromEntries(Object.keys(titles).map(k => [k, this.go(k)])),
+
+      rows,
+      filterNote: notes[s.filter],
+      setFilter: {
+        all: () => this.setState({ filter: 'all' }),
+        noOrder: () => this.setState({ filter: 'noOrder' }),
+        paidFull: () => this.setState({ filter: 'paidFull' }),
+        arrived: () => this.setState({ filter: 'arrived' })
+      },
+      f: {
+        allBg: cAll.bg, allInk: cAll.ink, allBorder: cAll.border,
+        noOrderBg: cNo.bg, noOrderInk: cNo.ink, noOrderBorder: cNo.border,
+        paidFullBg: cPaid.bg, paidFullInk: cPaid.ink, paidFullBorder: cPaid.border,
+        arrivedBg: cArr.bg, arrivedInk: cArr.ink, arrivedBorder: cArr.border
+      },
+
+      mailRich: s.mail === 'rich',
+      mailPlain: s.mail === 'plain',
+      setMail: {
+        rich: () => this.setState({ mail: 'rich' }),
+        plain: () => this.setState({ mail: 'plain' })
+      },
+      m: {
+        richBg: s.mail === 'rich' ? 'var(--color-text)' : 'var(--color-neutral-200)',
+        richInk: s.mail === 'rich' ? 'var(--color-bg)' : 'var(--color-neutral-700)',
+        plainBg: s.mail === 'plain' ? 'var(--color-text)' : 'var(--color-neutral-200)',
+        plainInk: s.mail === 'plain' ? 'var(--color-bg)' : 'var(--color-neutral-700)'
+      },
+
+      toggleWalkin: () => this.setState(x => ({ walkin: !x.walkin }))
+    };
+  }
+}
+</script>
+</body>
+</html>

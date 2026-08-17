@@ -1,0 +1,2097 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="_ds/modernist-949fda96-bb6e-4e15-b019-48ec42201a5b/styles.css">
+<script src="_ds/modernist-949fda96-bb6e-4e15-b019-48ec42201a5b/_ds_bundle.js"></script>
+<script src="./image-slot.js"></script>
+<style>
+  body { margin: 0; background: var(--color-neutral-300); }
+  a { color: var(--color-accent-700); text-underline-offset: 3px; }
+  a:hover { color: var(--color-accent-800); }
+</style>
+</helmet>
+
+<div style="display:flex;align-items:flex-start;min-height:100vh;font-family:var(--font-body);color:var(--color-text)">
+
+  <aside style="width:250px;flex:none;position:sticky;top:0;height:100vh;overflow:auto;background:var(--color-bg);border-right:2px solid var(--color-text);padding:24px 0 40px">
+    <div style="padding:0 20px 16px">
+      <div style="font:700 11px/1 var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-accent)">DCICA</div>
+      <div style="font:700 20px/1.1 var(--font-heading);letter-spacing:-.02em;margin-top:6px">Events &amp; Check-in</div>
+      <div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-neutral-600);margin-top:6px">v1 prototype · 21 screens</div>
+    </div>
+    <div style="height:2px;background:var(--color-divider)"></div>
+    <div style="padding:14px 20px 6px;font:700 10px/1 var(--font-heading);letter-spacing:.16em;text-transform:uppercase;color:var(--color-neutral-600)">Attendee</div>
+    <nav style="display:flex;flex-direction:column">
+      <button type="button" onClick="{{ nav.events }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">01 · Events</button>
+      <button type="button" onClick="{{ nav.event }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">02 · Navratri day</button>
+      <button type="button" onClick="{{ nav.pick }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">03 · Tickets · three items</button>
+      <button type="button" onClick="{{ nav.pay }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">04 · Payment</button>
+      <button type="button" onClick="{{ nav.confirm }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">05 · Confirmed</button>
+    </nav>
+    <div style="padding:18px 20px 6px;font:700 10px/1 var(--font-heading);letter-spacing:.16em;text-transform:uppercase;color:var(--color-neutral-600)">Door volunteer</div>
+    <nav style="display:flex;flex-direction:column">
+      <button type="button" onClick="{{ nav.scan }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">06 · Scanner</button>
+      <button type="button" onClick="{{ nav.scanok }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">07 · Valid scan</button>
+      <button type="button" onClick="{{ nav.scandup }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">08 · No floor ticket</button>
+      <button type="button" onClick="{{ nav.door }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">09 · Door status</button>
+      <button type="button" onClick="{{ nav.sell }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">10 · Sell at the door</button>
+      <button type="button" onClick="{{ nav.sold }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">11 · Ticket issued</button>
+      <button type="button" onClick="{{ nav.comp }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">12 · Member comp at the door</button>
+      <button type="button" onClick="{{ nav.compUsed }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">13 · Allowance already used</button>
+      <button type="button" onClick="{{ nav.compDesk }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">14 · Settle at the desk</button>
+      <button type="button" onClick="{{ nav.board }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">15 · Get a board member</button>
+    </nav>
+    <div style="padding:18px 20px 6px;font:700 10px/1 var(--font-heading);letter-spacing:.16em;text-transform:uppercase;color:var(--color-neutral-600)">Admin &amp; vendor</div>
+    <nav style="display:flex;flex-direction:column">
+      <button type="button" onClick="{{ nav.admin }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">16 · Live dashboard</button>
+      <button type="button" onClick="{{ nav.setup }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">17 · Service &amp; pricing config</button>
+      <button type="button" onClick="{{ nav.vendor }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">18 · Booth application</button>
+      <button type="button" onClick="{{ nav.boothpay }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">19 · Booth payment · Zelle</button>
+      <button type="button" onClick="{{ nav.ronpay }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">22 · RoN entry · Zelle</button>
+      <button type="button" onClick="{{ nav.boothconfirm }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">20 · Enter transaction code</button>
+      <button type="button" onClick="{{ nav.boothpending }}" style="text-align:left;padding:9px 20px;border:0;background:transparent;font:600 13px var(--font-body);color:var(--color-text);cursor:pointer" style-hover="background:var(--color-accent-100);color:var(--color-accent-700)">21 · Awaiting payment match</button>
+    </nav>
+  </aside>
+
+  <main style="flex:1;display:flex;flex-direction:column;align-items:center;padding:44px 32px 64px;min-width:0">
+    <div style="width:390px;display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px">
+      <div style="font:700 13px/1 var(--font-heading);letter-spacing:.1em;text-transform:uppercase">{{ label }}</div>
+      <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-700)">{{ role }}</div>
+    </div>
+
+    <div style="width:390px;height:844px;flex:none;background:var(--color-bg);border:2px solid var(--color-text);display:flex;flex-direction:column;overflow:hidden;box-shadow:var(--shadow-lg)">
+
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 20px 6px;font:700 12px var(--font-heading);flex:none;color:{{ barInk }};background:{{ barBg }}">
+        <span>9:41</span>
+        <span style="display:flex;align-items:center;gap:5px">
+          <span style="width:17px;height:9px;border:1.5px solid currentColor;display:block"></span>
+          <span style="width:2px;height:5px;background:currentColor;display:block"></span>
+        </span>
+      </div>
+
+      <!-- 01 EVENTS -->
+      <sc-if value="{{ is.events }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 20px 12px;border-bottom:2px solid var(--color-text);flex:none">
+          <div style="min-width:0">
+            <div style="font:700 10px/1 var(--font-heading);letter-spacing:.16em;text-transform:uppercase;color:var(--color-accent)">DCICA</div>
+            <h1 style="font-size:24px;letter-spacing:-.03em;margin:5px 0 0">Events</h1>
+          </div>
+          <div style="width:38px;height:38px;background:var(--color-text);color:var(--color-bg);display:flex;align-items:center;justify-content:center;font:700 13px var(--font-heading);flex:none">PS</div>
+        </header>
+
+        <div style="flex:1;overflow:auto">
+
+          <div style="background:var(--color-text);color:var(--color-bg);padding:16px 20px 18px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+              <div style="font:700 10px/1 var(--font-heading);letter-spacing:.18em;text-transform:uppercase;color:var(--color-accent-400)">Next up</div>
+              <div style="font:700 10px var(--font-heading);letter-spacing:.1em;text-transform:uppercase;border:1.5px solid var(--color-neutral-600);padding:4px 7px;flex:none">In 12 days</div>
+            </div>
+
+            <div style="display:flex;align-items:flex-start;gap:14px;margin-top:14px">
+              <div style="flex:none;width:56px;border-right:2px solid var(--color-neutral-700);padding-right:12px">
+                <div style="font:700 12px/1 var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-accent-400)">Sep</div>
+                <div style="font:700 40px/1 var(--font-heading);letter-spacing:-.05em;margin-top:3px">26</div>
+                <div style="font-size:11px;color:var(--color-neutral-400);margin-top:4px">Saturday</div>
+              </div>
+              <div style="min-width:0;flex:1">
+                <div style="font:700 9px/1 var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-400)">DCICA-Shakti · Navratri</div>
+                <div style="font:700 21px/1.05 var(--font-heading);letter-spacing:-.03em;margin-top:7px;text-wrap:pretty">One night, two parts</div>
+                <div style="font-size:12px;color:var(--color-neutral-300);margin-top:7px;line-height:1.45">McKamy Middle School<br>One event, three things to buy</div>
+              </div>
+              <button type="button" onClick="{{ nav.event }}" aria-label="Open the Dandiya poster" style="flex:none;width:84px;padding:0;border:0;background:transparent;cursor:pointer;display:block">
+                <div style="width:84px;aspect-ratio:0.80;position:relative;background:var(--color-neutral-800)">
+                  <image-slot id="poster-dandiya-thumb" shape="rect" fit="contain" placeholder="Dandiya.jpeg"></image-slot>
+                </div>
+                <div style="font:700 8px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-400);margin-top:5px;text-align:left">Poster</div>
+              </button>
+            </div>
+
+            <div style="margin-top:15px;padding-top:13px;border-top:1.5px solid var(--color-neutral-700)">
+              <div style="font:700 9px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-400);margin-bottom:8px">The evening</div>
+              <div style="display:flex;gap:12px;padding:5px 0">
+                <span style="font:700 11px var(--font-heading);letter-spacing:.05em;color:var(--color-accent-400);flex:none;width:56px">4:00 PM</span>
+                <span style="font-size:12.5px;color:var(--color-neutral-300);min-width:0;line-height:1.4">Rhythm of Navratri — the group dance competition</span>
+              </div>
+              <div style="display:flex;gap:12px;padding:5px 0">
+                <span style="font:700 11px var(--font-heading);letter-spacing:.05em;color:var(--color-accent-400);flex:none;width:56px">7:15 PM</span>
+                <span style="font-size:12.5px;color:var(--color-neutral-300);min-width:0;line-height:1.4">Dandiya — the floor opens to everyone</span>
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:12px;margin-top:15px;padding-top:14px;border-top:1.5px solid var(--color-neutral-700)">
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:baseline;gap:7px">
+                  <span style="font:700 24px var(--font-heading);letter-spacing:-.02em">{{ floorPriceStr }}</span>
+                  <span style="font-size:12px;color:var(--color-neutral-400)">{{ pricePhaseLabel }}</span>
+                </div>
+                <div style="font-size:11px;color:var(--color-accent-400);margin-top:3px">{{ pricePhaseNote }}</div>
+              </div>
+              <button type="button" onClick="{{ nav.pick }}" style="display:flex;align-items:center;gap:8px;padding:15px 18px;background:var(--color-accent);color:var(--color-on-accent);border:0;font:700 14px var(--font-heading);cursor:pointer;flex:none;min-height:52px" style-hover="background:var(--color-accent-600)" style-active="background:var(--color-accent-700)">
+                Get tickets
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </button>
+            </div>
+
+            <button type="button" onClick="{{ nav.event }}" style="margin-top:12px;padding:0;background:transparent;border:0;color:var(--color-neutral-400);font:600 12px var(--font-body);cursor:pointer;text-decoration:underline;text-underline-offset:3px" style-hover="color:var(--color-bg)">Full schedule, rules and directions</button>
+          </div>
+
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 20px;background:var(--color-accent-100);border-bottom:1px solid var(--color-divider)">
+            <div style="min-width:0">
+              <div style="font:700 11px/1 var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-accent-700)">Member 2026</div>
+              <div style="font-size:12px;color:var(--color-neutral-800);margin-top:3px">Member pricing applied automatically</div>
+            </div>
+            <div style="font:700 10px var(--font-heading);letter-spacing:.08em;text-transform:uppercase;border:1.5px solid var(--color-accent-700);color:var(--color-accent-700);padding:4px 7px;flex:none">Active</div>
+          </div>
+
+          <div style="padding:16px 20px 6px;font:700 10px var(--font-heading);letter-spacing:.16em;text-transform:uppercase;color:var(--color-neutral-600)">Also coming up</div>
+
+          <button type="button" onClick="{{ nav.event }}" style="display:flex;align-items:center;gap:14px;width:100%;text-align:left;padding:13px 20px;background:transparent;border:0;border-top:1px solid var(--color-divider);cursor:pointer;font-family:var(--font-body);color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+            <div style="flex:none;width:38px">
+              <div style="font:700 9px/1 var(--font-heading);letter-spacing:.1em;text-transform:uppercase;color:var(--color-neutral-600)">Aug</div>
+              <div style="font:700 20px/1 var(--font-heading);letter-spacing:-.03em;margin-top:2px">15</div>
+            </div>
+            <div style="min-width:0;flex:1">
+              <div style="font:700 15px/1.2 var(--font-heading);letter-spacing:-.015em">India Independence Day</div>
+              <div style="font-size:12px;color:var(--color-neutral-600);margin-top:3px">Denton Civic Center · 10:00 AM</div>
+            </div>
+            <span style="font:700 9px var(--font-heading);letter-spacing:.08em;text-transform:uppercase;border:1.5px solid var(--color-text);padding:4px 7px;flex:none">RSVP</span>
+          </button>
+
+          <button type="button" onClick="{{ nav.event }}" style="display:flex;align-items:center;gap:14px;width:100%;text-align:left;padding:13px 20px;background:transparent;border:0;border-top:1px solid var(--color-divider);border-bottom:2px solid var(--color-divider);cursor:pointer;font-family:var(--font-body);color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+            <div style="flex:none;width:38px">
+              <div style="font:700 9px/1 var(--font-heading);letter-spacing:.1em;text-transform:uppercase;color:var(--color-neutral-600)">Nov</div>
+              <div style="font:700 20px/1 var(--font-heading);letter-spacing:-.03em;margin-top:2px">07</div>
+            </div>
+            <div style="min-width:0;flex:1">
+              <div style="font:700 15px/1.2 var(--font-heading);letter-spacing:-.015em">Diwali Dhamaka</div>
+              <div style="font-size:12px;color:var(--color-neutral-600);margin-top:3px">Coppell Arts Center · from $30</div>
+            </div>
+            <span style="font:700 9px var(--font-heading);letter-spacing:.08em;text-transform:uppercase;border:1.5px solid var(--color-divider);padding:4px 7px;flex:none">Soon</span>
+          </button>
+
+          <div style="padding:18px 20px 28px">
+            <a href="#" style="font:700 12px var(--font-heading);letter-spacing:.08em;text-transform:uppercase">Past events &amp; photos</a>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- 02 NAVRATRI DAY -->
+      <sc-if value="{{ is.event }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="display:flex;align-items:center;gap:12px;padding:8px 20px 12px;border-bottom:2px solid var(--color-text);flex:none">
+          <button type="button" onClick="{{ nav.events }}" aria-label="Back" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;flex:none;margin-left:-4px;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div style="font:700 12px var(--font-heading);letter-spacing:.1em;text-transform:uppercase">Sat 26 September</div>
+        </header>
+
+        <div style="flex:1;overflow:auto">
+          <div style="background:var(--color-text);color:var(--color-bg);padding:16px 20px 18px;border-bottom:2px solid var(--color-text)">
+            <div style="font:700 10px/1 var(--font-heading);letter-spacing:.16em;text-transform:uppercase;color:var(--color-accent-400)">DCICA-Shakti presents</div>
+            <h1 style="font-size:27px;letter-spacing:-.035em;margin:9px 0 0;color:var(--color-bg);text-wrap:pretty">Navratri at the Grand</h1>
+            <div style="font-size:13px;color:var(--color-neutral-400);margin-top:7px;line-height:1.45">McKamy Middle School, 4051 Justin Rd<br>Two sessions, ticketed separately</div>
+
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:16px 0 10px;padding-top:13px;border-top:1.5px solid var(--color-neutral-700)">
+              <div style="font:700 10px var(--font-heading);letter-spacing:.16em;text-transform:uppercase;color:var(--color-neutral-400)">Event poster</div>
+              <div style="font:700 9px var(--font-heading);letter-spacing:.1em;text-transform:uppercase;color:var(--color-neutral-500);flex:none">Full colour · uncropped</div>
+            </div>
+            <div style="width:100%;aspect-ratio:0.80;position:relative;background:var(--color-neutral-800)">
+              <image-slot id="poster-dandiya-full" shape="rect" fit="contain" placeholder="Drop Dandiya.jpeg — 643×803, shown whole"></image-slot>
+            </div>
+            <p style="font-size:11px;line-height:1.5;color:var(--color-neutral-400);margin:10px 0 0">Title, date, venue, price and contact are baked into the artwork. Tap to open full size or save to share.</p>
+          </div>
+
+          <div style="border-top:2px solid var(--color-text);padding:16px 20px;background:var(--color-neutral-200)">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+              <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-700)">4:00–6:45 PM</div>
+              <span style="font:700 9px var(--font-heading);letter-spacing:.1em;text-transform:uppercase;border:1.5px solid var(--color-text);padding:4px 7px;flex:none">Entry closes 12 Sep</span>
+            </div>
+            <div style="font:700 21px/1.1 var(--font-heading);letter-spacing:-.03em;margin-top:9px">Rhythm of Navratri</div>
+            <p style="font-size:13px;line-height:1.55;color:var(--color-neutral-800);margin:8px 0 14px;text-wrap:pretty">The garba and dandiya competition. Teams of 6–16 perform for the judges in junior, senior and open categories. Group entry only — dancers who want to stay for the open floor buy a floor ticket separately.</p>
+            <div style="display:flex;align-items:center;gap:12px">
+              <div style="flex:1;min-width:0">
+                <div style="font:700 20px var(--font-heading);letter-spacing:-.02em">{{ compPriceStr }}</div>
+                <div style="font-size:11px;color:var(--color-neutral-600);margin-top:2px">per group, any size · 9 slots left</div>
+              </div>
+              <button type="button" onClick="{{ nav.pick }}" style="display:flex;align-items:center;gap:8px;padding:14px 16px;background:var(--color-text);color:var(--color-bg);border:0;font:700 13px var(--font-heading);cursor:pointer;flex:none;min-height:52px" style-hover="background:var(--color-neutral-800)">
+                Add to order
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div style="border-top:2px solid var(--color-text);padding:16px 20px">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+              <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-accent)">7:15–11:30 PM</div>
+              <span style="font:700 9px var(--font-heading);letter-spacing:.1em;text-transform:uppercase;background:var(--color-accent);color:var(--color-on-accent);padding:5px 7px;flex:none">142 left</span>
+            </div>
+            <div style="font:700 21px/1.1 var(--font-heading);letter-spacing:-.03em;margin-top:9px">Dandiya · floor opens</div>
+            <p style="font-size:13px;line-height:1.55;color:var(--color-neutral-800);margin:8px 0 14px;text-wrap:pretty">Open to everyone. Live dhol, a food court run by our vendor partners, and results announced at 10 PM. Traditional attire encouraged; sticks provided while supplies last.</p>
+
+            <div style="border-top:2px solid var(--color-text)">
+              <sc-if value="{{ hasEarlyBird }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;padding:10px 0;border-bottom:1px solid var(--color-divider)">
+                <div><div style="font:700 14px var(--font-body)">Early bird</div><div style="font-size:12px;color:var(--color-neutral-600)">{{ earlyBirdUntilLine }}</div></div>
+                <div style="font:700 16px var(--font-heading)">{{ earlyBirdPriceStr }}</div>
+              </div>
+              </sc-if>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;padding:10px 8px;border-bottom:1px solid var(--color-divider);background:{{ onlineRowBg }};margin:0 -8px">
+                <div><div style="font:700 14px var(--font-body)">Online</div><div style="font-size:12px;color:var(--color-neutral-600)">{{ onlineRowNote }}</div></div>
+                <div style="font:700 16px var(--font-heading)">{{ onlinePriceStr }}</div>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;padding:10px 8px;border-bottom:1px solid var(--color-divider);background:{{ doorRowBg }};margin:0 -8px">
+                <div><div style="font:700 14px var(--font-body)">At the door</div><div style="font-size:12px;color:var(--color-neutral-600)">{{ doorRowNote }}</div></div>
+                <div style="font:700 16px var(--font-heading)">{{ doorPriceStr }}</div>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;padding:10px 0;border-bottom:1px solid var(--color-divider)">
+                <div><div style="font:700 14px var(--font-body)">Dandiya sticks</div><div style="font-size:12px;color:var(--color-neutral-600)">Optional · a pair</div></div>
+                <div style="font:700 16px var(--font-heading)">$5</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="padding:0 20px 16px">
+            <div style="padding:12px 14px;background:var(--color-neutral-200)">
+              <div style="font:700 11px var(--font-heading);letter-spacing:.1em;text-transform:uppercase">Two things to buy, two doors</div>
+              <p style="font-size:12px;line-height:1.5;margin:5px 0 0;color:var(--color-neutral-800)">The competition is a group entry and covers the 4 PM session only. Dancers staying for the open floor need their own floor ticket.</p>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:none;border-top:2px solid var(--color-text);padding:14px 20px 20px;background:var(--color-bg)">
+          <button type="button" onClick="{{ nav.pick }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:16px 20px;background:var(--color-accent);color:var(--color-on-accent);border:0;font:700 15px var(--font-heading);cursor:pointer;box-sizing:border-box" style-hover="background:var(--color-accent-600)" style-active="background:var(--color-accent-700)">
+            Get floor tickets
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+      </sc-if>
+
+            <!-- 04 TICKETS · THREE ITEMS -->
+      <sc-if value="{{ is.pick }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="display:flex;align-items:center;gap:12px;padding:8px 20px 12px;border-bottom:2px solid var(--color-text);flex:none">
+          <button type="button" onClick="{{ nav.event }}" aria-label="Back" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;flex:none;margin-left:-4px;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div>
+            <div style="font:700 12px var(--font-heading);letter-spacing:.1em;text-transform:uppercase">Tickets</div>
+            <div style="font-size:11px;color:var(--color-neutral-600);margin-top:1px">Step 1 of 2 · Navratri, Sat 26 Sep</div>
+          </div>
+        </header>
+
+        <div style="flex:1;overflow:auto">
+          <!-- resolved price phase: early bird -> online -> at the door -->
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 20px;background:{{ phaseBg }};color:{{ phaseInk }};border-bottom:2px solid var(--color-text)">
+            <div style="min-width:0">
+              <div style="font:700 10px var(--font-heading);letter-spacing:.13em;text-transform:uppercase">{{ pricePhaseLabel }}</div>
+              <div style="font-size:12px;margin-top:3px;line-height:1.4;opacity:.85">{{ pricePhaseNote }}</div>
+            </div>
+            <div style="font:700 22px var(--font-heading);letter-spacing:-.02em;flex:none">{{ floorPriceStr }}</div>
+          </div>
+
+          <div style="padding:16px 20px 8px;font:700 10px var(--font-heading);letter-spacing:.16em;text-transform:uppercase;color:var(--color-neutral-600)">What you need</div>
+
+          <!-- FLOOR ADMISSION -->
+          <div style="margin:0 20px 14px;border:2px solid var(--color-text);background:var(--color-neutral-100)">
+            <div style="display:flex;align-items:center;gap:9px;padding:9px 14px;background:var(--color-text)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-bg)" stroke-width="2.2" style="flex:none"><path d="M2 9V7a1 1 0 0 1 1-1h18a1 1 0 0 1 1 1v2a2 2 0 0 0 0 6v2a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-2a2 2 0 0 0 0-6Z"/><path d="M13 6v12"/></svg>
+              <span style="font:700 10px var(--font-heading);letter-spacing:.13em;text-transform:uppercase;color:var(--color-bg)">Issues a scannable ticket</span>
+            </div>
+            <div style="padding:14px">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+                <div style="min-width:0">
+                  <div style="font:700 18px/1.2 var(--font-heading);letter-spacing:-.02em">Floor admission</div>
+                  <div style="font-size:13px;color:var(--color-neutral-700);margin-top:4px;line-height:1.45">Gets one person onto the dandiya floor</div>
+                </div>
+                <div style="font:700 20px var(--font-heading);flex:none">{{ floorPriceStr }}</div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:13px">
+                <div style="font-size:12px;color:var(--color-neutral-600);min-width:0">How many people?</div>
+                <div style="display:flex;align-items:center;flex:none;border:2px solid var(--color-text)">
+                  <button type="button" onClick="{{ dec.floor }}" aria-label="One fewer admission" style="width:52px;height:52px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;cursor:pointer;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12h14"/></svg>
+                  </button>
+                  <div style="width:48px;text-align:center;font:700 20px/52px var(--font-heading);border-left:2px solid var(--color-text);border-right:2px solid var(--color-text)">{{ qty.floor }}</div>
+                  <button type="button" onClick="{{ inc.floor }}" aria-label="One more admission" style="width:52px;height:52px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;cursor:pointer;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 5v14M5 12h14"/></svg>
+                  </button>
+                </div>
+              </div>
+              <sc-if value="{{ hasAllowance }}" hint-placeholder-val="{{ true }}">
+              <div style="margin-top:12px;padding:10px 12px;background:var(--color-accent-100);border-left:5px solid var(--color-accent)">
+                <div style="font:700 12px var(--font-heading);color:var(--color-accent-700)">{{ allowanceLine }}</div>
+                <div style="font-size:11.5px;line-height:1.45;color:var(--color-neutral-800);margin-top:3px">{{ allowanceNote }}</div>
+              </div>
+              </sc-if>
+            </div>
+          </div>
+
+          <!-- DANDIYA STICKS -->
+          <div style="margin:0 20px 14px;border:2px dashed var(--color-neutral-500);background:var(--color-surface)">
+            <div style="display:flex;align-items:center;gap:9px;padding:9px 14px;border-bottom:1.5px dashed var(--color-neutral-400)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-neutral-700)" stroke-width="2.2" style="flex:none"><path d="M6 20 18 4"/><path d="M10 20 22 4"/></svg>
+              <span style="font:700 10px var(--font-heading);letter-spacing:.13em;text-transform:uppercase;color:var(--color-neutral-700)">Collect at the door · no ticket</span>
+            </div>
+            <div style="padding:14px">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+                <div style="min-width:0">
+                  <div style="font:700 18px/1.2 var(--font-heading);letter-spacing:-.02em">Dandiya sticks</div>
+                  <div style="font-size:13px;color:var(--color-neutral-700);margin-top:4px;line-height:1.45">A pair to dance with. Bring your own if you have them.</div>
+                </div>
+                <div style="font:700 20px var(--font-heading);flex:none">$5</div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:13px">
+                <div style="font-size:12px;color:var(--color-neutral-600);min-width:0">How many pairs?</div>
+                <div style="display:flex;align-items:center;flex:none;border:2px solid var(--color-neutral-700)">
+                  <button type="button" onClick="{{ dec.sticks }}" aria-label="One fewer pair" style="width:52px;height:52px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;cursor:pointer;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12h14"/></svg>
+                  </button>
+                  <div style="width:48px;text-align:center;font:700 20px/52px var(--font-heading);border-left:2px solid var(--color-neutral-700);border-right:2px solid var(--color-neutral-700)">{{ qty.sticks }}</div>
+                  <button type="button" onClick="{{ inc.sticks }}" aria-label="One more pair" style="width:52px;height:52px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;cursor:pointer;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 5v14M5 12h14"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- COMPETITION ENTRY · registered separately, paid by Zelle -->
+          <div style="margin:0 20px 14px;border:3px solid var(--color-accent-700);background:var(--color-accent-100)">
+            <div style="padding:10px 14px;background:var(--color-accent-700)">
+              <div style="display:flex;align-items:center;gap:9px">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.4" style="flex:none"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                <span style="font:700 10px/1.3 var(--font-heading);letter-spacing:.13em;text-transform:uppercase;color:#ffffff">Not a ticket · registered separately</span>
+              </div>
+            </div>
+            <div style="padding:14px">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+                <div style="min-width:0">
+                  <div style="font:700 18px/1.2 var(--font-heading);letter-spacing:-.02em">Dance competition entry</div>
+                  <div style="font-size:13px;color:var(--color-neutral-700);margin-top:4px;line-height:1.45">One group performing at 4:00 PM. Flat fee, any number of dancers.</div>
+                </div>
+                <div style="font:700 20px var(--font-heading);flex:none">{{ compPriceStr }}</div>
+              </div>
+
+              <div style="margin-top:12px;padding:12px;background:var(--color-bg);border:2px solid var(--color-accent-700)">
+                <div style="font:700 12.5px/1.5 var(--font-heading);color:var(--color-text)">Performing does not get your group onto the floor.</div>
+                <div style="font-size:12.5px;line-height:1.5;color:var(--color-neutral-800);margin-top:5px">Anyone staying to dance needs their own floor admission above.</div>
+              </div>
+
+              <div style="margin-top:12px;padding:11px 12px;background:var(--color-bg);border-left:5px solid var(--color-accent-700)">
+                <div style="font:700 12px var(--font-heading);color:var(--color-accent-700)">Paid by Zelle, not card</div>
+                <div style="font-size:12px;line-height:1.5;color:var(--color-neutral-800);margin-top:3px">Group entries are handled like vendor booths — register here, pay by Zelle, then send us the transaction code. It isn't part of this cart.</div>
+              </div>
+
+              <button type="button" onClick="{{ nav.ronpay }}" style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:56px;padding:15px 16px;margin-top:13px;background:var(--color-text);color:var(--color-bg);border:0;font:700 15px var(--font-heading);cursor:pointer;box-sizing:border-box;text-align:left" style-hover="background:var(--color-neutral-800)">
+                <span>{{ ronCtaLabel }}</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="flex:none"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <sc-if value="{{ showTrap }}" hint-placeholder-val="{{ false }}">
+          <div style="margin:0 20px 14px;border:3px solid var(--color-text);background:var(--color-text);color:var(--color-bg)">
+            <div style="padding:14px">
+              <div style="display:flex;align-items:flex-start;gap:10px">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2.6" style="flex:none;margin-top:1px"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+                <div style="min-width:0">
+                  <div style="font:700 15px/1.3 var(--font-heading)">Your group can perform, but nobody can stay to dance.</div>
+                  <div style="font-size:13px;line-height:1.5;color:var(--color-neutral-300);margin-top:6px">You have {{ compLine }} and no floor admission. Add admission for the dancers who are staying, or carry on if they're leaving after the performance.</div>
+                </div>
+              </div>
+              <button type="button" onClick="{{ addSix }}" style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:52px;padding:14px 16px;margin-top:13px;background:var(--color-accent);color:var(--color-on-accent);border:0;font:700 14px var(--font-heading);cursor:pointer;box-sizing:border-box;text-align:left">
+                {{ addSixLabel }}
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="flex:none"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </button>
+            </div>
+          </div>
+          </sc-if>
+
+          <div style="margin:4px 20px 20px;padding:13px;background:var(--color-surface)">
+            <div style="font:700 12.5px var(--font-heading)">One code for your whole party</div>
+            <div style="font-size:12px;line-height:1.5;color:var(--color-neutral-700);margin-top:4px">Tickets are counted, not named. We don't ask for anyone's details. Admission and sticks are paid by card through Stripe.</div>
+          </div>
+        </div>
+
+        <div style="flex:none;border-top:2px solid var(--color-text);padding:13px 20px 18px;background:var(--color-bg)">
+          <sc-if value="{{ hasComp }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 11px;margin-bottom:10px;background:var(--color-surface)">
+            <span style="font-size:12px;color:var(--color-neutral-700);min-width:0;line-height:1.4">{{ compZelleLine }}</span>
+            <span style="font:700 9.5px var(--font-heading);letter-spacing:.1em;text-transform:uppercase;border:1.5px solid var(--color-divider);padding:4px 7px;flex:none;color:var(--color-neutral-700)">Next</span>
+          </div>
+          </sc-if>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:11px">
+            <span style="font-size:13px;color:var(--color-neutral-700)">{{ countLine }}</span>
+            <span style="font:700 24px var(--font-heading);letter-spacing:-.02em">{{ totalStr }}</span>
+          </div>
+          <button type="button" onClick="{{ continueAction }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:16px 20px;background:var(--color-accent);color:var(--color-on-accent);border:0;font:700 15px var(--font-heading);cursor:pointer;box-sizing:border-box" style-hover="background:var(--color-accent-600)" style-active="background:var(--color-accent-700)">
+            {{ continueLabel }}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- 06 PAY -->
+      <sc-if value="{{ is.pay }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="display:flex;align-items:center;gap:12px;padding:8px 20px 12px;border-bottom:2px solid var(--color-text);flex:none">
+          <button type="button" onClick="{{ nav.pick }}" aria-label="Back" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;flex:none;margin-left:-4px;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div>
+            <div style="font:700 12px var(--font-heading);letter-spacing:.1em;text-transform:uppercase">Payment</div>
+            <div style="font-size:11px;color:var(--color-neutral-600);margin-top:1px">Step 2 of 2</div>
+          </div>
+        </header>
+
+        <div style="flex:1;overflow:auto;padding:0 20px">
+          <div style="display:flex;gap:4px;padding:14px 0">
+            <span style="height:4px;flex:1;background:var(--color-accent)"></span>
+            <span style="height:4px;flex:1;background:var(--color-accent)"></span>
+          </div>
+
+          <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:8px">Order</div>
+          <div style="border-top:2px solid var(--color-text);margin-bottom:20px">
+            <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--color-divider);font-size:14px"><span style="font-weight:700">Navratri · Sat 26 Sep</span></div>
+            <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--color-divider);font-size:14px"><span style="color:var(--color-neutral-700)">{{ lineMember }}</span><span style="font-weight:700">{{ memberAmt }}</span></div>
+            <sc-if value="{{ hasSticks }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--color-divider);font-size:14px"><span style="color:var(--color-neutral-700)">{{ lineGeneral }}</span><span style="font-weight:700">{{ generalAmt }}</span></div>
+            </sc-if>
+            <sc-if value="{{ hasDiscount }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--color-divider);font-size:14px;color:var(--color-accent-700)"><span>{{ discountLabel }}</span><span style="font-weight:700">{{ discountAmt }}</span></div>
+            </sc-if>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;padding:14px 0;border-bottom:2px solid var(--color-text)"><span style="font:700 13px var(--font-heading);letter-spacing:.1em;text-transform:uppercase">Total</span><span style="font:700 26px var(--font-heading);letter-spacing:-.02em">{{ totalStr }}</span></div>
+          </div>
+
+          <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:8px">How they're paying</div>
+          <div style="display:flex;gap:2px;margin-bottom:16px">
+            <button type="button" onClick="{{ setPay.card }}" style="flex:1;min-height:48px;padding:12px 10px;border:0;cursor:pointer;font:700 12px var(--font-heading);letter-spacing:.06em;text-transform:uppercase;background:{{ payCardBg }};color:{{ payCardInk }}">Card</button>
+            <sc-if value="{{ hasTill }}" hint-placeholder-val="{{ true }}">
+            <button type="button" onClick="{{ setPay.cash }}" style="flex:1;min-height:48px;padding:12px 10px;border:0;cursor:pointer;font:700 12px var(--font-heading);letter-spacing:.06em;text-transform:uppercase;background:{{ payCashBg }};color:{{ payCashInk }}">Cash</button>
+            </sc-if>
+          </div>
+
+          <sc-if value="{{ isCash }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-bottom:16px">
+            <label style="display:block;font:700 10px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:5px">Amount tendered</label>
+            <div style="display:flex;gap:2px;margin-bottom:12px">
+              <button type="button" onClick="{{ tender.t100 }}" style="flex:1;min-height:48px;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;font:700 15px var(--font-heading);color:var(--color-text)" style-hover="border-color:var(--color-text)">$100</button>
+              <button type="button" onClick="{{ tender.t120 }}" style="flex:1;min-height:48px;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;font:700 15px var(--font-heading);color:var(--color-text)" style-hover="border-color:var(--color-text)">$120</button>
+              <button type="button" onClick="{{ tender.t150 }}" style="flex:1;min-height:48px;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;font:700 15px var(--font-heading);color:var(--color-text)" style-hover="border-color:var(--color-text)">$150</button>
+              <button type="button" onClick="{{ tender.exact }}" style="flex:1;min-height:48px;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;font:700 12px var(--font-heading);letter-spacing:.04em;text-transform:uppercase;color:var(--color-text)" style-hover="border-color:var(--color-text)">Exact</button>
+            </div>
+            <div style="border:2px solid var(--color-text)">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px;border-bottom:1.5px solid var(--color-divider)">
+                <span style="font:700 11px var(--font-heading);letter-spacing:.1em;text-transform:uppercase;color:var(--color-neutral-600)">Tendered</span>
+                <span style="font:700 20px var(--font-heading)">{{ tenderedStr }}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;padding:14px;background:{{ changeBg }};color:{{ changeInk }}">
+                <span style="font:700 11px var(--font-heading);letter-spacing:.1em;text-transform:uppercase">Change due</span>
+                <span style="font:700 30px var(--font-heading);letter-spacing:-.02em">{{ changeStr }}</span>
+              </div>
+            </div>
+            <div style="font-size:11px;color:var(--color-neutral-600);margin-top:9px">Counts against Door 2's till. Reconciled at close-out.</div>
+          </div>
+          </sc-if>
+
+          <sc-if value="{{ isCard }}" hint-placeholder-val="{{ true }}">
+          <div>
+            <div style="border:2px solid var(--color-text);background:var(--color-bg)">
+              <div style="display:flex;align-items:center;gap:9px;padding:11px 14px;background:var(--color-text)">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--color-bg)" stroke-width="2.2" style="flex:none"><rect x="2" y="5" width="20" height="14"/><path d="M2 10h20"/></svg>
+                <span style="font:700 10px var(--font-heading);letter-spacing:.13em;text-transform:uppercase;color:var(--color-bg)">Card payment handled by Stripe</span>
+              </div>
+              <div style="padding:14px">
+                <p style="font-size:13px;line-height:1.55;color:var(--color-neutral-800);margin:0 0 12px">You'll finish on Stripe's secure checkout, then come straight back here for your tickets. Apple Pay and Google Pay work there too.</p>
+                <div style="border-top:1px solid var(--color-divider)">
+                  <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--color-divider)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-700)" stroke-width="2.6" style="flex:none;margin-top:2px"><path d="M20 6 9 17l-5-5"/></svg>
+                    <span style="font-size:12.5px;line-height:1.45;color:var(--color-neutral-800);min-width:0">DCICA never sees or stores your card number</span>
+                  </div>
+                  <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--color-divider)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-700)" stroke-width="2.6" style="flex:none;margin-top:2px"><path d="M20 6 9 17l-5-5"/></svg>
+                    <span style="font-size:12.5px;line-height:1.45;color:var(--color-neutral-800);min-width:0">If your signal drops mid-payment you won't be charged twice</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          </sc-if>
+
+          <label style="display:flex;align-items:flex-start;gap:10px;padding:12px 0 24px;cursor:pointer">
+            <input type="checkbox" style="width:20px;height:20px;accent-color:var(--color-accent);margin-top:1px;flex:none">
+            <span style="font-size:12px;line-height:1.5;color:var(--color-neutral-700)">Add a $10 donation to DCICA community programs.</span>
+          </label>
+        </div>
+
+        <div style="flex:none;border-top:2px solid var(--color-text);padding:14px 20px 20px;background:var(--color-bg)">
+          <button type="button" onClick="{{ nav.confirm }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:16px 20px;background:var(--color-accent);color:var(--color-on-accent);border:0;font:700 15px var(--font-heading);cursor:pointer;box-sizing:border-box" style-hover="background:var(--color-accent-600)" style-active="background:var(--color-accent-700)">
+            {{ payLabel }}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+          <div style="font-size:11px;line-height:1.5;color:var(--color-neutral-600);margin-top:10px">{{ payFootnote }}</div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- 07 CONFIRMED -->
+      <sc-if value="{{ is.confirm }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <div style="flex:1;overflow:auto">
+          <div style="background:var(--color-text);color:var(--color-bg);padding:28px 20px 24px">
+            <div style="width:46px;height:46px;border:3px solid var(--color-bg);display:flex;align-items:center;justify-content:center;margin-bottom:16px">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg>
+            </div>
+            <div style="font:700 10px var(--font-heading);letter-spacing:.16em;text-transform:uppercase;color:var(--color-accent-400)">Order MK-4471</div>
+            <h1 style="font-size:32px;letter-spacing:-.035em;margin:10px 0 0;color:var(--color-bg)">You're in.</h1>
+            <p style="font-size:14px;line-height:1.55;margin:11px 0 0;color:var(--color-neutral-300)">{{ confirmSummary }} Your pass is on its way to priya.shah@gmail.com and by text.</p>
+          </div>
+
+          <div style="padding:18px 20px 0">
+            <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:10px">Your pass</div>
+            <div style="border:3px solid var(--color-text);display:flex;align-items:stretch">
+              <div style="width:96px;flex:none;padding:12px;border-right:2px solid var(--color-text);display:flex;align-items:center;justify-content:center">
+                <div style="width:100%;aspect-ratio:1;border:1.5px solid var(--color-text);background-image:repeating-conic-gradient(var(--color-text) 0% 25%, #ffffff 0% 50%);background-size:9px 9px"></div>
+              </div>
+              <div style="flex:1;min-width:0;padding:13px 14px">
+                <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600)">One code, whole party</div>
+                <div style="font:700 19px var(--font-heading);letter-spacing:.06em;margin-top:5px">NAV-A19F</div>
+                <div style="font-size:12.5px;color:var(--color-neutral-700);margin-top:6px;line-height:1.45">{{ confirmAdmits }}</div>
+              </div>
+            </div>
+
+            <div style="margin-top:16px;padding:14px;background:var(--color-accent-100)">
+              <div style="font:700 11px var(--font-heading);letter-spacing:.1em;text-transform:uppercase;color:var(--color-accent-700)">At the door</div>
+              <p style="font-size:13px;line-height:1.5;margin:6px 0 0;color:var(--color-neutral-800)">Show this one code and the volunteer counts your party through. Nobody needs to arrive together, but the code only works once — so travel with whoever holds it.</p>
+            </div>
+
+            <sc-if value="{{ hasSticks }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:12px;padding:13px 14px;background:var(--color-surface);display:flex;align-items:center;gap:12px">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-neutral-700)" stroke-width="2.4" style="flex:none"><path d="M6 20 18 4"/><path d="M10 20 22 4"/></svg>
+              <div style="font-size:13px;color:var(--color-neutral-800);min-width:0;line-height:1.45">{{ sticksCollectLine }}</div>
+            </div>
+            </sc-if>
+
+            <sc-if value="{{ hasComp }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:12px;padding:13px 14px;background:var(--color-accent-100);border-left:5px solid var(--color-accent-700)">
+              <div style="font:700 12.5px var(--font-heading);color:var(--color-accent-700)">{{ compConfirmLine }}</div>
+              <div style="font-size:12.5px;line-height:1.5;color:var(--color-neutral-800);margin-top:4px">The cultural committee will be in touch about running order. This entry does not admit anyone to the floor.</div>
+            </div>
+            </sc-if>
+          </div>
+          <div style="height:20px"></div>
+        </div>
+
+        <div style="flex:none;border-top:2px solid var(--color-text);padding:14px 20px 20px;background:var(--color-bg)">
+          <button type="button" onClick="{{ nav.events }}" style="display:flex;align-items:center;width:100%;min-height:52px;padding:14px 20px;background:transparent;border:1.5px solid var(--color-divider);font:700 14px var(--font-heading);cursor:pointer;color:var(--color-text);box-sizing:border-box" style-hover="background:var(--color-neutral-200)">Back to events</button>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- 12 SCANNER -->
+      <sc-if value="{{ is.scan }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0;background:var(--color-neutral-900)">
+        <header style="padding:6px 20px 12px;border-bottom:2px solid var(--color-neutral-700);flex:none">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+            <div style="min-width:0">
+              <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-accent-400)">Door 2 · Ravi K</div>
+              <div style="font:700 16px var(--font-heading);letter-spacing:-.02em;color:var(--color-bg);margin-top:4px">Navratri · 26 Sep</div>
+            </div>
+            <button type="button" onClick="{{ nav.door }}" style="font:700 10px var(--font-heading);letter-spacing:.1em;text-transform:uppercase;border:1.5px solid var(--color-neutral-600);color:var(--color-bg);background:transparent;min-height:48px;padding:7px 13px;cursor:pointer;flex:none" style-hover="background:var(--color-neutral-800)">Status</button>
+          </div>
+
+          <div style="display:flex;align-items:baseline;gap:8px;margin-top:12px">
+            <span style="font:700 28px/1 var(--font-heading);letter-spacing:-.03em;color:var(--color-bg)">{{ doneCount }}</span>
+            <span style="font-size:13px;color:var(--color-neutral-400)">{{ doneLine }}</span>
+          </div>
+          <div style="height:6px;background:var(--color-neutral-700);margin-top:9px;position:relative">
+            <div style="position:absolute;left:0;top:0;bottom:0;background:var(--color-accent);width:{{ donePct }}"></div>
+          </div>
+        </header>
+
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:20px;min-height:0">
+          <div style="width:250px;height:250px;position:relative">
+            <div style="position:absolute;inset:0;background:var(--color-neutral-800)"></div>
+            <div style="position:absolute;top:0;left:0;width:42px;height:42px;border-top:4px solid var(--color-accent);border-left:4px solid var(--color-accent)"></div>
+            <div style="position:absolute;top:0;right:0;width:42px;height:42px;border-top:4px solid var(--color-accent);border-right:4px solid var(--color-accent)"></div>
+            <div style="position:absolute;bottom:0;left:0;width:42px;height:42px;border-bottom:4px solid var(--color-accent);border-left:4px solid var(--color-accent)"></div>
+            <div style="position:absolute;bottom:0;right:0;width:42px;height:42px;border-bottom:4px solid var(--color-accent);border-right:4px solid var(--color-accent)"></div>
+            <div style="position:absolute;left:6%;right:6%;top:50%;height:2px;background:var(--color-accent)"></div>
+            <div style="position:absolute;left:0;right:0;bottom:16px;text-align:center;font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-500)">Point at the QR</div>
+          </div>
+        </div>
+
+        <div style="flex:none;border-top:2px solid var(--color-neutral-700);padding:14px 20px 20px;display:flex;flex-direction:column;gap:10px">
+          <button type="button" onClick="{{ nav.scanok }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:16px 20px;background:var(--color-accent);color:var(--color-on-accent);border:0;font:700 15px var(--font-heading);cursor:pointer;box-sizing:border-box" style-hover="background:var(--color-accent-600)" style-active="background:var(--color-accent-700)">Simulate a valid scan</button>
+          <button type="button" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:14px 20px;background:transparent;border:1.5px solid var(--color-neutral-600);color:var(--color-bg);font:700 14px var(--font-heading);cursor:pointer;box-sizing:border-box" style-hover="background:var(--color-neutral-800)">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            Look up by name instead
+          </button>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- 13 VALID SCAN -->
+      <sc-if value="{{ is.scanok }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0;background:var(--color-accent-2)">
+        <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:22px 24px 0;color:#ffffff;min-height:0">
+          <div style="width:58px;height:58px;border:4px solid #ffffff;display:flex;align-items:center;justify-content:center;margin-bottom:18px;flex:none">
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg>
+          </div>
+          <div style="font:700 11px var(--font-heading);letter-spacing:.18em;text-transform:uppercase">Valid · admit</div>
+
+          <!-- the number the volunteer acts on -->
+          <div style="display:flex;align-items:baseline;gap:12px;margin-top:10px">
+            <span style="font:700 82px/1 var(--font-heading);letter-spacing:-.05em">3</span>
+            <span style="font:700 26px/1.1 var(--font-heading);letter-spacing:-.02em">people</span>
+          </div>
+
+          <div style="margin-top:16px;background:#ffffff;color:var(--color-text);padding:14px 16px">
+            <div style="font:700 10px var(--font-heading);letter-spacing:.16em;text-transform:uppercase;color:var(--color-neutral-600)">This code</div>
+            <div style="font:700 19px var(--font-heading);letter-spacing:.06em;margin-top:5px">NAV-A19F · Patel</div>
+            <div style="font-size:13px;line-height:1.5;color:var(--color-neutral-700);margin-top:8px;padding-top:9px;border-top:1.5px solid var(--color-divider)">One code covers the whole party. <strong style="color:var(--color-text)">Count 3 people through, then it's spent.</strong></div>
+          </div>
+
+          <div style="margin-top:12px;background:var(--color-accent);color:var(--color-on-accent);padding:13px 16px;display:flex;align-items:center;gap:12px">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="flex:none"><path d="M6 20 18 4"/><path d="M10 20 22 4"/></svg>
+            <div style="min-width:0">
+              <div style="font:700 17px/1.15 var(--font-heading)">2 pairs of sticks</div>
+              <div style="font-size:12px;margin-top:2px;opacity:.88">Hand over now</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:none;padding:16px 24px 24px;display:flex;flex-direction:column;gap:9px">
+          <button type="button" onClick="{{ nav.scan }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:18px 20px;background:#ffffff;color:var(--color-text);border:0;font:700 16px var(--font-heading);cursor:pointer;box-sizing:border-box" style-hover="background:var(--color-neutral-200)">
+            All 3 in · next code
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+          <button type="button" onClick="{{ nav.undo }}" style="display:flex;align-items:center;justify-content:center;gap:9px;width:100%;min-height:52px;padding:14px 20px;background:transparent;border:2px solid #ffffff;color:#ffffff;font:700 14px var(--font-heading);cursor:pointer;box-sizing:border-box" style-hover="background:rgba(255,255,255,.16)">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+            Undo this scan
+          </button>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- 14 NO FLOOR TICKET -->
+      <sc-if value="{{ is.scandup }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0;background:var(--color-text)">
+        <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:24px 24px 0;color:var(--color-bg);min-height:0">
+          <div style="width:66px;height:66px;border:4px solid var(--color-accent-400);display:flex;align-items:center;justify-content:center;margin-bottom:22px;flex:none;color:var(--color-accent-400)">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 8v5M12 17h.01"/><circle cx="12" cy="12" r="10"/></svg>
+          </div>
+          <div style="font:700 11px var(--font-heading);letter-spacing:.18em;text-transform:uppercase;color:var(--color-accent-400)">No floor admission</div>
+          <div style="font:700 32px/1.05 var(--font-heading);letter-spacing:-.04em;margin-top:12px;text-wrap:pretty">This code carries no floor admission</div>
+          <div style="font-size:15px;margin-top:14px;color:var(--color-neutral-300);line-height:1.5">Order RON-T04 · competition entry only</div>
+
+          <div style="margin-top:20px;padding:14px;background:var(--color-neutral-800)">
+            <p style="font-size:13px;line-height:1.5;margin:0;color:var(--color-neutral-300)">Their order has a competition entry on it but no floor admission. Sell one here, or send them to the box office.</p>
+          </div>
+        </div>
+
+        <div style="flex:none;padding:20px 24px 24px;display:flex;flex-direction:column;gap:10px">
+          <button type="button" onClick="{{ nav.sell }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:17px 20px;background:var(--color-accent);color:var(--color-on-accent);border:0;font:700 15px var(--font-heading);cursor:pointer;box-sizing:border-box" style-hover="background:var(--color-accent-600)" style-active="background:var(--color-accent-700)">
+            {{ sellFloorLabel }}
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+          <button type="button" onClick="{{ nav.scan }}" style="display:flex;align-items:center;width:100%;min-height:56px;padding:15px 20px;background:transparent;border:1.5px solid var(--color-neutral-600);color:var(--color-bg);font:700 14px var(--font-heading);cursor:pointer;box-sizing:border-box" style-hover="background:var(--color-neutral-800)">Turn away · back to scanner</button>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- 14b UNDO A SCAN -->
+      <sc-if value="{{ is.undo }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0;background:var(--color-text)">
+        <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:24px 24px 0;color:var(--color-bg);min-height:0">
+          <div style="width:60px;height:60px;border:3px solid var(--color-accent-400);display:flex;align-items:center;justify-content:center;margin-bottom:20px;flex:none;color:var(--color-accent-400)">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+          </div>
+          <div style="font:700 11px var(--font-heading);letter-spacing:.18em;text-transform:uppercase;color:var(--color-accent-400)">Undo</div>
+          <div style="font:700 30px/1.1 var(--font-heading);letter-spacing:-.035em;margin-top:11px;text-wrap:pretty">Put this code back to unscanned?</div>
+          <div style="font-size:14px;margin-top:12px;color:var(--color-neutral-300);line-height:1.5">NAV-A19F · Patel · 3 people · scanned 8 seconds ago at Door 2</div>
+
+          <div style="margin-top:18px;padding:14px;background:var(--color-neutral-800)">
+            <p style="font-size:13px;line-height:1.5;margin:0;color:var(--color-neutral-300)">The code becomes valid again and the door count drops by 3. Use this for a double scan or the wrong person's phone.</p>
+          </div>
+
+          <div style="margin-top:14px;font-size:12.5px;color:var(--color-neutral-400);line-height:1.5">Undo is available for 2 minutes after a scan. After that, ask a lead to correct it.</div>
+        </div>
+
+        <div style="flex:none;padding:20px 24px 24px;display:flex;flex-direction:column;gap:9px">
+          <button type="button" onClick="{{ nav.scan }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:17px 20px;background:var(--color-accent);color:var(--color-on-accent);border:0;font:700 15px var(--font-heading);cursor:pointer;box-sizing:border-box" style-hover="background:var(--color-accent-600)" style-active="background:var(--color-accent-700)">
+            Yes, undo the scan
+          </button>
+          <button type="button" onClick="{{ nav.scanok }}" style="display:flex;align-items:center;justify-content:center;width:100%;min-height:52px;padding:15px 20px;background:transparent;border:1.5px solid var(--color-neutral-600);color:var(--color-bg);font:700 14px var(--font-heading);cursor:pointer;box-sizing:border-box" style-hover="background:var(--color-neutral-800)">Keep them checked in</button>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- 15 DOOR STATUS -->
+      <sc-if value="{{ is.door }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="display:flex;align-items:center;gap:12px;padding:8px 20px 12px;border-bottom:2px solid var(--color-text);flex:none">
+          <button type="button" onClick="{{ nav.scan }}" aria-label="Back" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;flex:none;margin-left:-4px;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div>
+            <div style="font:700 12px var(--font-heading);letter-spacing:.1em;text-transform:uppercase">Door status</div>
+            <div style="font-size:11px;color:var(--color-neutral-600);margin-top:1px">Live · updated 4 sec ago</div>
+          </div>
+        </header>
+
+        <div style="flex:1;overflow:auto">
+          <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:2px solid var(--color-text)">
+            <div style="padding:16px 20px;border-right:1px solid var(--color-divider)">
+              <div style="font:700 10px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600)">Competition</div>
+              <div style="font:700 32px/1 var(--font-heading);letter-spacing:-.04em;margin-top:6px">96</div>
+              <div style="font-size:12px;color:var(--color-neutral-600);margin-top:4px">of 108 dancers</div>
+            </div>
+            <div style="padding:16px 20px">
+              <div style="font:700 10px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-accent)">Floor</div>
+              <div style="font:700 32px/1 var(--font-heading);letter-spacing:-.04em;margin-top:6px;color:var(--color-accent-700)">312</div>
+              <div style="font-size:12px;color:var(--color-neutral-600);margin-top:4px">of 480 tickets</div>
+            </div>
+          </div>
+
+          <div style="padding:16px 20px 8px;font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600)">By door</div>
+          <div style="border-top:1px solid var(--color-divider)">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 20px;border-bottom:1px solid var(--color-divider)">
+              <div><div style="font:700 14px var(--font-body)">Door 1 · Main</div><div style="font-size:12px;color:var(--color-neutral-600);margin-top:2px">Sunita M · Kiran P</div></div>
+              <div style="text-align:right"><div style="font:700 18px var(--font-heading)">184</div><div style="font-size:11px;color:var(--color-neutral-600)">12/min</div></div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 20px;border-bottom:1px solid var(--color-divider);background:var(--color-accent-100)">
+              <div><div style="font:700 14px var(--font-body)">Door 2 · East</div><div style="font-size:12px;color:var(--color-accent-700);margin-top:2px">Ravi K · you</div></div>
+              <div style="text-align:right"><div style="font:700 18px var(--font-heading)">128</div><div style="font-size:11px;color:var(--color-neutral-600)">9/min</div></div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 20px;border-bottom:2px solid var(--color-divider)">
+              <div><div style="font:700 14px var(--font-body)">Performers' door</div><div style="font-size:12px;color:var(--color-neutral-600);margin-top:2px">Closed at 4:00 PM</div></div>
+              <div style="text-align:right"><div style="font:700 18px var(--font-heading)">96</div><div style="font-size:11px;color:var(--color-neutral-600)">Done</div></div>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:16px 20px 8px">
+            <span style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600)">Last scans</span>
+            <span style="font:700 9px var(--font-heading);letter-spacing:.1em;text-transform:uppercase;color:var(--color-neutral-500);flex:none">Undo within 2 min</span>
+          </div>
+          <div style="border-top:1px solid var(--color-divider)">
+            <div style="display:flex;align-items:center;gap:10px;padding:9px 20px;border-bottom:1px solid var(--color-divider)">
+              <div style="min-width:0;flex:1"><div style="font:700 14px var(--font-body)">Priya Shah</div><div style="font-size:11px;color:var(--color-neutral-600)">Floor · Member</div></div>
+              <span style="font-size:11px;color:var(--color-neutral-600);flex:none">4 sec</span>
+              <button type="button" onClick="{{ nav.undo }}" aria-label="Undo the scan for Priya Shah" style="width:48px;height:48px;flex:none;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;color:var(--color-text)" style-hover="border-color:var(--color-text);background:var(--color-neutral-200)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+              </button>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:9px 20px;border-bottom:1px solid var(--color-divider)">
+              <div style="min-width:0;flex:1"><div style="font:700 14px var(--font-body)">Rohan Desai</div><div style="font-size:11px;color:var(--color-neutral-600)">Floor · General</div></div>
+              <span style="font-size:11px;color:var(--color-neutral-600);flex:none">22 sec</span>
+              <button type="button" onClick="{{ nav.undo }}" aria-label="Undo the scan for Rohan Desai" style="width:48px;height:48px;flex:none;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;color:var(--color-text)" style-hover="border-color:var(--color-text);background:var(--color-neutral-200)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+              </button>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:9px 20px;border-bottom:1px solid var(--color-divider)">
+              <div style="min-width:0;flex:1"><div style="font:700 14px var(--font-body)">Meera Iyer</div><div style="font-size:11px;color:var(--color-accent-700)">No floor ticket · sold at door</div></div>
+              <span style="font-size:11px;color:var(--color-neutral-600);flex:none">51 sec</span>
+              <button type="button" onClick="{{ nav.undo }}" aria-label="Undo the scan for Meera Iyer" style="width:48px;height:48px;flex:none;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;color:var(--color-text)" style-hover="border-color:var(--color-text);background:var(--color-neutral-200)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+              </button>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:9px 20px;border-bottom:1px solid var(--color-divider)">
+              <div style="min-width:0;flex:1"><div style="font:700 14px var(--font-body)">Anil Shah</div><div style="font-size:11px;color:var(--color-neutral-600)">Floor · Member</div></div>
+              <span style="font-size:11px;color:var(--color-neutral-600);flex:none">1 min</span>
+              <button type="button" onClick="{{ nav.undo }}" aria-label="Undo the scan for Anil Shah" style="width:48px;height:48px;flex:none;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;color:var(--color-text)" style-hover="border-color:var(--color-text);background:var(--color-neutral-200)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+              </button>
+            </div>
+          </div>
+          <div style="height:20px"></div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- 16 SELL AT THE DOOR · CASH & CHANGE (till-gated) -->
+      <sc-if value="{{ is.sell }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="display:flex;align-items:center;gap:12px;padding:8px 20px 12px;border-bottom:2px solid var(--color-text);flex:none">
+          <button type="button" onClick="{{ nav.scan }}" aria-label="Back" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;flex:none;margin-left:-4px;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div>
+            <div style="font:700 12px var(--font-heading);letter-spacing:.1em;text-transform:uppercase">Sell at the door</div>
+            <div style="font-size:11px;color:var(--color-neutral-600);margin-top:1px">Door 2 · Ravi K · {{ tillLine }}</div>
+          </div>
+        </header>
+
+        <sc-if value="{{ noTill }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:24px">
+          <div style="width:52px;height:52px;border:2.5px solid var(--color-neutral-500);display:flex;align-items:center;justify-content:center;margin-bottom:16px;color:var(--color-neutral-600)">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="11" width="18" height="10"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
+          <div style="font:700 21px/1.25 var(--font-heading);letter-spacing:-.02em">You don't hold a till tonight</div>
+          <p style="font-size:14px;line-height:1.55;color:var(--color-neutral-700);margin:10px 0 0">Card sales are open to you, but cash needs a till so it can be counted at close-out. Ask a coordinator to assign you one, or send cash customers to Door 1.</p>
+          <button type="button" onClick="{{ nav.scan }}" style="display:flex;align-items:center;width:100%;min-height:52px;padding:15px 18px;margin-top:20px;background:transparent;border:1.5px solid var(--color-divider);font:700 14px var(--font-heading);cursor:pointer;color:var(--color-text);box-sizing:border-box" style-hover="background:var(--color-neutral-200)">Back to the scanner</button>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ hasTill }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+          <div style="flex:1;overflow:auto;padding:0 20px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 0;margin-top:12px;background:var(--color-text);color:var(--color-bg);padding-left:13px;padding-right:13px">
+              <span style="font:700 10px var(--font-heading);letter-spacing:.13em;text-transform:uppercase">At the door price</span>
+              <span style="font:700 20px var(--font-heading)">{{ doorPriceStr }}</span>
+            </div>
+
+            <div style="border-top:2px solid var(--color-text);margin-top:14px">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--color-divider)">
+                <div style="min-width:0">
+                  <div style="font:700 17px var(--font-heading)">Floor admission</div>
+                  <div style="font-size:12px;color:var(--color-neutral-600);margin-top:2px">{{ doorPriceStr }} each · issues a ticket</div>
+                </div>
+                <div style="display:flex;align-items:center;flex:none;border:2px solid var(--color-text)">
+                  <button type="button" onClick="{{ decD.floor }}" aria-label="One fewer admission" style="width:54px;height:54px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;cursor:pointer;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12h14"/></svg>
+                  </button>
+                  <div style="width:48px;text-align:center;font:700 21px/54px var(--font-heading);border-left:2px solid var(--color-text);border-right:2px solid var(--color-text)">{{ dQty.floor }}</div>
+                  <button type="button" onClick="{{ incD.floor }}" aria-label="One more admission" style="width:54px;height:54px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;cursor:pointer;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 5v14M5 12h14"/></svg>
+                  </button>
+                </div>
+              </div>
+
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--color-divider)">
+                <div style="min-width:0">
+                  <div style="font:700 17px var(--font-heading)">Dandiya sticks</div>
+                  <div style="font-size:12px;color:var(--color-neutral-600);margin-top:2px">$5 a pair · hand over now</div>
+                </div>
+                <div style="display:flex;align-items:center;flex:none;border:2px solid var(--color-neutral-700)">
+                  <button type="button" onClick="{{ decD.sticks }}" aria-label="One fewer pair" style="width:54px;height:54px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;cursor:pointer;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12h14"/></svg>
+                  </button>
+                  <div style="width:48px;text-align:center;font:700 21px/54px var(--font-heading);border-left:2px solid var(--color-neutral-700);border-right:2px solid var(--color-neutral-700)">{{ dQty.sticks }}</div>
+                  <button type="button" onClick="{{ incD.sticks }}" aria-label="One more pair" style="width:54px;height:54px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;cursor:pointer;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 5v14M5 12h14"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div style="padding:16px 0 9px;font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600)">Paying with</div>
+            <div style="display:flex;gap:2px;margin-bottom:14px">
+              <button type="button" onClick="{{ setDPay.cash }}" style="flex:1;min-height:54px;padding:12px 10px;border:0;cursor:pointer;font:700 13px var(--font-heading);letter-spacing:.06em;text-transform:uppercase;background:{{ dCashBg }};color:{{ dCashInk }}">Cash</button>
+              <button type="button" onClick="{{ setDPay.card }}" style="flex:1;min-height:54px;padding:12px 10px;border:0;cursor:pointer;font:700 13px var(--font-heading);letter-spacing:.06em;text-transform:uppercase;background:{{ dCardBg }};color:{{ dCardInk }}">Tap card</button>
+            </div>
+
+            <sc-if value="{{ dIsCash }}" hint-placeholder-val="{{ true }}">
+            <div>
+              <div style="font:700 10px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:7px">Amount tendered</div>
+              <div style="display:flex;gap:2px;margin-bottom:12px">
+                <button type="button" onClick="{{ dTender.t20 }}" style="flex:1;min-height:54px;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;font:700 17px var(--font-heading);color:var(--color-text)" style-hover="border-color:var(--color-text)">$20</button>
+                <button type="button" onClick="{{ dTender.t50 }}" style="flex:1;min-height:54px;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;font:700 17px var(--font-heading);color:var(--color-text)" style-hover="border-color:var(--color-text)">$50</button>
+                <button type="button" onClick="{{ dTender.t100 }}" style="flex:1;min-height:54px;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;font:700 17px var(--font-heading);color:var(--color-text)" style-hover="border-color:var(--color-text)">$100</button>
+                <button type="button" onClick="{{ dTender.exact }}" style="flex:1;min-height:54px;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;font:700 12px var(--font-heading);letter-spacing:.04em;text-transform:uppercase;color:var(--color-text)" style-hover="border-color:var(--color-text)">Exact</button>
+              </div>
+
+              <div style="border:2px solid var(--color-text);margin-bottom:12px">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;padding:11px 14px;border-bottom:1.5px solid var(--color-divider)">
+                  <span style="font:700 11px var(--font-heading);letter-spacing:.1em;text-transform:uppercase;color:var(--color-neutral-600)">Owed</span>
+                  <span style="font:700 20px var(--font-heading)">{{ dTotalStr }}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;padding:11px 14px;border-bottom:1.5px solid var(--color-divider)">
+                  <span style="font:700 11px var(--font-heading);letter-spacing:.1em;text-transform:uppercase;color:var(--color-neutral-600)">Tendered</span>
+                  <span style="font:700 20px var(--font-heading)">{{ dTenderedStr }}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:16px 14px;background:{{ dChangeBg }};color:{{ dChangeInk }}">
+                  <span style="font:700 12px var(--font-heading);letter-spacing:.1em;text-transform:uppercase">{{ dChangeLabel }}</span>
+                  <span style="font:700 38px var(--font-heading);letter-spacing:-.025em">{{ dChangeStr }}</span>
+                </div>
+              </div>
+
+              <div style="padding:11px 13px;background:var(--color-surface);font-size:12px;line-height:1.5;color:var(--color-neutral-700)">Counts against <strong style="color:var(--color-text)">Door 2's till</strong> · Ravi K. Reconciled at close-out.</div>
+            </div>
+            </sc-if>
+
+            <sc-if value="{{ dIsCard }}" hint-placeholder-val="{{ false }}">
+            <div style="border:2px solid var(--color-text);padding:20px;text-align:center">
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-700)" stroke-width="2" style="margin:0 auto 10px"><rect x="2" y="5" width="20" height="14"/><path d="M2 10h20"/></svg>
+              <div style="font:700 17px var(--font-heading)">Waiting for tap</div>
+              <div style="font-size:12.5px;color:var(--color-neutral-700);margin-top:5px;line-height:1.45">Hold the Stripe reader near their phone or card. Nothing to type.</div>
+            </div>
+            </sc-if>
+
+            <div style="height:18px"></div>
+          </div>
+
+          <div style="flex:none;border-top:2px solid var(--color-text);padding:13px 20px 18px;background:var(--color-bg)">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:11px">
+              <span style="font-size:13px;color:var(--color-neutral-700)">{{ dCountLine }}</span>
+              <span style="font:700 24px var(--font-heading);letter-spacing:-.02em">{{ dTotalStr }}</span>
+            </div>
+            <button type="button" onClick="{{ nav.sold }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:16px 20px;background:var(--color-accent);color:var(--color-on-accent);border:0;font:700 15px var(--font-heading);cursor:pointer;box-sizing:border-box" style-hover="background:var(--color-accent-600)" style-active="background:var(--color-accent-700)">
+              {{ dSellLabel }}
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+          </div>
+        </div>
+        </sc-if>
+      </div>
+      </sc-if>
+
+      <!-- 17 TICKET ISSUED -->
+      <sc-if value="{{ is.sold }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0;background:var(--color-accent-2)">
+        <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:22px 24px 0;color:#ffffff;min-height:0">
+          <div style="width:56px;height:56px;border:4px solid #ffffff;display:flex;align-items:center;justify-content:center;margin-bottom:18px;flex:none">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg>
+          </div>
+          <div style="font:700 11px var(--font-heading);letter-spacing:.18em;text-transform:uppercase">Sold · admit</div>
+          <div style="display:flex;align-items:baseline;gap:12px;margin-top:10px">
+            <span style="font:700 78px/1 var(--font-heading);letter-spacing:-.05em">{{ dQty.floor }}</span>
+            <span style="font:700 25px/1.1 var(--font-heading);letter-spacing:-.02em">people</span>
+          </div>
+
+          <div style="margin-top:16px;background:#ffffff;color:var(--color-text);padding:14px 16px">
+            <div style="font:700 10px var(--font-heading);letter-spacing:.16em;text-transform:uppercase;color:var(--color-neutral-600)">Their code</div>
+            <div style="font:700 21px var(--font-heading);letter-spacing:.08em;margin-top:5px">NAV-D318</div>
+            <div style="font-size:13px;line-height:1.5;color:var(--color-neutral-700);margin-top:8px;padding-top:9px;border-top:1.5px solid var(--color-divider)">{{ dSoldNote }}</div>
+          </div>
+
+          <div style="margin-top:12px;font-size:13.5px;opacity:.92">{{ dPaidNote }}</div>
+        </div>
+
+        <div style="flex:none;padding:16px 24px 24px;display:flex;flex-direction:column;gap:9px">
+          <button type="button" onClick="{{ nav.sell }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:18px 20px;background:#ffffff;color:var(--color-text);border:0;font:700 16px var(--font-heading);cursor:pointer;box-sizing:border-box" style-hover="background:var(--color-neutral-200)">
+            Next customer
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+          <button type="button" style="display:flex;align-items:center;justify-content:center;gap:9px;width:100%;min-height:52px;padding:14px 20px;background:transparent;border:2px solid #ffffff;color:#ffffff;font:700 14px var(--font-heading);cursor:pointer;box-sizing:border-box" style-hover="background:rgba(255,255,255,.16)">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5h20v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></svg>
+            Print a badge
+          </button>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- 21 ZELLE · REQUEST SENT -->
+      <sc-if value="{{ is.boothpay }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="display:flex;align-items:center;gap:12px;padding:8px 20px 12px;border-bottom:2px solid var(--color-text);flex:none">
+          <button type="button" onClick="{{ z.back }}" aria-label="Back" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;flex:none;margin-left:-4px;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div>
+            <div style="font:700 12px var(--font-heading);letter-spacing:.1em;text-transform:uppercase">{{ z.title }}</div>
+            <div style="font-size:11px;color:var(--color-neutral-600);margin-top:1px">{{ z.who }}</div>
+          </div>
+        </header>
+
+        <div style="flex:1;overflow:auto">
+          <div style="background:var(--color-text);color:var(--color-bg);padding:15px 20px">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+              <span style="font:700 10px var(--font-heading);letter-spacing:.16em;text-transform:uppercase;color:var(--color-accent-400)">Amount due</span>
+              <span style="font:700 30px var(--font-heading);letter-spacing:-.03em">{{ z.amountStr }}</span>
+            </div>
+          </div>
+
+          <!-- PRIMARY: we push the request to them -->
+          <div style="padding:16px 20px 0">
+            <div style="border:3px solid var(--color-text)">
+              <div style="padding:11px 14px;background:var(--color-accent);color:var(--color-on-accent)">
+                <div style="font:700 10px var(--font-heading);letter-spacing:.13em;text-transform:uppercase">Zelle request · approve in your bank app</div>
+              </div>
+              <div style="padding:14px">
+                <div style="display:flex;align-items:center;gap:12px;padding-bottom:13px;border-bottom:2px solid var(--color-text)">
+                  <div style="width:44px;height:44px;flex:none;border:2px solid var(--color-accent-2);color:var(--color-accent-2-700);display:flex;align-items:center;justify-content:center">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"><path d="M20 6 9 17l-5-5"/></svg>
+                  </div>
+                  <div style="min-width:0">
+                    <div style="font:700 16px/1.25 var(--font-heading)">Request sent</div>
+                    <div style="font-size:12.5px;color:var(--color-neutral-700);margin-top:3px;line-height:1.4">to {{ z.sentTo }} · a moment ago</div>
+                  </div>
+                </div>
+
+                <p style="font-size:13px;line-height:1.55;color:var(--color-neutral-800);margin:12px 0 0">Open your banking app and look for a Zelle request from <strong>{{ zelleName }}</strong>. The amount and the reference are already filled in — you only approve it.</p>
+
+                <div style="margin-top:13px;border-top:1px solid var(--color-divider)">
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:10px 0;border-bottom:1px solid var(--color-divider)">
+                    <span style="font-size:12px;color:var(--color-neutral-600)">Amount</span>
+                    <span style="font:700 15px var(--font-heading)">{{ z.amountStr }}</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:10px 0;border-bottom:1px solid var(--color-divider)">
+                    <span style="font-size:12px;color:var(--color-neutral-600)">Reference</span>
+                    <span style="font:700 15px var(--font-heading)">{{ z.ref }}</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:10px 0">
+                    <span style="font-size:12px;color:var(--color-neutral-600)">Requested by</span>
+                    <span style="font:700 13.5px var(--font-heading);text-align:right;min-width:0;word-break:break-word">{{ zelleName }}</span>
+                  </div>
+                </div>
+
+                <div style="margin-top:12px;padding:11px 12px;background:var(--color-accent-100);border-left:5px solid var(--color-accent)">
+                  <div style="font:700 12px var(--font-heading);color:var(--color-accent-700)">Check the name before you approve</div>
+                  <div style="font-size:12px;line-height:1.5;color:var(--color-neutral-800);margin-top:3px">It must read {{ zelleName }}. If it shows anything else, don't approve it and call us on 214-699-8608.</div>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:9px;margin-top:13px">
+              <button type="button" onClick="{{ z.resend }}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:52px;padding:14px 16px;background:transparent;border:1.5px solid var(--color-divider);cursor:pointer;box-sizing:border-box;text-align:left;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+                <span style="min-width:0"><span style="display:block;font:700 14px var(--font-heading)">{{ z.resendLabel }}</span><span style="display:block;font:400 11.5px var(--font-body);color:var(--color-neutral-600);margin-top:2px">Nothing showed up in your bank app</span></span>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="flex:none"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+              </button>
+              <button type="button" onClick="{{ z.changeNumber }}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:52px;padding:14px 16px;background:transparent;border:1.5px solid var(--color-divider);cursor:pointer;box-sizing:border-box;text-align:left;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+                <span style="min-width:0"><span style="display:block;font:700 14px var(--font-heading)">Send to a different number</span><span style="display:block;font:400 11.5px var(--font-body);color:var(--color-neutral-600);margin-top:2px">Your Zelle may be on another phone or email</span></span>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="flex:none"><path d="m9 18 6-6-6-6"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- FALLBACK: push it yourself -->
+          <div style="padding:18px 20px 0">
+            <div style="height:2px;background:var(--color-divider);margin-bottom:14px"></div>
+            <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:9px">Or send it yourself</div>
+            <div style="border:1.5px solid var(--color-divider);padding:13px">
+              <p style="font-size:12.5px;line-height:1.55;color:var(--color-neutral-700);margin:0 0 12px">If your bank doesn't show requests, send it as a normal Zelle payment. Copy each piece as you need it — <strong style="color:var(--color-text)">the reference is what lets us find your payment</strong>.</p>
+
+              <div style="border-top:1.5px solid var(--color-divider)">
+                <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--color-divider)">
+                  <div style="flex:1;min-width:0">
+                    <div style="font:700 9px var(--font-heading);letter-spacing:.13em;text-transform:uppercase;color:var(--color-neutral-600)">Send to</div>
+                    <div style="font:700 13.5px var(--font-heading);margin-top:2px;word-break:break-all">{{ zelleHandle }}</div>
+                  </div>
+                  <button type="button" onClick="{{ copy.handle }}" aria-label="Copy the Zelle address" style="width:48px;height:48px;flex:none;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--color-text);background:transparent;cursor:pointer;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="12" height="12"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>
+                  </button>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--color-divider)">
+                  <div style="flex:1;min-width:0">
+                    <div style="font:700 9px var(--font-heading);letter-spacing:.13em;text-transform:uppercase;color:var(--color-neutral-600)">Amount</div>
+                    <div style="font:700 17px var(--font-heading);margin-top:2px">{{ z.amountStr }}</div>
+                  </div>
+                  <button type="button" onClick="{{ copy.amount }}" aria-label="Copy the amount" style="width:48px;height:48px;flex:none;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--color-text);background:transparent;cursor:pointer;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="12" height="12"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>
+                  </button>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;padding:10px 0">
+                  <div style="flex:1;min-width:0">
+                    <div style="font:700 9px var(--font-heading);letter-spacing:.13em;text-transform:uppercase;color:var(--color-accent-700)">Put in the memo</div>
+                    <div style="font:700 19px var(--font-heading);letter-spacing:.04em;margin-top:2px">{{ z.ref }}</div>
+                  </div>
+                  <button type="button" onClick="{{ copy.memo }}" aria-label="Copy the reference" style="width:48px;height:48px;flex:none;display:flex;align-items:center;justify-content:center;border:2px solid var(--color-accent-700);background:transparent;cursor:pointer;color:var(--color-accent-700)" style-hover="background:var(--color-accent-200)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="9" y="9" width="12" height="12"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>
+                  </button>
+                </div>
+              </div>
+
+              <div style="font:700 12.5px var(--font-heading);color:var(--color-accent-700);margin-top:10px;min-height:17px">{{ copiedNote }}</div>
+
+              <button type="button" onClick="{{ z.textMe }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:52px;padding:14px 14px;margin-top:6px;background:var(--color-text);color:var(--color-bg);border:0;font:700 13.5px var(--font-heading);cursor:pointer;box-sizing:border-box;text-align:left" style-hover="background:var(--color-neutral-800)">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="flex:none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></svg>
+                {{ z.textMeLabel }}
+              </button>
+              <div style="font-size:11.5px;line-height:1.5;color:var(--color-neutral-600);margin-top:8px">Because you'll be inside your bank app when you need the reference, not on this page.</div>
+            </div>
+
+            <sc-if value="{{ z.showQr }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1.5px solid var(--color-divider);margin-top:12px">
+              <div style="padding:11px 13px;border-bottom:1.5px solid var(--color-divider)">
+                <div style="font:700 12.5px var(--font-heading)">On a computer?</div>
+                <div style="font-size:11.5px;line-height:1.45;color:var(--color-neutral-700);margin-top:3px">Scan this from your phone. It fills in DCICA as the recipient; you still type the amount and reference.</div>
+              </div>
+              <div style="padding:14px;display:flex;justify-content:center;background:#ffffff">
+                <img src="assets/zelle-qr.png" alt="Zelle QR code for the DCICA account" style="width:150px;height:150px;display:block">
+              </div>
+            </div>
+            </sc-if>
+
+            <button type="button" onClick="{{ z.toggleQr }}" style="display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;padding:12px;margin-top:10px;background:transparent;border:0;font:600 13px var(--font-body);color:var(--color-neutral-700);cursor:pointer;text-decoration:underline;text-underline-offset:3px;box-sizing:border-box" style-hover="color:var(--color-text)">{{ z.qrToggleLabel }}</button>
+          </div>
+
+          <sc-if value="{{ z.isBooth }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:16px 20px 0">
+            <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:8px">Can't use Zelle at all?</div>
+            <button type="button" onClick="{{ nav.pay }}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:52px;padding:14px 16px;background:transparent;border:1.5px solid var(--color-neutral-400);cursor:pointer;box-sizing:border-box;text-align:left;color:var(--color-neutral-700)" style-hover="border-color:var(--color-text);color:var(--color-text)">
+              <span style="min-width:0"><span style="display:block;font:600 14px var(--font-body)">Pay by card instead</span><span style="display:block;font-size:11.5px;margin-top:2px">{{ z.cardNote }}</span></span>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="flex:none"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+            <div style="font-size:11.5px;line-height:1.5;color:var(--color-neutral-600);margin-top:9px">Cheques payable to DCICA are also accepted by post. Call the booth desk on 214-699-8608.</div>
+          </div>
+          </sc-if>
+
+          <div style="height:20px"></div>
+        </div>
+
+        <div style="flex:none;border-top:2px solid var(--color-text);padding:13px 20px 18px;background:var(--color-bg)">
+          <button type="button" onClick="{{ nav.boothpending }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:16px 20px;background:var(--color-accent);color:var(--color-on-accent);border:0;font:700 15px var(--font-heading);cursor:pointer;box-sizing:border-box" style-hover="background:var(--color-accent-600)" style-active="background:var(--color-accent-700)">
+            I've approved it
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+          <button type="button" onClick="{{ nav.boothconfirm }}" style="width:100%;min-height:48px;padding:12px;margin-top:8px;background:transparent;border:0;font:600 13px var(--font-body);color:var(--color-neutral-700);cursor:pointer;text-decoration:underline;text-underline-offset:3px;box-sizing:border-box" style-hover="color:var(--color-text)">I sent it myself · enter my transaction code</button>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- 22 ENTER TRANSACTION CODE -->
+      <sc-if value="{{ is.boothconfirm }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="display:flex;align-items:center;gap:12px;padding:8px 20px 12px;border-bottom:2px solid var(--color-text);flex:none">
+          <button type="button" onClick="{{ nav.boothpay }}" aria-label="Back" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;flex:none;margin-left:-4px;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div>
+            <div style="font:700 12px var(--font-heading);letter-spacing:.1em;text-transform:uppercase">Confirm your payment</div>
+            <div style="font-size:11px;color:var(--color-neutral-600);margin-top:1px">{{ z.memo }} · {{ z.amountStr }}</div>
+          </div>
+        </header>
+
+        <div style="flex:1;overflow:auto;padding:18px 20px 8px">
+          <h2 style="font-size:21px;letter-spacing:-.025em;margin:0 0 8px;text-wrap:pretty">Enter your Zelle transaction code</h2>
+          <p style="font-size:13.5px;line-height:1.55;color:var(--color-neutral-700);margin:0 0 18px">Your bank shows it on the confirmation screen and in the Zelle activity list — sometimes called a confirmation number or reference.</p>
+
+          <label style="display:block;font:700 10px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:6px">Transaction code</label>
+          <input type="text" autoCapitalize="characters" placeholder="e.g. 9F2K4RTQ8" style="width:100%;box-sizing:border-box;font:700 19px var(--font-heading);letter-spacing:.06em;min-height:58px;padding:15px;border:2px solid var(--color-text);background:var(--color-bg);border-radius:0;color:var(--color-text)">
+          <div style="font-size:11.5px;color:var(--color-neutral-600);margin-top:7px">Usually 8–12 letters and numbers.</div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px">
+            <div>
+              <label style="display:block;font:700 10px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:6px">Date sent</label>
+              <input type="date" style="width:100%;box-sizing:border-box;font-size:15px;min-height:56px;padding:14px 12px;border:1.5px solid var(--color-divider);background:var(--color-bg);font-family:var(--font-body);border-radius:0;color:var(--color-text)">
+            </div>
+            <div>
+              <label style="display:block;font:700 10px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:6px">Amount sent</label>
+              <input type="text" inputMode="decimal" defaultValue="{{ z.amountExact }}" style="width:100%;box-sizing:border-box;font-size:15px;min-height:56px;padding:14px 12px;border:1.5px solid var(--color-divider);background:var(--color-bg);font-family:var(--font-body);border-radius:0;color:var(--color-text)">
+            </div>
+          </div>
+
+          <label style="display:block;font:700 10px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600);margin:16px 0 6px">Sending bank</label>
+          <select style="width:100%;box-sizing:border-box;font-size:15px;min-height:56px;padding:14px 12px;border:1.5px solid var(--color-divider);background:var(--color-bg);font-family:var(--font-body);border-radius:0;color:var(--color-text)">
+            <option>Chase</option>
+            <option>Bank of America</option>
+            <option>Wells Fargo</option>
+            <option>Capital One</option>
+            <option>Other</option>
+          </select>
+
+          <div style="font:700 10px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600);margin:16px 0 6px">Screenshot of the confirmation <span style="font-weight:400;text-transform:none;letter-spacing:0">— optional, speeds us up</span></div>
+          <button type="button" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:16px 14px;border:1.5px dashed var(--color-neutral-500);background:transparent;cursor:pointer;font:600 13px var(--font-body);color:var(--color-neutral-700);box-sizing:border-box" style-hover="border-color:var(--color-text);color:var(--color-text)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            Attach a photo or screenshot
+          </button>
+
+          <div style="margin-top:18px;padding:12px 14px;background:var(--color-neutral-200)">
+            <div style="font:700 11px var(--font-heading);letter-spacing:.1em;text-transform:uppercase">Wrong code is worse than none</div>
+            <p style="font-size:12px;line-height:1.5;margin:5px 0 0;color:var(--color-neutral-800)">Check it against your bank before submitting. A code that doesn't match sends your booth back to the pending pile.</p>
+          </div>
+        </div>
+
+        <div style="flex:none;border-top:2px solid var(--color-text);padding:14px 20px 20px;background:var(--color-bg)">
+          <button type="button" onClick="{{ nav.boothpending }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:16px 20px;background:var(--color-accent);color:var(--color-on-accent);border:0;font:700 15px var(--font-heading);cursor:pointer;box-sizing:border-box" style-hover="background:var(--color-accent-600)" style-active="background:var(--color-accent-700)">
+            Submit for matching
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- 23 AWAITING PAYMENT MATCH -->
+      <sc-if value="{{ is.boothpending }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <div style="flex:1;overflow:auto">
+          <div style="background:var(--color-accent);color:var(--color-on-accent);padding:26px 20px 22px">
+            <div style="width:46px;height:46px;border:3px solid var(--color-on-accent);display:flex;align-items:center;justify-content:center;margin-bottom:16px">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><circle cx="12" cy="12" r="10"/><path d="M12 7v5l3 2"/></svg>
+            </div>
+            <div style="font:700 10px var(--font-heading);letter-spacing:.16em;text-transform:uppercase">{{ z.pendingKicker }}</div>
+            <h1 style="font-size:28px;letter-spacing:-.035em;margin:10px 0 0;color:var(--color-on-accent);text-wrap:pretty">We're matching your payment</h1>
+            <p style="font-size:13.5px;line-height:1.55;margin:11px 0 0;opacity:.88">Our treasurer checks Zelle activity each morning. You'll get an email with your booth number once yours is matched — usually within one business day.</p>
+          </div>
+
+          <div style="padding:18px 20px 0">
+            <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:9px">What you gave us</div>
+            <div style="border-top:2px solid var(--color-text)">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:11px 0;border-bottom:1px solid var(--color-divider)">
+                <span style="font-size:13px;color:var(--color-neutral-700)">Transaction code</span>
+                <span style="font:700 15px var(--font-heading);letter-spacing:.04em">9F2K4RTQ8</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:11px 0;border-bottom:1px solid var(--color-divider)">
+                <span style="font-size:13px;color:var(--color-neutral-700)">Reference</span>
+                <span style="font:700 15px var(--font-heading)">{{ z.memo }}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:11px 0;border-bottom:1px solid var(--color-divider)">
+                <span style="font-size:13px;color:var(--color-neutral-700)">Amount</span>
+                <span style="font:700 15px var(--font-heading)">{{ z.amountExact }}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:11px 0;border-bottom:1px solid var(--color-divider)">
+                <span style="font-size:13px;color:var(--color-neutral-700)">Sent</span>
+                <span style="font:700 15px var(--font-heading)">14 Sep · Chase</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="padding:18px 20px 0">
+            <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:9px">Where you are</div>
+            <div style="display:flex;gap:12px;padding:11px 0;border-top:1px solid var(--color-divider)">
+              <div style="width:22px;flex:none;display:flex;align-items:center;justify-content:center;color:var(--color-accent-700)">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg>
+              </div>
+              <div style="min-width:0"><div style="font:700 13.5px var(--font-body)">{{ z.step1 }}</div><div style="font-size:12px;color:var(--color-neutral-600);margin-top:2px">{{ z.step1Sub }}</div></div>
+            </div>
+            <div style="display:flex;gap:12px;padding:11px 0;border-top:1px solid var(--color-divider)">
+              <div style="width:22px;flex:none;display:flex;align-items:center;justify-content:center;color:var(--color-accent-700)">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg>
+              </div>
+              <div style="min-width:0"><div style="font:700 13.5px var(--font-body)">Transaction code submitted</div><div style="font-size:12px;color:var(--color-neutral-600);margin-top:2px">Just now</div></div>
+            </div>
+            <div style="display:flex;gap:12px;padding:11px 0;border-top:1px solid var(--color-divider);background:var(--color-accent-100);margin:0 -8px;padding-left:8px;padding-right:8px">
+              <div style="width:22px;flex:none;display:flex;align-items:center;justify-content:center;color:var(--color-accent-700)">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><circle cx="12" cy="12" r="9"/></svg>
+              </div>
+              <div style="min-width:0"><div style="font:700 13.5px var(--font-body)">Treasurer matches the payment</div><div style="font-size:12px;color:var(--color-accent-700);margin-top:2px">In progress · within 1 business day</div></div>
+            </div>
+            <div style="display:flex;gap:12px;padding:11px 0;border-top:1px solid var(--color-divider);border-bottom:2px solid var(--color-divider);opacity:.5">
+              <div style="width:22px;flex:none;display:flex;align-items:center;justify-content:center">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><circle cx="12" cy="12" r="9"/></svg>
+              </div>
+              <div style="min-width:0"><div style="font:700 13.5px var(--font-body)">{{ z.step4 }}</div><div style="font-size:12px;color:var(--color-neutral-600);margin-top:2px">{{ z.step4Sub }}</div></div>
+            </div>
+          </div>
+
+          <div style="padding:18px 20px 24px">
+            <button type="button" onClick="{{ nav.boothconfirm }}" style="display:flex;align-items:center;width:100%;min-height:52px;padding:14px 18px;background:transparent;border:1.5px solid var(--color-divider);font:600 14px var(--font-body);cursor:pointer;color:var(--color-text);box-sizing:border-box;text-align:left" style-hover="background:var(--color-neutral-200)">Correct my transaction code</button>
+            <div style="font-size:11.5px;line-height:1.5;color:var(--color-neutral-600);margin-top:10px">{{ z.contactNote }}</div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- 18/19/20 MEMBER COMP AT THE DOOR -->
+      <sc-if value="{{ is.comp }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="display:flex;align-items:center;gap:12px;padding:8px 20px 12px;border-bottom:2px solid var(--color-text);flex:none">
+          <button type="button" onClick="{{ nav.scan }}" aria-label="Back" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;flex:none;margin-left:-4px;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div>
+            <div style="font:700 12px var(--font-heading);letter-spacing:.1em;text-transform:uppercase">{{ compTitle }}</div>
+            <div style="font-size:11px;color:var(--color-neutral-600);margin-top:1px">Door 2 · Ravi K</div>
+          </div>
+        </header>
+
+        <div style="flex:1;overflow:auto;padding:16px 20px 8px">
+            <div style="border:2px solid var(--color-text);background:var(--color-neutral-100);margin-bottom:14px">
+              <div style="padding:11px 14px;background:var(--color-text);color:var(--color-bg)">
+                <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase">Household found</div>
+              </div>
+              <div style="padding:14px">
+                <div style="font:700 21px/1.15 var(--font-heading);letter-spacing:-.02em">{{ hh.name }}</div>
+                <div style="font-size:12.5px;color:var(--color-neutral-700);margin-top:4px;line-height:1.45">{{ hh.contact }}</div>
+                <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+                  <span style="font:700 10px var(--font-heading);letter-spacing:.08em;text-transform:uppercase;background:{{ hh.statusBg }};color:{{ hh.statusInk }};padding:5px 8px">{{ hh.status }}</span>
+                  <span style="font:700 10px var(--font-heading);letter-spacing:.08em;text-transform:uppercase;border:1.5px solid var(--color-divider);padding:4px 8px;color:var(--color-neutral-700)">{{ hh.since }}</span>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;margin-top:14px;border-top:2px solid var(--color-text)">
+                  <div style="padding:11px 0;border-right:1px solid var(--color-divider)">
+                    <div style="font:700 9px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600)">Allowance</div>
+                    <div style="font:700 26px/1 var(--font-heading);margin-top:4px">{{ hh.allowance }}</div>
+                  </div>
+                  <div style="padding:11px 0 11px 12px;border-right:1px solid var(--color-divider)">
+                    <div style="font:700 9px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600)">Used</div>
+                    <div style="font:700 26px/1 var(--font-heading);margin-top:4px">{{ hh.used }}</div>
+                  </div>
+                  <div style="padding:11px 0 11px 12px">
+                    <div style="font:700 9px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600)">Left</div>
+                    <div style="font:700 26px/1 var(--font-heading);margin-top:4px;color:{{ hh.leftInk }}">{{ hh.left }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          <sc-if value="{{ compOk }}" hint-placeholder-val="{{ true }}">
+          <div>
+            <div style="border:2px solid var(--color-text);padding:14px;margin-bottom:14px">
+              <div style="font:700 10px var(--font-heading);letter-spacing:.13em;text-transform:uppercase;color:var(--color-neutral-600)">How many turned up?</div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:11px">
+                <div style="font-size:12.5px;color:var(--color-neutral-700);min-width:0;line-height:1.45">Count the people standing here, including children over 5.</div>
+                <div style="display:flex;align-items:center;flex:none;border:2px solid var(--color-text)">
+                  <button type="button" onClick="{{ decHead }}" aria-label="One fewer person" style="width:54px;height:54px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;cursor:pointer;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12h14"/></svg>
+                  </button>
+                  <div style="width:50px;text-align:center;font:700 22px/54px var(--font-heading);border-left:2px solid var(--color-text);border-right:2px solid var(--color-text)">{{ headCount }}</div>
+                  <button type="button" onClick="{{ incHead }}" aria-label="One more person" style="width:54px;height:54px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;cursor:pointer;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 5v14M5 12h14"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div style="border:3px solid var(--color-accent-2);background:var(--color-accent-2-100);padding:14px;margin-bottom:14px">
+              <div style="font:700 10px var(--font-heading);letter-spacing:.13em;text-transform:uppercase;color:var(--color-accent-2-700)">What to do</div>
+              <div style="font:700 19px/1.25 var(--font-heading);margin-top:7px;text-wrap:pretty">{{ compAction }}</div>
+              <div style="font-size:13px;line-height:1.55;color:var(--color-neutral-800);margin-top:8px">{{ compActionNote }}</div>
+            </div>
+            <button type="button" onClick="{{ nav.sell }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:16px 20px;background:var(--color-accent);color:var(--color-on-accent);border:0;font:700 15px var(--font-heading);cursor:pointer;box-sizing:border-box;margin-bottom:10px" style-hover="background:var(--color-accent-600)" style-active="background:var(--color-accent-700)">
+              {{ compPrimary }}
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+            <button type="button" onClick="{{ nav.scanok }}" style="display:flex;align-items:center;width:100%;min-height:52px;padding:15px 18px;background:transparent;border:1.5px solid var(--color-divider);font:700 14px var(--font-heading);cursor:pointer;color:var(--color-text);box-sizing:border-box" style-hover="background:var(--color-neutral-200)">{{ compSecondary }}</button>
+          </div>
+          </sc-if>
+
+          <sc-if value="{{ compBlocked }}" hint-placeholder-val="{{ false }}">
+          <div>
+            <div style="border:3px solid var(--color-text);background:var(--color-text);color:var(--color-bg);padding:15px;margin-bottom:14px">
+              <div style="display:flex;align-items:flex-start;gap:10px">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2.6" style="flex:none;margin-top:1px"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+                <div style="min-width:0">
+                  <div style="font:700 17px/1.3 var(--font-heading);text-wrap:pretty">{{ blockedHeadline }}</div>
+                  <div style="font-size:13px;line-height:1.55;color:var(--color-neutral-300);margin-top:7px">{{ blockedNote }}</div>
+                </div>
+              </div>
+            </div>
+
+            <div style="padding:13px;background:var(--color-accent-100);border-left:5px solid var(--color-accent);margin-bottom:14px">
+              <div style="font:700 12.5px var(--font-heading);color:var(--color-accent-700)">This isn't yours to decide</div>
+              <div style="font-size:12.5px;line-height:1.55;color:var(--color-neutral-800);margin-top:4px">Don't say no and don't improvise a price. Only someone with override authority can waive this, and it needs a recorded reason. Fetch them — it's faster than arguing.</div>
+            </div>
+
+            <button type="button" onClick="{{ nav.board }}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:64px;padding:17px 18px;background:var(--color-text);color:var(--color-bg);border:0;font:700 16px var(--font-heading);cursor:pointer;box-sizing:border-box;text-align:left" style-hover="background:var(--color-neutral-800)">
+              <span>Get a board member<span style="display:block;font:400 12.5px var(--font-body);opacity:.8;margin-top:3px">They decide · you keep the queue moving</span></span>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="flex:none"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+            <div style="height:10px"></div>
+            <button type="button" onClick="{{ nav.sell }}" style="display:flex;align-items:center;width:100%;min-height:52px;padding:15px 18px;background:transparent;border:1.5px solid var(--color-divider);font:600 14px var(--font-body);cursor:pointer;color:var(--color-neutral-700);box-sizing:border-box;text-align:left" style-hover="border-color:var(--color-text);color:var(--color-text)">They'd rather just pay — sell at the door price</button>
+          </div>
+          </sc-if>
+
+          <div style="height:18px"></div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- 21 GET A BOARD MEMBER -->
+      <sc-if value="{{ is.board }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0;background:var(--color-text)">
+        <header style="display:flex;align-items:center;gap:12px;padding:8px 20px 12px;flex:none">
+          <button type="button" onClick="{{ nav.comp }}" aria-label="Back" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--color-neutral-600);background:transparent;cursor:pointer;flex:none;margin-left:-4px;color:var(--color-bg)" style-hover="background:var(--color-neutral-800)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div style="font:700 12px var(--font-heading);letter-spacing:.1em;text-transform:uppercase;color:var(--color-bg)">Board member</div>
+        </header>
+
+        <div style="flex:1;overflow:auto;padding:6px 20px 8px;color:var(--color-bg)">
+          <h1 style="font-size:27px;letter-spacing:-.035em;margin:0;color:var(--color-bg);text-wrap:pretty">Someone will come to you</h1>
+          <p style="font-size:14px;line-height:1.55;color:var(--color-neutral-300);margin:11px 0 18px">Tap a name and their phone buzzes with the door, the household and what's in question. You don't have to explain anything or hold the line yourself.</p>
+
+          <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-400);margin-bottom:9px">On site now</div>
+
+          <button type="button" onClick="{{ notify.bala }}" style="display:flex;align-items:center;gap:13px;width:100%;min-height:68px;padding:14px;background:var(--color-neutral-800);border:0;border-bottom:1px solid var(--color-neutral-700);cursor:pointer;text-align:left;color:var(--color-bg)" style-hover="background:var(--color-neutral-700)">
+            <div style="width:44px;height:44px;flex:none;background:var(--color-accent);color:var(--color-on-accent);display:flex;align-items:center;justify-content:center;font:700 15px var(--font-heading)">BG</div>
+            <div style="flex:1;min-width:0">
+              <div style="font:700 16px var(--font-heading)">Bala Ganaparavapu</div>
+              <div style="font-size:12px;color:var(--color-neutral-400);margin-top:2px">Treasurer · near the food court</div>
+            </div>
+            <span style="font:700 10px var(--font-heading);letter-spacing:.1em;text-transform:uppercase;border:1.5px solid var(--color-neutral-500);padding:5px 8px;flex:none">Notify</span>
+          </button>
+
+          <button type="button" onClick="{{ notify.sunita }}" style="display:flex;align-items:center;gap:13px;width:100%;min-height:68px;padding:14px;background:var(--color-neutral-800);border:0;border-bottom:1px solid var(--color-neutral-700);cursor:pointer;text-align:left;color:var(--color-bg)" style-hover="background:var(--color-neutral-700)">
+            <div style="width:44px;height:44px;flex:none;background:var(--color-accent);color:var(--color-on-accent);display:flex;align-items:center;justify-content:center;font:700 15px var(--font-heading)">SM</div>
+            <div style="flex:1;min-width:0">
+              <div style="font:700 16px var(--font-heading)">Sunita Mehta</div>
+              <div style="font-size:12px;color:var(--color-neutral-400);margin-top:2px">Membership chair · Door 1</div>
+            </div>
+            <span style="font:700 10px var(--font-heading);letter-spacing:.1em;text-transform:uppercase;border:1.5px solid var(--color-neutral-500);padding:5px 8px;flex:none">Notify</span>
+          </button>
+
+          <button type="button" onClick="{{ notify.anyone }}" style="display:flex;align-items:center;gap:13px;width:100%;min-height:68px;padding:14px;background:var(--color-accent);color:var(--color-on-accent);border:0;cursor:pointer;text-align:left" style-hover="background:var(--color-accent-600)">
+            <div style="width:44px;height:44px;flex:none;border:2px solid var(--color-on-accent);display:flex;align-items:center;justify-content:center">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+            </div>
+            <div style="flex:1;min-width:0">
+              <div style="font:700 16px var(--font-heading)">Buzz whoever's closest</div>
+              <div style="font-size:12px;margin-top:2px;opacity:.82">Goes to all four board phones at once</div>
+            </div>
+          </button>
+
+          <sc-if value="{{ notified }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:16px;padding:15px;background:var(--color-accent-2);color:#ffffff">
+            <div style="display:flex;align-items:center;gap:10px">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="flex:none"><path d="M20 6 9 17l-5-5"/></svg>
+              <div style="font:700 16px var(--font-heading)">{{ notifiedName }} is on the way</div>
+            </div>
+            <div style="font-size:13px;line-height:1.5;margin-top:7px;opacity:.92">Sent them Door 2, the Patel household and the allowance question. Ask the family to step to one side and carry on with the queue.</div>
+          </div>
+          </sc-if>
+
+          <div style="margin-top:18px;padding:13px;background:var(--color-neutral-800)">
+            <div style="font:700 11px var(--font-heading);letter-spacing:.1em;text-transform:uppercase;color:var(--color-neutral-400)">While you wait</div>
+            <p style="font-size:12.5px;line-height:1.55;margin:6px 0 0;color:var(--color-neutral-300)">Let them stand inside out of the cold if it's busy. Nothing is decided until a board member says so, and nobody is turned away by a volunteer.</p>
+          </div>
+
+          <div style="margin-top:16px;border:2px solid var(--color-neutral-600)">
+            <div style="padding:11px 13px;background:var(--color-neutral-800);display:flex;align-items:center;justify-content:space-between;gap:10px">
+              <span style="font:700 10px var(--font-heading);letter-spacing:.13em;text-transform:uppercase;color:var(--color-accent-400)">Override authority only</span>
+              <span style="font:700 9.5px var(--font-heading);letter-spacing:.09em;text-transform:uppercase;border:1.5px solid var(--color-neutral-600);padding:4px 7px;flex:none;color:var(--color-neutral-400)">Not you</span>
+            </div>
+            <div style="padding:13px">
+              <p style="font-size:12.5px;line-height:1.55;margin:0 0 11px;color:var(--color-neutral-300)">What the board member will fill in on their own phone. Every waiver is recorded against their name with a reason.</p>
+              <div style="font:700 9.5px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-400);margin-bottom:6px">Reason for waiving</div>
+              <div style="display:flex;flex-direction:column;gap:2px;opacity:.55">
+                <div style="padding:11px 12px;border:1.5px solid var(--color-neutral-600);font:600 13px var(--font-body);color:var(--color-bg)">Financial hardship</div>
+                <div style="padding:11px 12px;border:1.5px solid var(--color-neutral-600);font:600 13px var(--font-body);color:var(--color-bg)">Volunteer or staff member</div>
+                <div style="padding:11px 12px;border:1.5px solid var(--color-neutral-600);font:600 13px var(--font-body);color:var(--color-bg)">Committee decision</div>
+                <div style="padding:11px 12px;border:1.5px solid var(--color-neutral-600);font:600 13px var(--font-body);color:var(--color-bg)">Complimentary · sponsor or donor</div>
+                <div style="padding:11px 12px;border:1.5px solid var(--color-neutral-600);font:600 13px var(--font-body);color:var(--color-bg)">Other · needs a note</div>
+              </div>
+              <div style="font-size:11.5px;line-height:1.5;color:var(--color-neutral-400);margin-top:10px">Appears in the coordinator's override log and in the close-out export as its own section.</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:none;padding:14px 20px 20px">
+          <button type="button" onClick="{{ nav.scan }}" style="display:flex;align-items:center;width:100%;min-height:52px;padding:15px 20px;background:transparent;border:1.5px solid var(--color-neutral-600);color:var(--color-bg);font:700 14px var(--font-heading);cursor:pointer;box-sizing:border-box" style-hover="background:var(--color-neutral-800)">Back to the scanner</button>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- 16 ADMIN DASHBOARD -->
+      <sc-if value="{{ is.admin }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="padding:6px 20px 12px;border-bottom:2px solid var(--color-text);flex:none">
+          <div style="font:700 10px var(--font-heading);letter-spacing:.16em;text-transform:uppercase;color:var(--color-accent)">Live · Sat 26 Sep</div>
+          <h1 style="font-size:23px;letter-spacing:-.03em;margin:6px 0 0">Navratri at the Grand</h1>
+        </header>
+
+        <div style="flex:1;overflow:auto">
+          <div style="background:var(--color-text);color:var(--color-bg);padding:18px 20px">
+            <div style="display:flex;align-items:baseline;justify-content:space-between">
+              <div>
+                <div style="font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-accent-400)">Gross to date</div>
+                <div style="font:700 38px/1 var(--font-heading);letter-spacing:-.04em;margin-top:8px">$14,265</div>
+              </div>
+              <div style="text-align:right">
+                <div style="font:700 10px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-400)">vs 2025</div>
+                <div style="font:700 18px var(--font-heading);margin-top:6px;color:var(--color-accent-400)">+31%</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:2px solid var(--color-text)">
+            <div style="padding:14px 20px;border-right:1px solid var(--color-divider);border-bottom:1px solid var(--color-divider)">
+              <div style="font:700 10px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600)">Floor sold</div>
+              <div style="font:700 26px/1 var(--font-heading);letter-spacing:-.03em;margin-top:5px">338</div>
+              <div style="font-size:11px;color:var(--color-neutral-600);margin-top:3px">of 480 · 142 left</div>
+            </div>
+            <div style="padding:14px 20px;border-bottom:1px solid var(--color-divider)">
+              <div style="font:700 10px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600)">RoN teams</div>
+              <div style="font:700 26px/1 var(--font-heading);letter-spacing:-.03em;margin-top:5px">7</div>
+              <div style="font-size:11px;color:var(--color-neutral-600);margin-top:3px">108 dancers · 9 slots left</div>
+            </div>
+            <div style="padding:14px 20px;border-right:1px solid var(--color-divider)">
+              <div style="font:700 10px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600)">Checked in</div>
+              <div style="font:700 26px/1 var(--font-heading);letter-spacing:-.03em;margin-top:5px;color:var(--color-accent-700)">408</div>
+              <div style="font-size:11px;color:var(--color-neutral-600);margin-top:3px">91% of arrivals</div>
+            </div>
+            <div style="padding:14px 20px">
+              <div style="font:700 10px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600)">Booths</div>
+              <div style="font:700 26px/1 var(--font-heading);letter-spacing:-.03em;margin-top:5px">14</div>
+              <div style="font-size:11px;color:var(--color-neutral-600);margin-top:3px">2 unpaid</div>
+            </div>
+          </div>
+
+          <div style="padding:16px 20px 8px;font:700 10px var(--font-heading);letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600)">Sales by item</div>
+          <div style="padding:0 20px 16px">
+            <div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--color-divider)">
+              <span style="font:700 13px var(--font-body);width:78px;flex:none">Online</span>
+              <div style="flex:1;height:14px;background:var(--color-neutral-300);position:relative"><div style="position:absolute;inset:0 32% 0 0;background:var(--color-text)"></div></div>
+              <span style="font:700 13px var(--font-heading);width:34px;text-align:right;flex:none">164</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--color-divider)">
+              <span style="font:700 13px var(--font-body);width:78px;flex:none">At the door</span>
+              <div style="flex:1;height:14px;background:var(--color-neutral-300);position:relative"><div style="position:absolute;inset:0 62% 0 0;background:var(--color-accent)"></div></div>
+              <span style="font:700 13px var(--font-heading);width:34px;text-align:right;flex:none">72</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--color-divider)">
+              <span style="font:700 13px var(--font-body);width:78px;flex:none">Comped</span>
+              <div style="flex:1;height:14px;background:var(--color-neutral-300);position:relative"><div style="position:absolute;inset:0 78% 0 0;background:var(--color-neutral-600)"></div></div>
+              <span style="font:700 13px var(--font-heading);width:34px;text-align:right;flex:none">44</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--color-divider)">
+              <span style="font:700 13px var(--font-body);width:78px;flex:none">Sticks</span>
+              <div style="flex:1;height:14px;background:var(--color-neutral-300);position:relative"><div style="position:absolute;inset:0 72% 0 0;background:var(--color-text)"></div></div>
+              <span style="font:700 13px var(--font-heading);width:34px;text-align:right;flex:none">61</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--color-divider)">
+              <span style="font:700 13px var(--font-body);width:78px;flex:none">Entries</span>
+              <div style="flex:1;height:14px;background:var(--color-neutral-300);position:relative"><div style="position:absolute;inset:0 92% 0 0;background:var(--color-accent-700)"></div></div>
+              <span style="font:700 13px var(--font-heading);width:34px;text-align:right;flex:none">7</span>
+            </div>
+          </div>
+
+          <div style="padding:0 20px 24px;display:flex;flex-direction:column;gap:10px">
+            <button type="button" onClick="{{ nav.setup }}" style="display:flex;align-items:center;gap:10px;width:100%;padding:14px 18px;background:transparent;border:1.5px solid var(--color-divider);font:700 14px var(--font-heading);cursor:pointer;color:var(--color-text);box-sizing:border-box" style-hover="background:var(--color-neutral-200)">Edit event &amp; pricing</button>
+            <button type="button" style="display:flex;align-items:center;gap:10px;width:100%;padding:14px 18px;background:transparent;border:1.5px solid var(--color-divider);font:700 14px var(--font-heading);cursor:pointer;color:var(--color-text);box-sizing:border-box" style-hover="background:var(--color-neutral-200)">Export attendee CSV</button>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- 17 SERVICE & PRICING CONFIG -->
+      <sc-if value="{{ is.setup }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="display:flex;align-items:center;gap:12px;padding:8px 20px 12px;border-bottom:2px solid var(--color-text);flex:none">
+          <button type="button" onClick="{{ nav.admin }}" aria-label="Back" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;flex:none;margin-left:-4px;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div>
+            <div style="font:700 12px var(--font-heading);letter-spacing:.1em;text-transform:uppercase">What this event sells</div>
+            <div style="font-size:11px;color:var(--color-neutral-600);margin-top:1px">Navratri · Sat 26 September</div>
+          </div>
+        </header>
+
+        <div style="flex:1;overflow:auto;padding:16px 20px 8px">
+          <div style="padding:12px 13px;background:var(--color-surface);margin-bottom:16px">
+            <div style="font:700 12.5px var(--font-heading)">Get the kind right</div>
+            <div style="font-size:12px;line-height:1.5;color:var(--color-neutral-700);margin-top:4px">The kind decides what happens at the door. Setting it wrong is what causes arguments there, so each one spells out its consequence below.</div>
+          </div>
+
+          <!-- ITEM 1 · issues a ticket, expanded with its price set -->
+          <div style="border:2px solid var(--color-text);margin-bottom:12px">
+            <div style="display:flex;align-items:center;gap:9px;padding:9px 13px;background:var(--color-text)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-bg)" stroke-width="2.2" style="flex:none"><path d="M2 9V7a1 1 0 0 1 1-1h18a1 1 0 0 1 1 1v2a2 2 0 0 0 0 6v2a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-2a2 2 0 0 0 0-6Z"/><path d="M13 6v12"/></svg>
+              <span style="font:700 9.5px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-bg)">Issues a scannable ticket</span>
+            </div>
+            <div style="padding:13px">
+              <label style="display:block;font:700 9.5px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:5px">Item name</label>
+              <input type="text" defaultValue="Floor admission" style="width:100%;box-sizing:border-box;font:700 16px var(--font-heading);min-height:52px;padding:13px;border:1.5px solid var(--color-divider);background:var(--color-bg);border-radius:0;color:var(--color-text)">
+              <div style="font-size:11.5px;line-height:1.45;color:var(--color-neutral-700);margin-top:7px">Each one bought adds a person to the door count. The scanner admits this many.</div>
+
+              <div style="font:700 9.5px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600);margin:14px 0 7px">Price set</div>
+              <div style="border-top:2px solid var(--color-text)">
+                <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--color-divider)">
+                  <div style="flex:1;min-width:0">
+                    <div style="font:700 13.5px var(--font-body)">Early bird</div>
+                    <div style="font-size:11px;color:var(--color-neutral-600);margin-top:2px">Optional · leave blank to skip</div>
+                  </div>
+                  <input type="text" defaultValue="$12" style="width:62px;box-sizing:border-box;font:700 14px var(--font-body);min-height:48px;padding:8px;border:1.5px solid var(--color-divider);background:var(--color-bg);border-radius:0;text-align:right;color:var(--color-text)">
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--color-divider)">
+                  <div style="flex:1;min-width:0;font-size:12px;color:var(--color-neutral-700)">until</div>
+                  <input type="datetime-local" style="flex:1;min-width:0;box-sizing:border-box;font-size:13px;min-height:48px;padding:8px;border:1.5px solid var(--color-divider);background:var(--color-bg);border-radius:0;font-family:var(--font-body);color:var(--color-text)">
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--color-divider)">
+                  <div style="flex:1;min-width:0">
+                    <div style="font:700 13.5px var(--font-body)">Online</div>
+                    <div style="font-size:11px;color:var(--color-neutral-600);margin-top:2px">After the deadline, before the doors</div>
+                  </div>
+                  <input type="text" defaultValue="$15" style="width:62px;box-sizing:border-box;font:700 14px var(--font-body);min-height:48px;padding:8px;border:2px solid var(--color-text);background:var(--color-bg);border-radius:0;text-align:right;color:var(--color-text)">
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:2px solid var(--color-text)">
+                  <div style="flex:1;min-width:0">
+                    <div style="font:700 13.5px var(--font-body)">At the door</div>
+                    <div style="font-size:11px;color:var(--color-neutral-600);margin-top:2px">Walk-ups on the night</div>
+                  </div>
+                  <input type="text" defaultValue="$20" style="width:62px;box-sizing:border-box;font:700 14px var(--font-body);min-height:48px;padding:8px;border:1.5px solid var(--color-divider);background:var(--color-bg);border-radius:0;text-align:right;color:var(--color-text)">
+                </div>
+              </div>
+
+              <div style="font:700 9.5px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600);margin:14px 0 7px">Capacity</div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <input type="text" defaultValue="480" style="width:82px;box-sizing:border-box;font:700 16px var(--font-heading);min-height:52px;padding:12px;border:1.5px solid var(--color-divider);background:var(--color-bg);border-radius:0;text-align:right;color:var(--color-text)">
+                <div style="font-size:12px;color:var(--color-neutral-700);min-width:0;line-height:1.45">338 already sold</div>
+              </div>
+              <div style="margin-top:9px;padding:10px 12px;background:var(--color-accent-100);border-left:5px solid var(--color-accent)">
+                <div style="font:700 11.5px var(--font-heading);color:var(--color-accent-700)">Already selling · can't go below 338</div>
+                <div style="font-size:11.5px;line-height:1.45;color:var(--color-neutral-800);margin-top:3px">Lowering capacity under the number sold would cancel real tickets. Raise it freely, or close the item instead.</div>
+              </div>
+
+              <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 0 0;margin-top:12px;border-top:1px solid var(--color-divider);cursor:pointer">
+                <span style="font-size:13.5px;font-weight:600;min-width:0">Member allowance can cover this item</span>
+                <input type="checkbox" defaultChecked="{{ true }}" style="width:22px;height:22px;accent-color:var(--color-accent);flex:none">
+              </label>
+            </div>
+          </div>
+
+          <!-- ITEM 2 · collected at the door -->
+          <div style="border:2px dashed var(--color-neutral-500);margin-bottom:12px;background:var(--color-surface)">
+            <div style="display:flex;align-items:center;gap:9px;padding:9px 13px;border-bottom:1.5px dashed var(--color-neutral-400)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-neutral-700)" stroke-width="2.2" style="flex:none"><path d="M6 20 18 4"/><path d="M10 20 22 4"/></svg>
+              <span style="font:700 9.5px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-700)">Collected at the door · no ticket</span>
+            </div>
+            <div style="padding:13px">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                <div style="min-width:0">
+                  <div style="font:700 16px var(--font-heading)">Dandiya sticks</div>
+                  <div style="font-size:11.5px;color:var(--color-neutral-700);margin-top:3px;line-height:1.45">Volunteers hand these over. Adds nobody to the door count.</div>
+                </div>
+                <div style="font:700 17px var(--font-heading);flex:none">$5</div>
+              </div>
+              <div style="font-size:11.5px;color:var(--color-neutral-600);margin-top:9px;padding-top:9px;border-top:1px solid var(--color-divider)">One price at all times · 200 in stock · never covered by member allowance</div>
+            </div>
+          </div>
+
+          <!-- ITEM 3 · neither -->
+          <div style="border:3px solid var(--color-accent-700);margin-bottom:12px;background:var(--color-accent-100)">
+            <div style="padding:9px 13px;background:var(--color-accent-700)">
+              <div style="display:flex;align-items:center;gap:9px">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.4" style="flex:none"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                <span style="font:700 9.5px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:#ffffff">No ticket · no floor access</span>
+              </div>
+            </div>
+            <div style="padding:13px">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                <div style="min-width:0">
+                  <div style="font:700 16px var(--font-heading)">Dance competition entry</div>
+                  <div style="font-size:11.5px;color:var(--color-neutral-800);margin-top:3px;line-height:1.45">Buying this admits nobody. The door will turn a group away if they have only this.</div>
+                </div>
+                <div style="font:700 17px var(--font-heading);flex:none">$30</div>
+              </div>
+              <div style="font-size:11.5px;color:var(--color-neutral-700);margin-top:9px;padding-top:9px;border-top:1px solid var(--color-accent-300)">Flat per group, any number of dancers · 16 group slots · never covered by member allowance</div>
+            </div>
+          </div>
+
+          <button type="button" style="display:flex;align-items:center;gap:9px;width:100%;min-height:52px;padding:14px;border:1.5px dashed var(--color-neutral-500);background:transparent;cursor:pointer;font:700 13px var(--font-body);color:var(--color-neutral-700);box-sizing:border-box" style-hover="border-color:var(--color-text);color:var(--color-text)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            Add another item
+          </button>
+
+          <div style="height:18px"></div>
+        </div>
+
+        <div style="flex:none;border-top:2px solid var(--color-text);padding:13px 20px 18px;background:var(--color-bg)">
+          <button type="button" onClick="{{ nav.admin }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:16px 20px;background:var(--color-accent);color:var(--color-on-accent);border:0;font:700 15px var(--font-heading);cursor:pointer;box-sizing:border-box" style-hover="background:var(--color-accent-600)" style-active="background:var(--color-accent-700)">Save what this event sells</button>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- 18 VENDOR BOOTH -->
+      <sc-if value="{{ is.vendor }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="display:flex;align-items:center;gap:12px;padding:8px 20px 12px;border-bottom:2px solid var(--color-text);flex:none">
+          <button type="button" onClick="{{ nav.events }}" aria-label="Back" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;flex:none;margin-left:-4px;color:var(--color-text)" style-hover="background:var(--color-neutral-200)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div>
+            <div style="font:700 12px var(--font-heading);letter-spacing:.1em;text-transform:uppercase">Booth application</div>
+            <div style="font-size:11px;color:var(--color-neutral-600);margin-top:1px">Navratri · 26 September</div>
+          </div>
+        </header>
+
+        <div style="flex:1;overflow:auto;padding:18px 20px 8px">
+          <p style="font-size:13px;line-height:1.55;color:var(--color-neutral-700);margin:0 0 18px">Booths are assigned only after payment clears. Food vendors need a current Denton County permit on file.</p>
+
+          <label style="display:block;font:700 10px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:5px">Business name</label>
+          <input type="text" placeholder="e.g. Rajula's Kitchen" style="width:100%;box-sizing:border-box;font-size:15px;padding:12px;border:1.5px solid var(--color-divider);background:var(--color-bg);font-family:var(--font-body);margin-bottom:16px;border-radius:0;color:var(--color-text)">
+
+          <div style="font:700 10px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:7px">Booth type</div>
+          <div style="display:flex;flex-direction:column;gap:2px;margin-bottom:18px">
+            <button type="button" style="display:flex;align-items:center;justify-content:space-between;padding:14px;border:2px solid var(--color-accent);background:var(--color-accent);color:var(--color-on-accent);cursor:pointer;font-family:var(--font-body)">
+              <span style="text-align:left"><span style="display:block;font:700 14px var(--font-heading)">Food · 10×10</span><span style="display:block;font-size:11px;margin-top:2px;opacity:.85">Power included · permit required</span></span>
+              <span style="font:700 17px var(--font-heading);flex:none">$450</span>
+            </button>
+            <button type="button" style="display:flex;align-items:center;justify-content:space-between;padding:14px;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;font-family:var(--font-body);color:var(--color-text)" style-hover="border-color:var(--color-text)">
+              <span style="text-align:left"><span style="display:block;font:700 14px var(--font-heading)">Retail · 10×10</span><span style="display:block;font-size:11px;color:var(--color-neutral-600);margin-top:2px">Clothing, jewellery, crafts</span></span>
+              <span style="font:700 17px var(--font-heading);flex:none">$300</span>
+            </button>
+            <button type="button" style="display:flex;align-items:center;justify-content:space-between;padding:14px;border:1.5px solid var(--color-divider);background:transparent;cursor:pointer;font-family:var(--font-body);color:var(--color-text)" style-hover="border-color:var(--color-text)">
+              <span style="text-align:left"><span style="display:block;font:700 14px var(--font-heading)">Community table</span><span style="display:block;font-size:11px;color:var(--color-neutral-600);margin-top:2px">Non-profits only</span></span>
+              <span style="font:700 17px var(--font-heading);flex:none">Free</span>
+            </button>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+            <div>
+              <label style="display:block;font:700 10px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:5px">Contact</label>
+              <input type="text" placeholder="Name" style="width:100%;box-sizing:border-box;font-size:15px;padding:12px;border:1.5px solid var(--color-divider);background:var(--color-bg);font-family:var(--font-body);border-radius:0;color:var(--color-text)">
+            </div>
+            <div>
+              <label style="display:block;font:700 10px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:5px">Phone</label>
+              <input type="tel" placeholder="(214) 555-0199" style="width:100%;box-sizing:border-box;font-size:15px;padding:12px;border:1.5px solid var(--color-divider);background:var(--color-bg);font-family:var(--font-body);border-radius:0;color:var(--color-text)">
+            </div>
+          </div>
+
+          <div style="font:700 10px var(--font-heading);letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:5px">Health permit</div>
+          <button type="button" style="display:flex;align-items:center;gap:10px;width:100%;padding:16px 14px;border:1.5px dashed var(--color-neutral-500);background:transparent;cursor:pointer;font:700 13px var(--font-body);color:var(--color-neutral-700);margin-bottom:16px;box-sizing:border-box" style-hover="border-color:var(--color-text);color:var(--color-text)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            Upload PDF or photo
+          </button>
+
+          <div style="padding:12px 14px;background:var(--color-neutral-200);margin-bottom:8px">
+            <div style="font:700 11px var(--font-heading);letter-spacing:.1em;text-transform:uppercase">{{ z.logisticsTitle }}</div>
+            <p style="font-size:12px;line-height:1.5;margin:5px 0 0;color:var(--color-neutral-800)">{{ z.logistics }}</p>
+          </div>
+        </div>
+
+        <div style="flex:none;border-top:2px solid var(--color-text);padding:14px 20px 20px;background:var(--color-bg)">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+            <span style="font-size:13px;color:var(--color-neutral-700)">{{ z.who }}</span>
+            <span style="font:700 22px var(--font-heading);letter-spacing:-.02em">{{ z.amountStr }}</span>
+          </div>
+          <button type="button" onClick="{{ nav.boothpay }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:16px 20px;background:var(--color-accent);color:var(--color-on-accent);border:0;font:700 15px var(--font-heading);cursor:pointer;box-sizing:border-box" style-hover="background:var(--color-accent-600)" style-active="background:var(--color-accent-700)">
+            Apply and pay by Zelle
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+      </sc-if>
+
+    </div>
+  </main>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:1000},&quot;memberVerified&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Household membership&quot;},&quot;memberAllowance&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:4,&quot;min&quot;:0,&quot;max&quot;:9,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Household membership&quot;},&quot;allowanceUsed&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:0,&quot;min&quot;:0,&quot;max&quot;:9,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Household membership&quot;},&quot;pricePhase&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;earlyBird&quot;,&quot;online&quot;,&quot;door&quot;],&quot;default&quot;:&quot;online&quot;,&quot;tsType&quot;:&quot;'earlyBird' | 'online' | 'door'&quot;,&quot;section&quot;:&quot;Event pricing config&quot;},&quot;onlinePrice&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:15,&quot;min&quot;:0,&quot;max&quot;:200,&quot;unit&quot;:&quot;$&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Event pricing config&quot;},&quot;doorPrice&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:20,&quot;min&quot;:0,&quot;max&quot;:200,&quot;unit&quot;:&quot;$&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Event pricing config&quot;},&quot;earlyBirdPrice&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:12,&quot;min&quot;:0,&quot;max&quot;:200,&quot;unit&quot;:&quot;$&quot;,&quot;tsType&quot;:&quot;number | null&quot;,&quot;section&quot;:&quot;Event pricing config&quot;},&quot;earlyBirdUntil&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;5 Sep, 11:59 PM&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Event pricing config&quot;},&quot;volunteerHasTill&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Volunteer permissions&quot;},&quot;zelleHandle&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;dentoncica@gmail.com&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Zelle credentials&quot;},&quot;zelleName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Denton County India Cultural Assn&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Zelle credentials&quot;}}">
+class Component extends DCLogic {
+  state = {
+    screen: 'events',
+    floor: 2, sticks: 0, comp: 0,
+    dFloor: 3, dSticks: 0, dPay: 'cash', dTendered: 0,
+    cHead: 5,
+    zelleFor: 'booth', ronRegistered: true,
+    zSentTo: '(214) 555-0199', zResends: 0, zTexted: false, zShowQr: false,
+    notifiedName: '',
+    payMethod: 'card', tendered: 0,
+    hasTill: true,
+    copied: ''
+  };
+
+  go = (s) => () => this.setState({ screen: s });
+
+  copyField = (labelText) => () => {
+    const ron = this.state.zelleFor === 'ron';
+    const val = labelText === 'Amount' ? (ron ? '30.00' : '450.00')
+      : labelText === 'Zelle address' ? (this.props.zelleHandle ?? 'dentoncica@gmail.com')
+      : (ron ? 'RON-0142' : 'BOOTH-0142');
+    if (navigator.clipboard) navigator.clipboard.writeText(val).catch(() => {});
+    this.setState({ copied: labelText });
+    clearTimeout(this.copyTimer);
+    this.copyTimer = setTimeout(() => this.setState({ copied: '' }), 2200);
+  };
+  bump = (k, d, lo, hi) => () => this.setState(st => ({
+    [k]: Math.max(lo, Math.min(hi, st[k] + d))
+  }));
+
+  renderVals() {
+    const s = this.state;
+    const dark = s.screen === 'qr' || s.screen === 'scan' || s.screen === 'scanok' || s.screen === 'scandup' || s.screen === 'undo' || s.screen === 'board';
+    const inkOnAccent = s.screen === 'scanok' || s.screen === 'sold';
+    // Declared here because the household record below reads it.
+    const compVariant = s.screen === 'comp' ? 'ok' : s.screen === 'compUsed' ? 'blocked' : s.screen === 'compDesk' ? 'desk' : null;
+
+    // Pricing is per-event configuration, resolved early bird -> online -> at the door.
+    // Any of the three may be unset; the UI must read correctly either way.
+    const cfg = {
+      earlyBird: this.props.earlyBirdPrice ?? null,
+      earlyBirdUntil: this.props.earlyBirdUntil ?? '',
+      online: this.props.onlinePrice ?? 15,
+      door: this.props.doorPrice ?? 20,
+      sticks: 5,
+      comp: 30
+    };
+    const phase = this.props.pricePhase ?? 'online';
+    const floorPrice = phase === 'earlyBird' && cfg.earlyBird != null ? cfg.earlyBird
+      : phase === 'door' ? cfg.door : cfg.online;
+
+    // Comps require a VERIFIED membership. An anonymous visitor gets none — the
+    // verification flow itself lives in DCICA Member Checkout.dc.html.
+    const memberVerified = this.props.memberVerified ?? false;
+    const allowance = memberVerified ? (this.props.memberAllowance ?? 0) : 0;
+    const used = this.props.allowanceUsed ?? 0;
+    const availableAllowance = Math.max(0, allowance - used);
+    const comped = Math.min(availableAllowance, s.floor);
+    const paidFloor = s.floor - comped;
+
+    // The Stripe cart is admission + merch only. Group entries settle by Zelle.
+    const count = s.floor + s.sticks;
+    const total = paidFloor * floorPrice + s.sticks * cfg.sticks;
+    const compTotal = s.comp * cfg.comp;
+    const cash = s.payMethod === 'cash';
+    const change = s.tendered - total;
+    const doorTotal = s.dFloor * cfg.door + s.dSticks * cfg.sticks;
+    const doorChange = s.dTendered - doorTotal;
+    const doorShort = s.dTendered > 0 && doorChange < 0;
+
+    // The household record drives every number and every sentence on the comp screen.
+    const hhRec = compVariant === 'blocked'
+      ? { name: 'Patel', contact: 'arun.patel@gmail.com · (972) 555-0147', status: 'Current member',
+          statusBg: 'var(--color-text)', statusInk: 'var(--color-bg)', since: 'Since 2016',
+          allowance: 4, used: 4, left: 0, leftInk: 'var(--color-accent-700)' }
+      : compVariant === 'desk'
+      ? { name: 'Iyer', contact: 'No order found under their email', status: 'Current member',
+          statusBg: 'var(--color-text)', statusInk: 'var(--color-bg)', since: 'Since 2019',
+          allowance: 2, used: 0, left: 2, leftInk: 'var(--color-accent-2-700)' }
+      : { name: 'Desai', contact: 'r.desai@gmail.com · (214) 555-0182', status: 'Current member',
+          statusBg: 'var(--color-text)', statusInk: 'var(--color-bg)', since: 'Since 2021',
+          allowance: 4, used: 2, left: 2, leftInk: 'var(--color-accent-2-700)' };
+    const compFree = Math.min(hhRec.left, s.cHead);
+    const compPaid = Math.max(0, s.cHead - compFree);
+    const compOwed = compPaid * cfg.door;
+    const zRon = s.zelleFor === 'ron';
+    const zAmount = zRon ? cfg.comp : 450;
+    const zRef = zRon ? 'RON-0142' : 'BOOTH-0142';
+    const z = {
+      isRon: zRon,
+      isBooth: !zRon,
+      title: zRon ? 'Competition entry' : 'Booth payment',
+      who: zRon ? 'Nritya Juniors · group entry' : "Rajula's Kitchen · Food 10×10",
+      amountStr: '$' + zAmount,
+      ref: zRef,
+      memo: zRef,
+      sentTo: s.zSentTo,
+      back: zRon ? this.go('pick') : this.go('vendor'),
+      cardNote: 'Adds 3% processing · $' + (Math.round(zAmount * 1.03 * 100) / 100).toFixed(2) + ' total',
+      resend: () => this.setState(x => ({ zResends: x.zResends + 1 })),
+      resendLabel: s.zResends === 0 ? 'Send the request again'
+        : 'Sent again · ' + s.zResends + (s.zResends === 1 ? ' resend' : ' resends'),
+      changeNumber: () => this.setState({ zSentTo: 'a different number' }),
+      textMe: () => this.setState({ zTexted: true }),
+      textMeLabel: s.zTexted ? 'Sent — check your messages' : 'Text these details to my phone',
+      toggleQr: () => this.setState(x => ({ zShowQr: !x.zShowQr })),
+      showQr: s.zShowQr,
+      qrToggleLabel: s.zShowQr ? 'Hide the QR code' : 'Paying from a computer? Show a QR code'
+    };
+
+    const titles = {
+      events: 'Events', event: 'Navratri day', compete: 'RoN competition entry',
+      pick: 'Tickets', attendees: "Who's coming", pay: 'Payment',
+      confirm: 'Confirmed', wallet: 'My tickets', qr: 'Ticket QR',
+      slots: 'Medical camp slots', rsvp: 'Free RSVP', scan: 'Scanner',
+      scanok: 'Valid scan', scandup: 'No floor ticket', undo: 'Undo a scan', door: 'Door status',
+      admin: 'Live dashboard', setup: 'Service and pricing config', vendor: 'Booth application',
+      boothpay: 'Zelle request sent', boothconfirm: 'Enter transaction code',
+      boothpending: 'Awaiting payment match', ronpay: 'Zelle request · RoN',
+      sell: 'Sell at the door', sold: 'Ticket issued',
+      comp: 'Member comp at the door', compUsed: 'Allowance already used',
+      compDesk: 'Settle at the desk', board: 'Get a board member'
+    };
+    const roles = {
+      scan: 'Volunteer', scanok: 'Volunteer', scandup: 'Volunteer', undo: 'Volunteer', door: 'Volunteer',
+      admin: 'Admin', setup: 'Admin', vendor: 'Vendor',
+      boothpay: 'Vendor', boothconfirm: 'Vendor', boothpending: 'Vendor', ronpay: 'Performer',
+      sell: 'Volunteer', sold: 'Volunteer', comp: 'Volunteer',
+      compUsed: 'Volunteer', compDesk: 'Volunteer', board: 'Volunteer'
+    };
+
+    const is = {};
+    Object.keys(titles).forEach(k => { is[k] = s.screen === k; });
+    is.comp = compVariant !== null;
+    // the RoN rail entry reuses the Zelle screens in 'ron' mode
+    is.boothpay = is.boothpay || s.screen === 'ronpay';
+
+
+    return {
+      is,
+      label: titles[s.screen] || '',
+      role: roles[s.screen] || 'Attendee',
+      barBg: inkOnAccent ? '#138808' : (dark ? '#0c3543' : 'transparent'),
+      barInk: dark || inkOnAccent ? '#ffffff' : '#0c3543',
+
+      nav: Object.assign(
+        Object.fromEntries(Object.keys(titles).map(k => [k, this.go(k)])),
+        {
+          ronpay: () => this.setState({ screen: 'ronpay', zelleFor: 'ron' }),
+          boothpay: () => this.setState({ screen: 'boothpay', zelleFor: 'booth' })
+        }
+      ),
+
+      qty: { floor: s.floor, sticks: s.sticks, comp: s.comp },
+      inc: {
+        floor: this.bump('floor', 1, 0, 40),
+        sticks: this.bump('sticks', 1, 0, 40),
+        comp: this.bump('comp', 1, 0, 10)
+      },
+      dec: {
+        floor: this.bump('floor', -1, 0, 40),
+        sticks: this.bump('sticks', -1, 0, 40),
+        comp: this.bump('comp', -1, 0, 10)
+      },
+
+      // resolved price phase — never hardcoded into copy
+      floorPriceStr: '$' + floorPrice,
+      pricePhaseLabel: phase === 'earlyBird' ? 'Early bird price'
+        : phase === 'door' ? 'At the door' : 'Online price',
+      pricePhaseNote: phase === 'earlyBird'
+        ? 'Until ' + (cfg.earlyBirdUntil || 'the deadline') + ' · $' + cfg.online + ' after'
+        : phase === 'door' ? 'Walk-up price tonight'
+        : (cfg.door > cfg.online ? '$' + cfg.door + ' at the door' : 'Same price at the door'),
+      phaseBg: phase === 'door' ? 'var(--color-text)' : 'var(--color-accent-100)',
+      phaseInk: phase === 'door' ? 'var(--color-bg)' : 'var(--color-text)',
+
+      // variable household allowance
+      hasAllowance: availableAllowance > 0 || (allowance > 0 && used >= allowance),
+      allowanceLine: availableAllowance > 0
+        ? comped + ' of ' + availableAllowance + ' free member admission' + (availableAllowance === 1 ? '' : 's') + ' applied'
+        : 'Your ' + allowance + ' free admission' + (allowance === 1 ? '' : 's') + ' already used',
+      allowanceNote: availableAllowance > 0
+        ? (paidFloor > 0 ? paidFloor + ' more at $' + floorPrice + ' each. Free admissions never cover sticks or competition entry.'
+                         : 'Free admissions never cover sticks or competition entry.')
+        : 'Used on an earlier order for this event. Everything here is at full price.',
+
+      showTrap: s.ronRegistered && s.floor === 0,
+      compLine: 'a group registered for the competition',
+      addSix: () => this.setState({ floor: 6 }),
+      addSixLabel: 'Add 6 floor admissions · $' + 6 * floorPrice,
+
+      continueAction: total > 0 ? this.go('pay') : this.go('ronpay'),
+      continueLabel: total > 0
+        ? (compTotal > 0 ? 'Pay for tickets by card' : 'Continue')
+        : 'Continue to Zelle · $' + compTotal,
+
+      // Group entries are quoted here but settle by Zelle, never in the card total.
+      z,
+      hasComp: s.comp > 0,
+      compTotalStr: '$' + compTotal,
+      compZelleLine: s.comp + ' competition entr' + (s.comp === 1 ? 'y' : 'ies') + ' · $' + compTotal + ' by Zelle',
+      compConfirmLine: s.comp + ' competition entr' + (s.comp === 1 ? 'y' : 'ies') + ' · $' + compTotal + ' still to pay by Zelle',
+      hasSticks: s.sticks > 0,
+      sticksCollectLine: s.sticks + ' pair' + (s.sticks === 1 ? '' : 's') + ' of sticks to collect at the door',
+      confirmSummary: [s.floor + ' admission' + (s.floor === 1 ? '' : 's'),
+                       s.sticks ? s.sticks + ' pair' + (s.sticks === 1 ? '' : 's') + ' of sticks' : null]
+                       .filter(Boolean).join(' and ') + ' for Navratri.',
+      confirmAdmits: 'Admits ' + s.floor + ' · show it once at the door',
+
+      countLine: count === 0 ? 'Nothing yet'
+        : [s.floor ? s.floor + ' admission' + (s.floor > 1 ? 's' : '') : null,
+           s.sticks ? s.sticks + ' stick' + (s.sticks > 1 ? 's' : '') : null].filter(Boolean).join(' · '),
+      totalStr: '$' + total,
+      payLabel: cash ? (change >= 0 ? 'Take $' + total + ' cash' : 'Enter amount tendered') : 'Continue to Stripe · $' + total,
+      confirmZelleNext: s.comp > 0,
+      payFootnote: cash
+        ? 'Cash goes in the till. Give ' + (change > 0 ? '$' + change + ' change' : 'no change') + '.'
+        : 'Stripe handles the card and sends you back here. DCICA never stores card details.',
+      isCash: cash,
+      isCard: !cash,
+      setPay: {
+        card: () => this.setState({ payMethod: 'card' }),
+        cash: () => this.setState({ payMethod: 'cash' })
+      },
+      payCardBg: cash ? '#e4e9eb' : '#0c3543',
+      payCardInk: cash ? '#43585f' : '#ffffff',
+      payCashBg: cash ? '#0c3543' : '#e4e9eb',
+      payCashInk: cash ? '#ffffff' : '#43585f',
+      tender: {
+        t100: () => this.setState({ tendered: 100 }),
+        t120: () => this.setState({ tendered: 120 }),
+        t150: () => this.setState({ tendered: 150 }),
+        exact: () => this.setState({ tendered: total })
+      },
+      tenderedStr: s.tendered ? '$' + s.tendered : '—',
+      changeStr: s.tendered ? (change >= 0 ? '$' + change : 'Short $' + -change) : '$0',
+      changeBg: s.tendered && change < 0 ? '#f9a200' : '#a86800',
+      changeInk: s.tendered && change < 0 ? '#16201f' : '#ffffff',
+      lineMember: s.floor + ' floor admission' + (s.floor === 1 ? '' : 's') + ' × $' + floorPrice,
+      memberAmt: '$' + s.floor * floorPrice,
+      lineGeneral: s.sticks + ' pair' + (s.sticks === 1 ? '' : 's') + ' of sticks × $5',
+      generalAmt: '$' + s.sticks * cfg.sticks,
+      hasDiscount: comped > 0,
+      discountLabel: comped + ' free member admission' + (comped === 1 ? '' : 's'),
+      discountAmt: '−$' + comped * floorPrice,
+
+      // ===== sell at the door (till-gated) =====
+      hasTill: this.props.volunteerHasTill ?? true,
+      noTill: !(this.props.volunteerHasTill ?? true),
+      tillLine: (this.props.volunteerHasTill ?? true) ? 'till open' : 'no till',
+      doorPriceStr: '$' + cfg.door,
+      sellFloorLabel: 'Sell floor admission · $' + cfg.door,
+      compPriceStr: '$' + cfg.comp,
+      hasEarlyBird: cfg.earlyBird != null,
+      earlyBirdPriceStr: '$' + cfg.earlyBird,
+      earlyBirdUntilLine: cfg.earlyBirdUntil ? 'Until ' + cfg.earlyBirdUntil : 'Until the deadline',
+      onlinePriceStr: '$' + cfg.online,
+      onlineRowBg: phase === 'online' ? 'var(--color-accent-100)' : 'transparent',
+      onlineRowNote: phase === 'online' ? 'Buying now' : 'Before the doors open',
+      doorRowBg: phase === 'door' ? 'var(--color-accent-100)' : 'transparent',
+      doorRowNote: phase === 'door' ? 'Tonight' : 'Walk-ups on the night',
+      dQty: { floor: s.dFloor, sticks: s.dSticks },
+      incD: { floor: this.bump('dFloor', 1, 0, 30), sticks: this.bump('dSticks', 1, 0, 30) },
+      decD: { floor: this.bump('dFloor', -1, 0, 30), sticks: this.bump('dSticks', -1, 0, 30) },
+      setDPay: {
+        cash: () => this.setState({ dPay: 'cash' }),
+        card: () => this.setState({ dPay: 'card' })
+      },
+      dIsCash: s.dPay === 'cash',
+      dIsCard: s.dPay === 'card',
+      dCashBg: s.dPay === 'cash' ? 'var(--color-text)' : 'var(--color-neutral-200)',
+      dCashInk: s.dPay === 'cash' ? 'var(--color-bg)' : 'var(--color-neutral-700)',
+      dCardBg: s.dPay === 'card' ? 'var(--color-text)' : 'var(--color-neutral-200)',
+      dCardInk: s.dPay === 'card' ? 'var(--color-bg)' : 'var(--color-neutral-700)',
+      dTender: {
+        t20: () => this.setState({ dTendered: 20 }),
+        t50: () => this.setState({ dTendered: 50 }),
+        t100: () => this.setState({ dTendered: 100 }),
+        exact: () => this.setState({ dTendered: doorTotal })
+      },
+      dTotalStr: '$' + doorTotal,
+      dTenderedStr: s.dTendered ? '$' + s.dTendered : '—',
+      dChangeLabel: doorShort ? 'Still owed' : 'Change due',
+      dChangeStr: s.dTendered ? (doorShort ? '$' + -doorChange : '$' + doorChange) : '$0',
+      dChangeBg: doorShort ? 'var(--color-accent)' : 'var(--color-accent-2)',
+      dChangeInk: doorShort ? 'var(--color-on-accent)' : '#ffffff',
+      dCountLine: [s.dFloor ? s.dFloor + ' admission' + (s.dFloor > 1 ? 's' : '') : null,
+                   s.dSticks ? s.dSticks + ' stick' + (s.dSticks > 1 ? 's' : '') : null].filter(Boolean).join(' · ') || 'Nothing yet',
+      dSellLabel: s.dPay === 'cash'
+        ? (doorShort ? 'Enter amount tendered' : 'Take $' + doorTotal + ' cash')
+        : 'Charge $' + doorTotal + ' on the reader',
+      dSoldNote: s.dFloor + ' admission' + (s.dFloor === 1 ? '' : 's') + ' on this code. Count them through now, or they can show it later.',
+      dPaidNote: s.dPay === 'cash'
+        ? 'Paid $' + doorTotal + ' cash · ' + (doorChange > 0 ? 'gave $' + doorChange + ' change' : 'no change') + ' · Door 2 till'
+        : 'Paid $' + doorTotal + ' by card · Stripe reader',
+
+      // ===== member comp at the door =====
+      compTitle: compVariant === 'desk' ? 'Settle at the desk' : 'Member comp',
+      compOk: compVariant === 'ok' || compVariant === 'desk',
+      compBlocked: compVariant === 'blocked',
+      hh: hhRec,
+      hhUnused: compVariant === 'blocked'
+        ? { name: 'Patel', contact: 'arun.patel@gmail.com · (972) 555-0147', status: 'Current member',
+            statusBg: 'var(--color-text)', statusInk: 'var(--color-bg)', since: 'Since 2016',
+            allowance: 4, used: 4, left: 0, leftInk: 'var(--color-accent-700)' }
+        : compVariant === 'desk'
+        ? { name: 'Iyer', contact: 'No order found under their email', status: 'Current member',
+            statusBg: 'var(--color-text)', statusInk: 'var(--color-bg)', since: 'Since 2019',
+            allowance: 2, used: 0, left: 2, leftInk: 'var(--color-accent-2-700)' }
+        : { name: 'Desai', contact: 'r.desai@gmail.com · (214) 555-0182', status: 'Current member',
+            statusBg: 'var(--color-text)', statusInk: 'var(--color-bg)', since: 'Since 2021',
+            allowance: 4, used: 2, left: 2, leftInk: 'var(--color-accent-2-700)' },
+      headCount: s.cHead,
+      incHead: this.bump('cHead', 1, 1, 20),
+      decHead: this.bump('cHead', -1, 1, 20),
+      compAction: compPaid > 0
+        ? 'Admit ' + compFree + ' free, take $' + compOwed + ' for the other ' + compPaid
+        : 'Admit all ' + s.cHead + ' free · nothing to pay',
+      compActionNote: compVariant === 'desk'
+        ? 'They held their place online but never got a code, so nothing has been charged yet. Their ' + hhRec.allowance + ' free admission' + (hhRec.allowance === 1 ? '' : 's') + ' applies now' + (compPaid > 0 ? '; the other ' + compPaid + ' are at the $' + cfg.door + ' door price.' : '.')
+        : hhRec.used + ' of their ' + hhRec.allowance + ' were used on an online order for tonight. The ' + hhRec.left + ' remaining appl' + (hhRec.left === 1 ? 'ies' : 'y') + ' now' + (compPaid > 0 ? '; anyone beyond that is $' + cfg.door + ' each.' : '.'),
+      compPrimary: compPaid > 0
+        ? 'Take $' + compOwed + ' · ' + compPaid + ' at $' + cfg.door
+        : 'Admit ' + s.cHead + ' · nothing to pay',
+      compSecondary: 'Only the ' + compFree + ' free one' + (compFree === 1 ? '' : 's') + ' are coming — admit and done',
+      blockedHeadline: 'This household has already used all ' + hhRec.allowance + ' free admission' + (hhRec.allowance === 1 ? '' : 's') + ' tonight',
+      blockedNote: 'All ' + hhRec.allowance + ' were used on an online order earlier today. Anything further is a board decision, not yours — and the family may well be right that something went wrong.',
+
+      notify: {
+        bala: () => this.setState({ notifiedName: 'Bala' }),
+        sunita: () => this.setState({ notifiedName: 'Sunita' }),
+        anyone: () => this.setState({ notifiedName: 'A board member' })
+      },
+      notified: !!s.notifiedName,
+      notifiedName: s.notifiedName,
+
+      doneCount: '312',
+      doneLine: 'of 480 checked in',
+      donePct: '65%'
+    };
+  }
+}
+</script>
+</body>
+</html>

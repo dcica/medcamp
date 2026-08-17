@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="_ds/modernist-949fda96-bb6e-4e15-b019-48ec42201a5b/styles.css">
+<script src="_ds/modernist-949fda96-bb6e-4e15-b019-48ec42201a5b/_ds_bundle.js"></script>
+<style>
+  body { margin: 0; background: #cbd7d9; font-family: var(--font-body); }
+  a { color: var(--color-text); text-underline-offset: 3px; }
+  a:hover { color: var(--color-accent-700); }
+  @keyframes dcicaPulse { 0%,100% { opacity: 1 } 50% { opacity: .45 } }
+</style>
+</helmet>
+
+<div style="display:flex;align-items:flex-start;min-height:100vh;color:#0c3543">
+
+  <aside style="width:252px;flex:none;position:sticky;top:0;height:100vh;overflow:auto;background:#f7faf9;border-right:2px solid #0c3543;padding:24px 0 40px">
+    <div style="padding:0 20px 16px">
+      <div style="font:700 11px/1 'IBM Plex Sans';letter-spacing:.14em;text-transform:uppercase;color:#a86800">DCICA</div>
+      <div style="font:700 20px/1.15 'IBM Plex Sans';letter-spacing:-.02em;margin-top:6px">Member ticketing<br>&amp; verification</div>
+      <div style="font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#5e737c;margin-top:7px">Rhythm of Navratri · 13 states</div>
+    </div>
+    <div style="height:2px;background:#0c3543"></div>
+
+    <div style="padding:14px 20px 6px;font:700 10px/1 'IBM Plex Sans';letter-spacing:.16em;text-transform:uppercase;color:#5e737c">Cart</div>
+    <nav style="display:flex;flex-direction:column">
+      <button type="button" onClick="{{ nav.cart }}" style="text-align:left;padding:10px 20px;border:0;background:transparent;font:600 13px 'IBM Plex Sans';color:#0c3543;cursor:pointer" style-hover="background:#fff7e6;color:#a86800">01 · Three item kinds</button>
+      <button type="button" onClick="{{ nav.trap }}" style="text-align:left;padding:10px 20px;border:0;background:transparent;font:600 13px 'IBM Plex Sans';color:#0c3543;cursor:pointer" style-hover="background:#fff7e6;color:#a86800">02 · Competition, no admission</button>
+    </nav>
+
+    <div style="padding:16px 20px 6px;font:700 10px/1 'IBM Plex Sans';letter-spacing:.16em;text-transform:uppercase;color:#5e737c">Membership</div>
+    <nav style="display:flex;flex-direction:column">
+      <button type="button" onClick="{{ nav.prompt }}" style="text-align:left;padding:10px 20px;border:0;background:transparent;font:600 13px 'IBM Plex Sans';color:#0c3543;cursor:pointer" style-hover="background:#fff7e6;color:#a86800">03 · The prompt</button>
+      <button type="button" onClick="{{ nav.email }}" style="text-align:left;padding:10px 20px;border:0;background:transparent;font:600 13px 'IBM Plex Sans';color:#0c3543;cursor:pointer" style-hover="background:#fff7e6;color:#a86800">04 · Email entry</button>
+      <button type="button" onClick="{{ nav.sent }}" style="text-align:left;padding:10px 20px;border:0;background:transparent;font:600 13px 'IBM Plex Sans';color:#0c3543;cursor:pointer" style-hover="background:#fff7e6;color:#a86800">05 · Code sent</button>
+      <button type="button" onClick="{{ nav.code }}" style="text-align:left;padding:10px 20px;border:0;background:transparent;font:600 13px 'IBM Plex Sans';color:#0c3543;cursor:pointer" style-hover="background:#fff7e6;color:#a86800">06 · Code entry</button>
+      <button type="button" onClick="{{ nav.wrong }}" style="text-align:left;padding:10px 20px;border:0;background:transparent;font:600 13px 'IBM Plex Sans';color:#0c3543;cursor:pointer" style-hover="background:#fff7e6;color:#a86800">07 · Wrong code</button>
+      <button type="button" onClick="{{ nav.nocode }}" style="text-align:left;padding:10px 20px;border:0;background:transparent;font:600 13px 'IBM Plex Sans';color:#0c3543;cursor:pointer" style-hover="background:#fff7e6;color:#a86800">08 · No code arrived</button>
+      <button type="button" onClick="{{ nav.expired }}" style="text-align:left;padding:10px 20px;border:0;background:transparent;font:600 13px 'IBM Plex Sans';color:#0c3543;cursor:pointer" style-hover="background:#fff7e6;color:#a86800">09 · Expired membership</button>
+    </nav>
+
+    <div style="padding:16px 20px 6px;font:700 10px/1 'IBM Plex Sans';letter-spacing:.16em;text-transform:uppercase;color:#5e737c">Comp &amp; checkout</div>
+    <nav style="display:flex;flex-direction:column">
+      <button type="button" onClick="{{ nav.allow1 }}" style="text-align:left;padding:10px 20px;border:0;background:transparent;font:600 13px 'IBM Plex Sans';color:#0c3543;cursor:pointer" style-hover="background:#fff7e6;color:#a86800">10 · Allowance 1 of 4 people</button>
+      <button type="button" onClick="{{ nav.allow2 }}" style="text-align:left;padding:10px 20px;border:0;background:transparent;font:600 13px 'IBM Plex Sans';color:#0c3543;cursor:pointer" style-hover="background:#fff7e6;color:#a86800">11 · Allowance 2 of 5 people</button>
+      <button type="button" onClick="{{ nav.allow6 }}" style="text-align:left;padding:10px 20px;border:0;background:transparent;font:600 13px 'IBM Plex Sans';color:#0c3543;cursor:pointer" style-hover="background:#fff7e6;color:#a86800">12 · Allowance 6, all free</button>
+      <button type="button" onClick="{{ nav.allowNone }}" style="text-align:left;padding:10px 20px;border:0;background:transparent;font:600 13px 'IBM Plex Sans';color:#0c3543;cursor:pointer" style-hover="background:#fff7e6;color:#a86800">13 · Allowance already used</button>
+      <button type="button" onClick="{{ nav.pay }}" style="text-align:left;padding:10px 20px;border:0;background:transparent;font:600 13px 'IBM Plex Sans';color:#0c3543;cursor:pointer" style-hover="background:#fff7e6;color:#a86800">14 · Payment</button>
+      <button type="button" onClick="{{ nav.pass }}" style="text-align:left;padding:10px 20px;border:0;background:transparent;font:600 13px 'IBM Plex Sans';color:#0c3543;cursor:pointer" style-hover="background:#fff7e6;color:#a86800">15 · Door pass</button>
+    </nav>
+
+    <div style="height:2px;background:#cbd7d9;margin:18px 0"></div>
+    <div style="padding:0 20px">
+      <button type="button" onClick="{{ toggleOffline }}" style="display:flex;align-items:center;gap:9px;width:100%;min-height:48px;padding:11px 13px;border:1.5px solid {{ offlineBtnBorder }};background:{{ offlineBtnBg }};color:{{ offlineBtnInk }};font:700 12px 'IBM Plex Sans';letter-spacing:.04em;text-transform:uppercase;cursor:pointer;box-sizing:border-box;text-align:left">
+        {{ offlineBtnLabel }}
+      </button>
+      <div style="font-size:11px;line-height:1.5;color:#5e737c;margin-top:9px">Drops the network on whichever screen you're on. The cart survives.</div>
+    </div>
+  </aside>
+
+  <main style="flex:1;display:flex;flex-direction:column;align-items:center;padding:44px 32px 64px;min-width:0">
+    <div style="width:390px;display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:14px">
+      <div style="font:700 13px/1.3 'IBM Plex Sans';letter-spacing:.08em;text-transform:uppercase">{{ label }}</div>
+      <div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#43585f;flex:none">{{ stepNote }}</div>
+    </div>
+
+    <div style="width:390px;height:844px;flex:none;background:#f7faf9;border:2px solid #0c3543;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 14px 40px rgba(12,53,67,.24)">
+
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 20px 7px;font:600 12px 'IBM Plex Sans';flex:none;color:{{ barInk }};background:{{ barBg }}">
+        <span>7:24</span>
+        <span style="display:flex;align-items:center;gap:5px">
+          <span style="width:17px;height:9px;border:1.5px solid currentColor;display:block"></span>
+          <span style="width:2px;height:5px;background:currentColor;display:block"></span>
+        </span>
+      </div>
+
+      <sc-if value="{{ offline }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:none;background:#f9a200;color:#16201f;padding:11px 20px;display:flex;align-items:flex-start;gap:10px;border-bottom:2px solid #0c3543">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex:none;margin-top:1px"><path d="M2 8.8A16 16 0 0 1 22 8.8"/><path d="M5.5 12.5a11 11 0 0 1 13 0"/><path d="M9 16.2a6 6 0 0 1 6 0"/><path d="M12 20h.01"/></svg>
+        <div style="min-width:0">
+          <div style="font:700 13px 'IBM Plex Sans'">No connection right now</div>
+          <div style="font-size:12px;line-height:1.45;margin-top:2px">Your cart is saved on this phone. Nothing is lost — we'll pick up here when you're back.</div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== 01 / 02  CART ===== -->
+      <sc-if value="{{ is.cart }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="flex:none;background:#f9a200;padding:14px 20px 15px;border-bottom:2px solid #0c3543">
+          <div style="font:700 10px/1 'IBM Plex Sans';letter-spacing:.16em;text-transform:uppercase;color:#16201f">Denton County India Cultural Association</div>
+          <div style="font:700 22px/1.15 'IBM Plex Sans';letter-spacing:-.025em;margin-top:7px;color:#16201f">Rhythm of Navratri</div>
+          <div style="font-size:12.5px;color:#16201f;margin-top:5px;line-height:1.4;opacity:.86">Sat 10 October 2026 · McKamy Middle School, Flower Mound</div>
+        </header>
+
+        <div style="flex:1;overflow:auto">
+
+          <div style="padding:16px 20px 8px;font:700 10px 'IBM Plex Sans';letter-spacing:.16em;text-transform:uppercase;color:#5e737c">What you need</div>
+
+          <!-- FLOOR ADMISSION -->
+          <div style="margin:0 20px 14px;border:2px solid #0c3543;background:#ffffff">
+            <div style="display:flex;align-items:center;gap:9px;padding:9px 14px;background:#0c3543">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.2" style="flex:none"><path d="M2 9V7a1 1 0 0 1 1-1h18a1 1 0 0 1 1 1v2a2 2 0 0 0 0 6v2a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-2a2 2 0 0 0 0-6Z"/><path d="M13 6v12"/></svg>
+              <span style="font:700 10px 'IBM Plex Sans';letter-spacing:.13em;text-transform:uppercase;color:#ffffff">Issues a scannable ticket</span>
+            </div>
+            <div style="padding:14px">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+                <div style="min-width:0">
+                  <div style="font:700 19px/1.2 'IBM Plex Sans';letter-spacing:-.02em">Floor admission</div>
+                  <div style="font-size:13px;color:#43585f;margin-top:4px;line-height:1.45">Gets one person onto the dandiya floor</div>
+                </div>
+                <div style="font:700 21px 'IBM Plex Sans';flex:none">$15</div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px">
+                <div style="font-size:12px;color:#5e737c;min-width:0">How many people?</div>
+                <div style="display:flex;align-items:center;flex:none;border:2px solid #0c3543">
+                  <button type="button" onClick="{{ dec.floor }}" aria-label="One fewer admission" style="width:54px;height:54px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;cursor:pointer;color:#0c3543" style-hover="background:#e4ecee">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12h14"/></svg>
+                  </button>
+                  <div style="width:50px;text-align:center;font:700 21px/54px 'IBM Plex Sans';border-left:2px solid #0c3543;border-right:2px solid #0c3543">{{ qty.floor }}</div>
+                  <button type="button" onClick="{{ inc.floor }}" aria-label="One more admission" style="width:54px;height:54px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;cursor:pointer;color:#0c3543" style-hover="background:#e4ecee">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 5v14M5 12h14"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- DANDIYA STICKS -->
+          <div style="margin:0 20px 14px;border:2px dashed #7f9199;background:#f0f4f4">
+            <div style="display:flex;align-items:center;gap:9px;padding:9px 14px;border-bottom:1.5px dashed #a6b4ba">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#43585f" stroke-width="2.2" style="flex:none"><path d="M6 20 18 4"/><path d="M10 20 22 4"/></svg>
+              <span style="font:700 10px 'IBM Plex Sans';letter-spacing:.13em;text-transform:uppercase;color:#43585f">Collect at the door · no ticket</span>
+            </div>
+            <div style="padding:14px">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+                <div style="min-width:0">
+                  <div style="font:700 19px/1.2 'IBM Plex Sans';letter-spacing:-.02em">Dandiya sticks</div>
+                  <div style="font-size:13px;color:#43585f;margin-top:4px;line-height:1.45">A pair to dance with. Bring your own if you have them.</div>
+                </div>
+                <div style="font:700 21px 'IBM Plex Sans';flex:none">$5</div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px">
+                <div style="font-size:12px;color:#5e737c;min-width:0">How many pairs?</div>
+                <div style="display:flex;align-items:center;flex:none;border:2px solid #43585f">
+                  <button type="button" onClick="{{ dec.sticks }}" aria-label="One fewer pair of sticks" style="width:54px;height:54px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;cursor:pointer;color:#0c3543" style-hover="background:#e4ecee">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12h14"/></svg>
+                  </button>
+                  <div style="width:50px;text-align:center;font:700 21px/54px 'IBM Plex Sans';border-left:2px solid #43585f;border-right:2px solid #43585f">{{ qty.sticks }}</div>
+                  <button type="button" onClick="{{ inc.sticks }}" aria-label="One more pair of sticks" style="width:54px;height:54px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;cursor:pointer;color:#0c3543" style-hover="background:#e4ecee">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 5v14M5 12h14"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- COMPETITION ENTRY -->
+          <div style="margin:0 20px 14px;border:3px solid #a86800;background:#fff7e6">
+            <div style="padding:10px 14px;background:#a86800">
+              <div style="display:flex;align-items:center;gap:9px">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.4" style="flex:none"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                <span style="font:700 10px/1.3 'IBM Plex Sans';letter-spacing:.13em;text-transform:uppercase;color:#ffffff">Not a ticket · no floor access</span>
+              </div>
+            </div>
+            <div style="padding:14px">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+                <div style="min-width:0">
+                  <div style="font:700 19px/1.2 'IBM Plex Sans';letter-spacing:-.02em">Dance competition entry</div>
+                  <div style="font-size:13px;color:#43585f;margin-top:4px;line-height:1.45">Registers one group to perform in the opening competition.</div>
+                </div>
+                <div style="font:700 21px 'IBM Plex Sans';flex:none">$30</div>
+              </div>
+
+              <div style="margin-top:12px;padding:12px;background:#ffffff;border:2px solid #a86800">
+                <div style="font:700 12.5px/1.5 'IBM Plex Sans';color:#0c3543">Performing does not get your group onto the floor.</div>
+                <div style="font-size:12.5px;line-height:1.5;color:#43585f;margin-top:5px">Anyone who wants to dance after the competition needs their own floor admission above. Doors staff cannot let a group in on this entry.</div>
+              </div>
+
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px">
+                <div style="font-size:12px;color:#5e737c;min-width:0">How many groups?</div>
+                <div style="display:flex;align-items:center;flex:none;border:2px solid #a86800">
+                  <button type="button" onClick="{{ dec.comp }}" aria-label="One fewer group entry" style="width:54px;height:54px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;cursor:pointer;color:#0c3543" style-hover="background:#ffe9bd">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12h14"/></svg>
+                  </button>
+                  <div style="width:50px;text-align:center;font:700 21px/54px 'IBM Plex Sans';border-left:2px solid #a86800;border-right:2px solid #a86800">{{ qty.comp }}</div>
+                  <button type="button" onClick="{{ inc.comp }}" aria-label="One more group entry" style="width:54px;height:54px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;cursor:pointer;color:#0c3543" style-hover="background:#ffe9bd">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 5v14M5 12h14"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- the door argument, caught before it happens -->
+          <sc-if value="{{ showTrap }}" hint-placeholder-val="{{ false }}">
+          <div style="margin:0 20px 14px;border:3px solid #0c3543;background:#0c3543;color:#ffffff">
+            <div style="padding:14px">
+              <div style="display:flex;align-items:flex-start;gap:10px">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f9a200" stroke-width="2.6" style="flex:none;margin-top:1px"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+                <div style="min-width:0">
+                  <div style="font:700 15px/1.3 'IBM Plex Sans'">Your group can perform, but nobody can stay to dance.</div>
+                  <div style="font-size:13px;line-height:1.5;color:#cbd7d9;margin-top:6px">You have {{ compLine }} and no floor admission. Add admission for the dancers who are staying, or carry on if they're leaving after the performance.</div>
+                </div>
+              </div>
+              <button type="button" onClick="{{ addSix }}" style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:52px;padding:14px 16px;margin-top:13px;background:#f9a200;color:#16201f;border:0;font:700 14px 'IBM Plex Sans';cursor:pointer;box-sizing:border-box;text-align:left">
+                Add 6 floor admissions · $90
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="flex:none"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </button>
+            </div>
+          </div>
+          </sc-if>
+
+          <div style="margin:4px 20px 20px;padding:14px;background:#fff7e6;border-left:5px solid #f9a200">
+            <div style="font:700 13px 'IBM Plex Sans';color:#a86800">Tickets are counted, not named</div>
+            <div style="font-size:12.5px;line-height:1.5;color:#0c3543;margin-top:4px">You get one code for your whole party. No need to enter anyone's details.</div>
+          </div>
+        </div>
+
+        <div style="flex:none;border-top:2px solid #0c3543;background:#ffffff;padding:13px 20px 18px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:11px">
+            <span style="font-size:13px;color:#43585f">{{ cartSummary }}</span>
+            <span style="font:700 25px 'IBM Plex Sans';letter-spacing:-.02em">{{ subtotalStr }}</span>
+          </div>
+          <button type="button" onClick="{{ nav.prompt }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:16px 20px;background:#0c3543;color:#ffffff;border:0;font:700 16px 'IBM Plex Sans';cursor:pointer;box-sizing:border-box" style-hover="background:#164d5f" style-active="background:#0a2c37">
+            Continue
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== 03 MEMBER PROMPT ===== -->
+      <sc-if value="{{ is.prompt }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="display:flex;align-items:center;gap:12px;padding:9px 20px 13px;border-bottom:2px solid #0c3543;flex:none">
+          <button type="button" onClick="{{ nav.cart }}" aria-label="Back to cart" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;border:1.5px solid #a6b4ba;background:transparent;cursor:pointer;flex:none;margin-left:-4px;color:#0c3543" style-hover="background:#e4ecee">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div style="font:700 12px 'IBM Plex Sans';letter-spacing:.1em;text-transform:uppercase">Membership</div>
+        </header>
+
+        <div style="flex:1;overflow:auto;padding:22px 20px 8px">
+          <h1 style="font:700 27px/1.2 'IBM Plex Sans';letter-spacing:-.03em;margin:0;text-wrap:pretty">Are you a DCICA family member?</h1>
+          <p style="font-size:15px;line-height:1.55;color:#43585f;margin:12px 0 0">Family membership includes <strong style="color:#0c3543">free floor admissions</strong> at every event — how many depends on your household. If that's you, we'll take them off this order.</p>
+
+          <div style="margin:20px 0;padding:14px;background:#f0f4f4;border-left:5px solid #7f9199">
+            <div style="font-size:12.5px;line-height:1.5;color:#43585f">Free admissions don't apply to sticks or competition entry — those stay at full price.</div>
+          </div>
+
+          <button type="button" onClick="{{ nav.email }}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:64px;padding:18px 18px;background:#0c3543;color:#ffffff;border:0;font:700 16px 'IBM Plex Sans';cursor:pointer;box-sizing:border-box;text-align:left;margin-bottom:11px" style-hover="background:#164d5f" style-active="background:#0a2c37">
+            <span>Yes — I'm a member<span style="display:block;font:400 12.5px 'IBM Plex Sans';opacity:.78;margin-top:3px">Check with my email</span></span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="flex:none"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+
+          <button type="button" onClick="{{ nav.pay }}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:64px;padding:18px 18px;background:#ffffff;color:#0c3543;border:2px solid #0c3543;font:700 16px 'IBM Plex Sans';cursor:pointer;box-sizing:border-box;text-align:left;margin-bottom:11px" style-hover="background:#e4ecee">
+            <span>No — continue as a guest<span style="display:block;font:400 12.5px 'IBM Plex Sans';color:#5e737c;margin-top:3px">Everyone's welcome at full price</span></span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="flex:none"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+
+          <button type="button" onClick="{{ nav.email }}" style="display:flex;align-items:center;width:100%;min-height:52px;padding:14px 18px;background:transparent;color:#43585f;border:1.5px solid #cbd7d9;font:600 14px 'IBM Plex Sans';cursor:pointer;box-sizing:border-box;text-align:left" style-hover="border-color:#0c3543;color:#0c3543">
+            I'm not sure — let me check
+          </button>
+
+          <p style="font-size:12.5px;line-height:1.55;color:#5e737c;margin:20px 0 0">Not a member yet? You can join at the welcome desk on the night. It pays for itself in two events.</p>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== 04 EMAIL ENTRY ===== -->
+      <sc-if value="{{ is.email }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="display:flex;align-items:center;gap:12px;padding:9px 20px 13px;border-bottom:2px solid #0c3543;flex:none">
+          <button type="button" onClick="{{ nav.prompt }}" aria-label="Back" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;border:1.5px solid #a6b4ba;background:transparent;cursor:pointer;flex:none;margin-left:-4px;color:#0c3543" style-hover="background:#e4ecee">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div style="font:700 12px 'IBM Plex Sans';letter-spacing:.1em;text-transform:uppercase">Find your membership</div>
+        </header>
+
+        <div style="flex:1;overflow:auto;padding:22px 20px 8px">
+          <h1 style="font:700 25px/1.2 'IBM Plex Sans';letter-spacing:-.03em;margin:0">What's your email?</h1>
+          <p style="font-size:14.5px;line-height:1.55;color:#43585f;margin:11px 0 20px">We'll send a 6-digit code to confirm it's you. Whichever email your membership is under.</p>
+
+          <label style="display:block;font:700 11px 'IBM Plex Sans';letter-spacing:.1em;text-transform:uppercase;color:#5e737c;margin-bottom:7px">Email address</label>
+          <input type="email" inputMode="email" autoComplete="email" placeholder="you@example.com" style="width:100%;box-sizing:border-box;font-size:17px;min-height:56px;padding:15px;border:2px solid #0c3543;background:#ffffff;font-family:'IBM Plex Sans';border-radius:0;color:#0c3543">
+
+          <div style="margin-top:20px;padding:14px;background:#f0f4f4">
+            <div style="font-size:12.5px;line-height:1.55;color:#43585f">Your cart is saved. Checking your membership won't lose it, even if you close this page.</div>
+          </div>
+        </div>
+
+        <div style="flex:none;border-top:2px solid #0c3543;background:#ffffff;padding:13px 20px 18px">
+          <button type="button" onClick="{{ nav.sent }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:16px 20px;background:#0c3543;color:#ffffff;border:0;font:700 16px 'IBM Plex Sans';cursor:pointer;box-sizing:border-box" style-hover="background:#164d5f" style-active="background:#0a2c37">
+            Send my code
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== 05 CODE SENT ===== -->
+      <sc-if value="{{ is.sent }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="display:flex;align-items:center;gap:12px;padding:9px 20px 13px;border-bottom:2px solid #0c3543;flex:none">
+          <button type="button" onClick="{{ nav.email }}" aria-label="Back" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;border:1.5px solid #a6b4ba;background:transparent;cursor:pointer;flex:none;margin-left:-4px;color:#0c3543" style-hover="background:#e4ecee">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div style="font:700 12px 'IBM Plex Sans';letter-spacing:.1em;text-transform:uppercase">Check your email</div>
+        </header>
+
+        <div style="flex:1;overflow:auto;padding:24px 20px 8px">
+          <div style="width:58px;height:58px;border:2.5px solid #0c3543;display:flex;align-items:center;justify-content:center;margin-bottom:18px">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#0c3543" stroke-width="2"><rect x="2" y="4" width="20" height="16"/><path d="m2 6 10 7 10-7"/></svg>
+          </div>
+
+          <h1 style="font:700 24px/1.25 'IBM Plex Sans';letter-spacing:-.03em;margin:0;text-wrap:pretty">Check your email for a 6-digit code</h1>
+          <p style="font-size:15px;line-height:1.55;color:#43585f;margin:12px 0 0">If <strong style="color:#0c3543">arun.patel@gmail.com</strong> is on our membership list, a code is on its way to it now.</p>
+
+          <div style="margin:18px 0;padding:14px;background:#fff7e6;border-left:5px solid #f9a200">
+            <div style="font:700 13px 'IBM Plex Sans';color:#0c3543">It may land in Promotions or Spam</div>
+            <div style="font-size:12.5px;line-height:1.5;color:#43585f;margin-top:4px">Gmail files our emails there sometimes. Have a look if it isn't in your inbox.</div>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:9px;padding:12px 0;border-top:1.5px solid #cbd7d9;border-bottom:1.5px solid #cbd7d9">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#5e737c" stroke-width="2.2" style="flex:none"><circle cx="12" cy="12" r="10"/><path d="M12 7v5l3 2"/></svg>
+            <span style="font-size:13.5px;color:#43585f">The code works for 30 minutes</span>
+          </div>
+
+          <button type="button" onClick="{{ nav.nocode }}" style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:52px;padding:14px 0;margin-top:6px;background:transparent;border:0;border-bottom:1.5px solid #cbd7d9;cursor:pointer;text-align:left;color:#0c3543" style-hover="color:#a86800">
+            <span style="font:600 14px 'IBM Plex Sans'">Nothing arrived?</span>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="flex:none"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+        </div>
+
+        <div style="flex:none;border-top:2px solid #0c3543;background:#ffffff;padding:13px 20px 18px;display:flex;flex-direction:column;gap:10px">
+          <button type="button" onClick="{{ nav.code }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:16px 20px;background:#0c3543;color:#ffffff;border:0;font:700 16px 'IBM Plex Sans';cursor:pointer;box-sizing:border-box" style-hover="background:#164d5f" style-active="background:#0a2c37">
+            Enter the code
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+          <button type="button" onClick="{{ resend }}" disabled="{{ resendLocked }}" style="display:flex;align-items:center;justify-content:center;width:100%;min-height:52px;padding:14px 18px;background:transparent;color:{{ resendInk }};border:1.5px solid {{ resendBorder }};font:600 14.5px 'IBM Plex Sans';cursor:{{ resendCursor }};box-sizing:border-box;opacity:{{ resendOpacity }}">
+            {{ resendLabel }}
+          </button>
+          <button type="button" onClick="{{ nav.email }}" style="background:transparent;border:0;color:#43585f;font:600 13.5px 'IBM Plex Sans';cursor:pointer;text-decoration:underline;text-underline-offset:3px;min-height:48px" style-hover="color:#0c3543">Use a different email</button>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== 06 / 07  CODE ENTRY (+ wrong-code state) ===== -->
+      <sc-if value="{{ is.code }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="display:flex;align-items:center;gap:12px;padding:9px 20px 13px;border-bottom:2px solid #0c3543;flex:none">
+          <button type="button" onClick="{{ nav.sent }}" aria-label="Back" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;border:1.5px solid #a6b4ba;background:transparent;cursor:pointer;flex:none;margin-left:-4px;color:#0c3543" style-hover="background:#e4ecee">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div style="font:700 12px 'IBM Plex Sans';letter-spacing:.1em;text-transform:uppercase">Enter your code</div>
+        </header>
+
+        <div style="flex:1;overflow:auto;padding:18px 20px 8px;min-height:0">
+          <sc-if value="{{ codeError }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:14px;background:#fff7e6;border:2px solid #a86800;margin-bottom:16px">
+            <div style="display:flex;align-items:flex-start;gap:10px">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#a86800" stroke-width="2.6" style="flex:none;margin-top:1px"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+              <div style="min-width:0">
+                <div style="font:700 14.5px/1.35 'IBM Plex Sans';color:#0c3543">That code didn't match</div>
+                <div style="font-size:13px;line-height:1.5;color:#43585f;margin-top:4px">Try again, or send a new one. Your cart and your email are still here.</div>
+                <div style="font:700 12px 'IBM Plex Sans';color:#a86800;margin-top:7px">{{ attemptsLine }}</div>
+              </div>
+            </div>
+          </div>
+          </sc-if>
+
+          <sc-if value="{{ codeClean }}" hint-placeholder-val="{{ true }}">
+          <p style="font-size:14.5px;line-height:1.55;color:#43585f;margin:0 0 16px">Enter the 6 digits sent to <strong style="color:#0c3543">arun.patel@gmail.com</strong>.</p>
+          </sc-if>
+
+          <div style="display:flex;gap:7px;margin-bottom:18px">
+            <div style="flex:1;aspect-ratio:0.78;border:2.5px solid {{ boxBorder }};background:#ffffff;display:flex;align-items:center;justify-content:center;font:700 30px 'IBM Plex Sans';color:#0c3543">{{ d.0 }}</div>
+            <div style="flex:1;aspect-ratio:0.78;border:2.5px solid {{ boxBorder }};background:#ffffff;display:flex;align-items:center;justify-content:center;font:700 30px 'IBM Plex Sans';color:#0c3543">{{ d.1 }}</div>
+            <div style="flex:1;aspect-ratio:0.78;border:2.5px solid {{ boxBorder }};background:#ffffff;display:flex;align-items:center;justify-content:center;font:700 30px 'IBM Plex Sans';color:#0c3543">{{ d.2 }}</div>
+            <div style="flex:1;aspect-ratio:0.78;border:2.5px solid {{ boxBorder }};background:#ffffff;display:flex;align-items:center;justify-content:center;font:700 30px 'IBM Plex Sans';color:#0c3543">{{ d.3 }}</div>
+            <div style="flex:1;aspect-ratio:0.78;border:2.5px solid {{ boxBorder }};background:#ffffff;display:flex;align-items:center;justify-content:center;font:700 30px 'IBM Plex Sans';color:#0c3543">{{ d.4 }}</div>
+            <div style="flex:1;aspect-ratio:0.78;border:2.5px solid {{ boxBorder }};background:#ffffff;display:flex;align-items:center;justify-content:center;font:700 30px 'IBM Plex Sans';color:#0c3543">{{ d.5 }}</div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:7px">
+            <button type="button" onClick="{{ key.1 }}" style="min-height:58px;border:1.5px solid #a6b4ba;background:#ffffff;cursor:pointer;font:700 25px 'IBM Plex Sans';color:#0c3543" style-hover="background:#e4ecee" style-active="background:#cbd7d9">1</button>
+            <button type="button" onClick="{{ key.2 }}" style="min-height:58px;border:1.5px solid #a6b4ba;background:#ffffff;cursor:pointer;font:700 25px 'IBM Plex Sans';color:#0c3543" style-hover="background:#e4ecee" style-active="background:#cbd7d9">2</button>
+            <button type="button" onClick="{{ key.3 }}" style="min-height:58px;border:1.5px solid #a6b4ba;background:#ffffff;cursor:pointer;font:700 25px 'IBM Plex Sans';color:#0c3543" style-hover="background:#e4ecee" style-active="background:#cbd7d9">3</button>
+            <button type="button" onClick="{{ key.4 }}" style="min-height:58px;border:1.5px solid #a6b4ba;background:#ffffff;cursor:pointer;font:700 25px 'IBM Plex Sans';color:#0c3543" style-hover="background:#e4ecee" style-active="background:#cbd7d9">4</button>
+            <button type="button" onClick="{{ key.5 }}" style="min-height:58px;border:1.5px solid #a6b4ba;background:#ffffff;cursor:pointer;font:700 25px 'IBM Plex Sans';color:#0c3543" style-hover="background:#e4ecee" style-active="background:#cbd7d9">5</button>
+            <button type="button" onClick="{{ key.6 }}" style="min-height:58px;border:1.5px solid #a6b4ba;background:#ffffff;cursor:pointer;font:700 25px 'IBM Plex Sans';color:#0c3543" style-hover="background:#e4ecee" style-active="background:#cbd7d9">6</button>
+            <button type="button" onClick="{{ key.7 }}" style="min-height:58px;border:1.5px solid #a6b4ba;background:#ffffff;cursor:pointer;font:700 25px 'IBM Plex Sans';color:#0c3543" style-hover="background:#e4ecee" style-active="background:#cbd7d9">7</button>
+            <button type="button" onClick="{{ key.8 }}" style="min-height:58px;border:1.5px solid #a6b4ba;background:#ffffff;cursor:pointer;font:700 25px 'IBM Plex Sans';color:#0c3543" style-hover="background:#e4ecee" style-active="background:#cbd7d9">8</button>
+            <button type="button" onClick="{{ key.9 }}" style="min-height:58px;border:1.5px solid #a6b4ba;background:#ffffff;cursor:pointer;font:700 25px 'IBM Plex Sans';color:#0c3543" style-hover="background:#e4ecee" style-active="background:#cbd7d9">9</button>
+            <div></div>
+            <button type="button" onClick="{{ key.0 }}" style="min-height:58px;border:1.5px solid #a6b4ba;background:#ffffff;cursor:pointer;font:700 25px 'IBM Plex Sans';color:#0c3543" style-hover="background:#e4ecee" style-active="background:#cbd7d9">0</button>
+            <button type="button" onClick="{{ backspace }}" aria-label="Delete last digit" style="min-height:58px;border:1.5px solid #a6b4ba;background:#f0f4f4;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#0c3543" style-hover="background:#e4ecee">
+              <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 5H8l-6 7 6 7h13z"/><path d="m15 9-5 6M10 9l5 6"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div style="flex:none;border-top:2px solid #0c3543;background:#ffffff;padding:13px 20px 18px;display:flex;flex-direction:column;gap:9px">
+          <button type="button" onClick="{{ submitCode }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:16px 20px;background:{{ submitBg }};color:{{ submitInk }};border:0;font:700 16px 'IBM Plex Sans';cursor:pointer;box-sizing:border-box">
+            {{ submitLabel }}
+          </button>
+          <button type="button" onClick="{{ resend }}" disabled="{{ resendLocked }}" style="display:flex;align-items:center;justify-content:center;width:100%;min-height:50px;padding:13px 18px;background:transparent;color:{{ resendInk }};border:1.5px solid {{ resendBorder }};font:600 14px 'IBM Plex Sans';cursor:{{ resendCursor }};box-sizing:border-box;opacity:{{ resendOpacity }}">
+            {{ resendLabel }}
+          </button>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== 08 EMAIL NOT FOUND ===== -->
+      <sc-if value="{{ is.nocode }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="display:flex;align-items:center;gap:12px;padding:9px 20px 13px;border-bottom:2px solid #0c3543;flex:none">
+          <button type="button" onClick="{{ nav.email }}" aria-label="Back" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;border:1.5px solid #a6b4ba;background:transparent;cursor:pointer;flex:none;margin-left:-4px;color:#0c3543" style-hover="background:#e4ecee">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div style="font:700 12px 'IBM Plex Sans';letter-spacing:.1em;text-transform:uppercase">No code arrived</div>
+        </header>
+
+        <div style="flex:1;overflow:auto;padding:22px 20px 8px">
+          <h1 style="font:700 25px/1.22 'IBM Plex Sans';letter-spacing:-.03em;margin:0;text-wrap:pretty">Still no code?</h1>
+          <p style="font-size:15px;line-height:1.6;color:#43585f;margin:13px 0 0">Codes usually arrive within a minute. Two things worth checking first:</p>
+
+          <div style="margin-top:16px;border-top:1.5px solid #cbd7d9">
+            <div style="display:flex;gap:12px;padding:13px 0;border-bottom:1.5px solid #cbd7d9">
+              <div style="font:700 15px 'IBM Plex Sans';color:#a86800;flex:none;width:16px">1</div>
+              <div style="font-size:13.5px;line-height:1.5;color:#43585f;min-width:0">Look in <strong style="color:#0c3543">Promotions</strong> and <strong style="color:#0c3543">Spam</strong>. Gmail files our emails there more often than not.</div>
+            </div>
+            <div style="display:flex;gap:12px;padding:13px 0;border-bottom:1.5px solid #cbd7d9">
+              <div style="font:700 15px 'IBM Plex Sans';color:#a86800;flex:none;width:16px">2</div>
+              <div style="font-size:13.5px;line-height:1.5;color:#43585f;min-width:0">Your membership may sit under a different address — an older one, or your spouse's.</div>
+            </div>
+          </div>
+
+          <div style="margin:20px 0 0;padding:15px;background:#fff7e6;border-left:5px solid #f9a200">
+            <div style="font:700 14px 'IBM Plex Sans';color:#a86800">You're getting in either way</div>
+            <div style="font-size:13px;line-height:1.55;color:#0c3543;margin-top:5px">Two ways to settle it, both fine. <strong>Hold your place now and pay nothing yet</strong> — bring ID to the welcome desk and we'll apply your free admissions before you pay for the rest. Or pay in full now and the desk will credit your member admissions toward sticks, a competition entry, or your next event.</div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:22px">
+            <button type="button" onClick="{{ resend }}" disabled="{{ resendLocked }}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:60px;padding:17px 18px;background:{{ resendSolidBg }};color:{{ resendSolidInk }};border:0;font:700 15.5px 'IBM Plex Sans';cursor:{{ resendCursor }};box-sizing:border-box;text-align:left">
+              <span>{{ resendLabel }}</span>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="flex:none"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+            </button>
+            <button type="button" onClick="{{ nav.pay }}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:60px;padding:17px 18px;background:#ffffff;color:#0c3543;border:2px solid #0c3543;font:700 15.5px 'IBM Plex Sans';cursor:pointer;box-sizing:border-box;text-align:left" style-hover="background:#e4ecee">
+              <span>Hold my place, settle at the desk<span style="display:block;font:400 12.5px 'IBM Plex Sans';color:#5e737c;margin-top:3px">Pay nothing now · bring ID on the night</span></span>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="flex:none"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+            <button type="button" onClick="{{ nav.pay }}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:60px;padding:17px 18px;background:#ffffff;color:#0c3543;border:1.5px solid #a6b4ba;font:600 15px 'IBM Plex Sans';cursor:pointer;box-sizing:border-box;text-align:left" style-hover="border-color:#0c3543">
+              <span>Pay in full now<span style="display:block;font:400 12.5px 'IBM Plex Sans';color:#5e737c;margin-top:3px">Desk credits your admissions toward sticks or your next event</span></span>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="flex:none"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+            <button type="button" onClick="{{ nav.email }}" style="display:flex;align-items:center;width:100%;min-height:52px;padding:14px 18px;background:transparent;color:#43585f;border:1.5px solid #cbd7d9;font:600 14px 'IBM Plex Sans';cursor:pointer;box-sizing:border-box;text-align:left" style-hover="border-color:#0c3543;color:#0c3543">
+              Try a different email
+            </button>
+          </div>
+
+          <p style="font-size:12.5px;line-height:1.55;color:#5e737c;margin:20px 0 0">Rather ask a person? Call or text the membership desk on (972) 555-0147.</p>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== 09 EXPIRED ===== -->
+      <sc-if value="{{ is.expired }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="display:flex;align-items:center;gap:12px;padding:9px 20px 13px;border-bottom:2px solid #0c3543;flex:none">
+          <button type="button" onClick="{{ nav.code }}" aria-label="Back" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;border:1.5px solid #a6b4ba;background:transparent;cursor:pointer;flex:none;margin-left:-4px;color:#0c3543" style-hover="background:#e4ecee">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div style="font:700 12px 'IBM Plex Sans';letter-spacing:.1em;text-transform:uppercase">Membership found</div>
+        </header>
+
+        <div style="flex:1;overflow:auto;padding:20px 20px 8px">
+          <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:#f0f4f4;margin-bottom:18px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#43585f" stroke-width="2.4" style="flex:none"><path d="M20 6 9 17l-5-5"/></svg>
+            <div style="font-size:13px;color:#43585f;min-width:0">Found you — <strong style="color:#0c3543">Patel family</strong>, member since 2016</div>
+          </div>
+
+          <h1 style="font:700 25px/1.2 'IBM Plex Sans';letter-spacing:-.03em;margin:0">Your membership ended 30 June</h1>
+          <p style="font-size:15px;line-height:1.55;color:#43585f;margin:12px 0 0">Renew now and your <strong style="color:#0c3543">{{ allowanceWord }} apply tonight</strong> — they come straight off this order.</p>
+
+          <div style="margin-top:20px;font:700 11px 'IBM Plex Sans';letter-spacing:.12em;text-transform:uppercase;color:#5e737c">Renew</div>
+          <div style="display:flex;flex-direction:column;gap:9px;margin-top:9px">
+            <button type="button" onClick="{{ nav.partial }}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:64px;padding:16px 18px;background:#ffffff;border:3px solid #a86800;cursor:pointer;box-sizing:border-box;text-align:left;color:#0c3543" style-hover="background:#fff7e6">
+              <span><span style="display:block;font:700 16px 'IBM Plex Sans'">Family · 1 year</span><span style="display:block;font:400 12.5px 'IBM Plex Sans';color:#a86800;margin-top:3px">{{ allowanceWord }} at every event</span></span>
+              <span style="font:700 22px 'IBM Plex Sans';flex:none">$60</span>
+            </button>
+            <button type="button" onClick="{{ nav.partial }}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:64px;padding:16px 18px;background:#ffffff;border:1.5px solid #a6b4ba;cursor:pointer;box-sizing:border-box;text-align:left;color:#0c3543" style-hover="border-color:#0c3543">
+              <span><span style="display:block;font:700 16px 'IBM Plex Sans'">Family · 3 years</span><span style="display:block;font:400 12.5px 'IBM Plex Sans';color:#5e737c;margin-top:3px">Save $30 over renewing yearly</span></span>
+              <span style="font:700 22px 'IBM Plex Sans';flex:none">$150</span>
+            </button>
+          </div>
+
+          <div style="height:1.5px;background:#cbd7d9;margin:20px 0"></div>
+
+          <button type="button" onClick="{{ nav.pay }}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:56px;padding:15px 18px;background:transparent;color:#0c3543;border:1.5px solid #a6b4ba;font:600 15px 'IBM Plex Sans';cursor:pointer;box-sizing:border-box;text-align:left" style-hover="border-color:#0c3543;background:#e4ecee">
+            <span>Not tonight — carry on without renewing<span style="display:block;font:400 12.5px 'IBM Plex Sans';color:#5e737c;margin-top:3px">Full price this time. Nothing changes at the door.</span></span>
+          </button>
+
+          <p style="font-size:12.5px;line-height:1.55;color:#5e737c;margin:18px 0 0">You can also renew at the welcome desk on the night.</p>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== 10 / 11  REVIEW WITH COMP APPLIED ===== -->
+      <sc-if value="{{ is.review }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="flex:none;background:{{ reviewHeadBg }};padding:14px 20px 15px;border-bottom:2px solid #0c3543">
+          <div style="display:flex;align-items:center;gap:9px">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3" style="flex:none"><path d="M20 6 9 17l-5-5"/></svg>
+            <div style="font:700 11px 'IBM Plex Sans';letter-spacing:.14em;text-transform:uppercase;color:#ffffff">Membership confirmed</div>
+          </div>
+          <div style="font:700 19px/1.25 'IBM Plex Sans';letter-spacing:-.02em;margin-top:8px;color:#ffffff">{{ compHeadline }}</div>
+        </header>
+
+        <div style="flex:1;overflow:auto;padding:18px 20px 8px">
+          <div style="font:700 11px 'IBM Plex Sans';letter-spacing:.12em;text-transform:uppercase;color:#5e737c;margin-bottom:9px">Your order</div>
+
+          <div style="border-top:2.5px solid #0c3543">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:13px 0;border-bottom:1.5px solid #cbd7d9;background:#fff7e6;margin:0 -10px;padding-left:10px;padding-right:10px">
+              <div style="min-width:0">
+                <div style="font:700 15px 'IBM Plex Sans';color:#a86800">{{ compCountLine }}</div>
+                <div style="font-size:12.5px;color:#43585f;margin-top:3px">{{ compSubLine }}</div>
+              </div>
+              <div style="font:700 16px 'IBM Plex Sans';color:#a86800;flex:none">{{ compValueStr }}</div>
+            </div>
+
+            <sc-if value="{{ hasPaidFloor }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:13px 0;border-bottom:1.5px solid #cbd7d9">
+              <div style="min-width:0">
+                <div style="font:700 15px 'IBM Plex Sans'">{{ paidFloorLine }}</div>
+                <div style="font-size:12.5px;color:#5e737c;margin-top:3px">{{ beyondLine }}</div>
+              </div>
+              <div style="font:700 16px 'IBM Plex Sans';flex:none">{{ paidFloorAmt }}</div>
+            </div>
+            </sc-if>
+
+            <sc-if value="{{ hasSticks }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:13px 0;border-bottom:1.5px solid #cbd7d9">
+              <div style="min-width:0">
+                <div style="font:700 15px 'IBM Plex Sans'">{{ sticksLine }}</div>
+                <div style="font-size:12.5px;color:#5e737c;margin-top:3px">Collect at the door · not covered by membership</div>
+              </div>
+              <div style="font:700 16px 'IBM Plex Sans';flex:none">{{ sticksAmt }}</div>
+            </div>
+            </sc-if>
+
+            <sc-if value="{{ hasComp }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:13px 0;border-bottom:1.5px solid #cbd7d9">
+              <div style="min-width:0">
+                <div style="font:700 15px 'IBM Plex Sans'">{{ compEntryLine }}</div>
+                <div style="font-size:12.5px;color:#a86800;margin-top:3px">No floor access · not covered by membership</div>
+              </div>
+              <div style="font:700 16px 'IBM Plex Sans';flex:none">{{ compEntryAmt }}</div>
+            </div>
+            </sc-if>
+
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:16px 0;border-bottom:2.5px solid #0c3543">
+              <span style="font:700 13px 'IBM Plex Sans';letter-spacing:.1em;text-transform:uppercase">Total</span>
+              <span style="font:700 32px 'IBM Plex Sans';letter-spacing:-.025em">{{ totalStr }}</span>
+            </div>
+          </div>
+
+          <sc-if value="{{ hasHeadroom }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:16px;padding:14px;background:#fff7e6;border-left:5px solid #f9a200">
+            <div style="font:700 13px 'IBM Plex Sans';color:#a86800">{{ headroomLine }}</div>
+            <div style="font-size:12.5px;line-height:1.5;color:#0c3543;margin-top:4px">Add more people and they'll come off your allowance before you're charged.</div>
+          </div>
+          </sc-if>
+
+          <div style="margin-top:16px;padding:14px;background:#f0f4f4">
+            <div style="font:700 13px 'IBM Plex Sans'">{{ headcountLine }}</div>
+            <div style="font-size:12.5px;line-height:1.5;color:#43585f;margin-top:4px">One code covers the whole party. Show it once at the door.</div>
+          </div>
+        </div>
+
+        <div style="flex:none;border-top:2px solid #0c3543;background:#ffffff;padding:13px 20px 18px">
+          <button type="button" onClick="{{ checkout }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:16px 20px;background:{{ checkoutBg }};color:#ffffff;border:0;font:700 16px 'IBM Plex Sans';cursor:pointer;box-sizing:border-box">
+            {{ checkoutLabel }}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+          <div style="font-size:11.5px;color:#5e737c;margin-top:9px">{{ checkoutNote }}</div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== 12 PAYMENT ===== -->
+      <sc-if value="{{ is.pay }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <header style="display:flex;align-items:center;gap:12px;padding:9px 20px 13px;border-bottom:2px solid #0c3543;flex:none">
+          <button type="button" onClick="{{ nav.cart }}" aria-label="Back" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;border:1.5px solid #a6b4ba;background:transparent;cursor:pointer;flex:none;margin-left:-4px;color:#0c3543" style-hover="background:#e4ecee">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div style="font:700 12px 'IBM Plex Sans';letter-spacing:.1em;text-transform:uppercase">Payment</div>
+        </header>
+
+        <div style="flex:1;overflow:auto;padding:18px 20px 8px">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-bottom:14px;border-bottom:2.5px solid #0c3543">
+            <span style="font:700 13px 'IBM Plex Sans';letter-spacing:.1em;text-transform:uppercase;color:#5e737c">Amount due</span>
+            <span style="font:700 34px 'IBM Plex Sans';letter-spacing:-.025em">{{ totalStr }}</span>
+          </div>
+
+          <div style="font:700 11px 'IBM Plex Sans';letter-spacing:.12em;text-transform:uppercase;color:#5e737c;margin:18px 0 7px">Name for the door</div>
+          <input type="text" autoComplete="family-name" placeholder="Family or last name" style="width:100%;box-sizing:border-box;font-size:17px;min-height:56px;padding:15px;border:2px solid #0c3543;background:#ffffff;font-family:'IBM Plex Sans';border-radius:0;color:#0c3543">
+          <div style="font-size:12px;color:#5e737c;margin-top:7px">The only name we ask for. Volunteers call it out at the door.</div>
+
+          <div style="font:700 11px 'IBM Plex Sans';letter-spacing:.12em;text-transform:uppercase;color:#5e737c;margin:20px 0 7px">Card</div>
+          <input type="text" inputMode="numeric" autoComplete="cc-number" placeholder="Card number" style="width:100%;box-sizing:border-box;font-size:17px;min-height:56px;padding:15px;border:1.5px solid #a6b4ba;background:#ffffff;font-family:'IBM Plex Sans';border-radius:0;margin-bottom:9px;color:#0c3543">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+            <input type="text" inputMode="numeric" autoComplete="cc-exp" placeholder="MM/YY" style="width:100%;box-sizing:border-box;font-size:16px;min-height:56px;padding:15px 10px;border:1.5px solid #a6b4ba;background:#ffffff;font-family:'IBM Plex Sans';border-radius:0;color:#0c3543">
+            <input type="text" inputMode="numeric" autoComplete="cc-csc" placeholder="CVC" style="width:100%;box-sizing:border-box;font-size:16px;min-height:56px;padding:15px 10px;border:1.5px solid #a6b4ba;background:#ffffff;font-family:'IBM Plex Sans';border-radius:0;color:#0c3543">
+            <input type="text" inputMode="numeric" autoComplete="postal-code" placeholder="ZIP" style="width:100%;box-sizing:border-box;font-size:16px;min-height:56px;padding:15px 10px;border:1.5px solid #a6b4ba;background:#ffffff;font-family:'IBM Plex Sans';border-radius:0;color:#0c3543">
+          </div>
+
+          <div style="margin-top:18px;padding:13px;background:#f0f4f4;font-size:12.5px;line-height:1.55;color:#43585f">If your signal drops while paying, we don't charge twice — come back and the order is waiting here.</div>
+        </div>
+
+        <div style="flex:none;border-top:2px solid #0c3543;background:#ffffff;padding:13px 20px 18px;display:flex;flex-direction:column;gap:9px">
+          <button type="button" onClick="{{ nav.pass }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:16px 20px;background:#0c3543;color:#ffffff;border:0;font:700 16px 'IBM Plex Sans';cursor:pointer;box-sizing:border-box" style-hover="background:#164d5f" style-active="background:#0a2c37">
+            {{ payButtonLabel }}
+          </button>
+          <button type="button" onClick="{{ nav.pass }}" style="background:transparent;border:0;color:#43585f;font:600 13.5px 'IBM Plex Sans';cursor:pointer;text-decoration:underline;text-underline-offset:3px;min-height:48px" style-hover="color:#0c3543">Pay at the welcome desk instead</button>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== 13 DOOR PASS ===== -->
+      <sc-if value="{{ is.pass }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0;background:#ffffff">
+        <div style="flex:none;background:#a86800;padding:11px 20px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3" style="flex:none"><path d="M20 6 9 17l-5-5"/></svg>
+            <span style="font:700 11px 'IBM Plex Sans';letter-spacing:.14em;text-transform:uppercase;color:#ffffff">You're in</span>
+          </div>
+          <span style="font:700 10.5px 'IBM Plex Sans';letter-spacing:.1em;text-transform:uppercase;color:#ffffff;flex:none;opacity:.9">Saved offline</span>
+        </div>
+
+        <div style="flex:1;overflow:auto;display:flex;flex-direction:column">
+
+          <div style="padding:18px 20px 4px;display:flex;justify-content:center">
+            <div style="width:210px;height:210px;background:#ffffff;border:3px solid #0c3543;padding:11px;box-sizing:border-box;position:relative">
+              <div style="position:absolute;inset:11px;background-image:repeating-conic-gradient(#0c3543 0% 25%, #ffffff 0% 50%);background-size:12px 12px"></div>
+              <div style="position:absolute;top:15px;left:15px;width:48px;height:48px;background:#ffffff;border:8px solid #0c3543;box-sizing:border-box"></div>
+              <div style="position:absolute;top:28px;left:28px;width:22px;height:22px;background:#0c3543"></div>
+              <div style="position:absolute;top:15px;right:15px;width:48px;height:48px;background:#ffffff;border:8px solid #0c3543;box-sizing:border-box"></div>
+              <div style="position:absolute;top:28px;right:28px;width:22px;height:22px;background:#0c3543"></div>
+              <div style="position:absolute;bottom:15px;left:15px;width:48px;height:48px;background:#ffffff;border:8px solid #0c3543;box-sizing:border-box"></div>
+              <div style="position:absolute;bottom:28px;left:28px;width:22px;height:22px;background:#0c3543"></div>
+            </div>
+          </div>
+
+          <div style="padding:6px 20px 0;text-align:center;font:700 19px 'IBM Plex Sans';letter-spacing:.22em;color:#43585f">NAV-7K42</div>
+
+          <!-- the two-second read -->
+          <div style="margin:16px 20px 0;border:3px solid #0c3543">
+            <div style="padding:16px 18px 14px;border-bottom:2.5px solid #0c3543">
+              <div style="font:700 11px 'IBM Plex Sans';letter-spacing:.14em;text-transform:uppercase;color:#5e737c">Party</div>
+              <div style="font:700 40px/1 'IBM Plex Sans';letter-spacing:-.035em;margin-top:6px">PATEL</div>
+            </div>
+            <div style="display:flex;align-items:stretch">
+              <div style="flex:1;padding:16px 18px;border-right:2.5px solid #0c3543;min-width:0">
+                <div style="font:700 11px 'IBM Plex Sans';letter-spacing:.14em;text-transform:uppercase;color:#5e737c">People</div>
+                <div style="font:700 52px/1 'IBM Plex Sans';letter-spacing:-.04em;margin-top:4px">{{ passPeople }}</div>
+              </div>
+              <div style="flex:none;width:136px;background:#f9a200;color:#16201f;padding:16px 14px;display:flex;flex-direction:column;justify-content:center">
+                <div style="font:700 28px/1 'IBM Plex Sans';letter-spacing:-.01em">{{ passStatus }}</div>
+                <div style="font-size:12px;margin-top:5px;line-height:1.35;opacity:.92">{{ passAmount }}</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin:12px 20px 0;padding:13px 16px;background:#f0f4f4;display:flex;align-items:center;gap:14px">
+            <div style="font:700 22px 'IBM Plex Sans';flex:none">{{ passComped }}</div>
+            <div style="font-size:13px;color:#43585f;flex:1;min-width:0">member admissions</div>
+            <div style="font:700 22px 'IBM Plex Sans';flex:none">{{ passPaid }}</div>
+            <div style="font-size:13px;color:#43585f;flex:none">paid</div>
+          </div>
+
+          <sc-if value="{{ hasSticks }}" hint-placeholder-val="{{ true }}">
+          <div style="margin:12px 20px 0;background:#f9a200;color:#16201f;padding:15px 16px;display:flex;align-items:center;gap:13px">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="flex:none"><path d="M6 20 18 4"/><path d="M10 20 22 4"/></svg>
+            <div style="min-width:0">
+              <div style="font:700 19px/1.15 'IBM Plex Sans'">{{ passSticksLine }}</div>
+              <div style="font-size:12.5px;margin-top:2px;opacity:.88">Hand over at the door</div>
+            </div>
+          </div>
+          </sc-if>
+
+          <div style="margin:14px 20px 0;padding-top:13px;border-top:1.5px solid #cbd7d9">
+            <div style="font-size:12.5px;line-height:1.6;color:#5e737c">Rhythm of Navratri · Sat 10 Oct 2026<br>McKamy Middle School, Flower Mound TX<br>{{ passFooter }}</div>
+          </div>
+
+          <div style="margin:14px 20px 20px;padding:13px;background:#fff7e6;font-size:12.5px;line-height:1.55;color:#0c3543">This pass works without signal. Screenshot it if you like — the code is the same.</div>
+        </div>
+      </div>
+      </sc-if>
+
+    </div>
+  </main>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:1000},&quot;startOffline&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Network&quot;}}">
+class Component extends DCLogic {
+  state = {
+    screen: 'cart',
+    floor: 2, sticks: 2, comp: 0,
+    member: 'none',        // none | verified | expired
+    compAllowance: 4,
+    allowanceUsed: 0,
+    code: '', codeError: false, attempts: 3,
+    resendIn: 0,
+    offline: false
+  };
+
+  PRICE = { floor: 15, sticks: 5, comp: 30 };
+
+  componentDidMount() {
+    this.timer = setInterval(() => {
+      if (this.state.resendIn > 0) this.setState(s => ({ resendIn: s.resendIn - 1 }));
+    }, 1000);
+  }
+  componentWillUnmount() { clearInterval(this.timer); }
+
+  go = (screen, patch) => () => this.setState(Object.assign({ screen }, patch || {}));
+  bump = (k, d, lo, hi) => () => this.setState(s => ({ [k]: Math.max(lo, Math.min(hi, s[k] + d)) }));
+
+  press = (n) => () => this.setState(s => (
+    s.code.length >= 6 ? {} : { code: s.code + n, codeError: false }
+  ));
+
+  renderVals() {
+    const s = this.state, P = this.PRICE;
+
+    const verified = s.member === 'verified';
+    // Allowance is stored per household — the live roster runs 1 to 9 — and some of
+    // it may already have been used on an earlier order for this same event.
+    const allowance = s.compAllowance ?? this.props.memberAllowance ?? 4;
+    const used = s.allowanceUsed ?? this.props.allowanceUsed ?? 0;
+    const available = Math.max(0, allowance - used);
+    const comped = verified ? Math.min(available, s.floor) : 0;
+    const exhausted = verified && allowance > 0 && available === 0;
+    const paidFloor = s.floor - comped;
+    const total = paidFloor * P.floor + s.sticks * P.sticks + s.comp * P.comp;
+    const free = total === 0;
+
+    const titles = {
+      cart: 'Three item kinds', trap: 'Competition, no admission',
+      prompt: 'The membership prompt', email: 'Email entry', sent: 'Code sent',
+      code: 'Code entry', wrong: 'Wrong code', nocode: 'No code arrived',
+      expired: 'Expired membership', partial: 'Comp applied, partial',
+      full: 'Comp applied, $0', review: 'Order review', pay: 'Payment', pass: 'Door pass'
+    };
+    const notes = {
+      cart: 'Step 1 of 4', trap: 'Step 1 of 4', prompt: 'Step 2 of 4',
+      email: 'Step 2 of 4', sent: 'Step 2 of 4', code: 'Step 2 of 4',
+      wrong: 'Step 2 of 4', nocode: 'Step 2 of 4', expired: 'Step 2 of 4',
+      partial: 'Step 3 of 4', full: 'Step 3 of 4', review: 'Step 3 of 4',
+      allow1: 'Step 3 of 4', allow2: 'Step 3 of 4', allow6: 'Step 3 of 4', allowNone: 'Step 3 of 4',
+      pay: 'Step 4 of 4', pass: 'At the door'
+    };
+
+    // cart, trap and the two comp states all render one of two screens
+    const cartish = s.screen === 'cart' || s.screen === 'trap';
+    const reviewish = ['review', 'partial', 'full', 'allow1', 'allow2', 'allow6', 'allowNone'].indexOf(s.screen) >= 0;
+    const codeish = s.screen === 'code' || s.screen === 'wrong';
+
+    const is = {
+      cart: cartish, review: reviewish, code: codeish,
+      prompt: s.screen === 'prompt', email: s.screen === 'email', sent: s.screen === 'sent',
+      nocode: s.screen === 'nocode', expired: s.screen === 'expired',
+      pay: s.screen === 'pay', pass: s.screen === 'pass'
+    };
+
+    const nav = {};
+    Object.keys(titles).forEach(k => { nav[k] = this.go(k); });
+    // the rail entries that need state, not just a screen
+    nav.trap = this.go('trap', { floor: 0, sticks: 0, comp: 1 });
+    nav.cart = this.go('cart', { floor: 2, sticks: 2, comp: 0 });
+    nav.wrong = this.go('wrong', { code: '4162', codeError: true, attempts: 2 });
+    nav.code = this.go('code', { code: '', codeError: false, attempts: 3 });
+    nav.sent = this.go('sent', { resendIn: 60 });
+    nav.partial = this.go('partial', { member: 'verified', floor: 6, sticks: 2, comp: 0 });
+    nav.allow1 = this.go('allow1', { member: 'verified', floor: 4, sticks: 0, comp: 0, compAllowance: 1, allowanceUsed: 0 });
+    nav.allow2 = this.go('allow2', { member: 'verified', floor: 5, sticks: 2, comp: 0, compAllowance: 2, allowanceUsed: 0 });
+    nav.allow6 = this.go('allow6', { member: 'verified', floor: 4, sticks: 0, comp: 0, compAllowance: 6, allowanceUsed: 0 });
+    nav.allowNone = this.go('allowNone', { member: 'verified', floor: 3, sticks: 1, comp: 0, compAllowance: 4, allowanceUsed: 4 });
+    nav.full = this.go('full', { member: 'verified', floor: 4, sticks: 0, comp: 0 });
+    nav.expired = this.go('expired', { member: 'expired' });
+    // the pass demo shows the partial-comp order, so its figures match screen 10
+    nav.pass = this.go('pass', { member: 'verified', floor: 6, sticks: 2, comp: 0 });
+
+    const cartCount = s.floor + s.sticks + s.comp;
+    const subtotal = s.floor * P.floor + s.sticks * P.sticks + s.comp * P.comp;
+
+    const locked = s.resendIn > 0;
+    const ready = s.code.length === 6;
+
+    const key = {};
+    for (let i = 0; i <= 9; i++) key[i] = this.press(String(i));
+
+    const d = {};
+    for (let i = 0; i < 6; i++) d[i] = s.code[i] || '';
+
+    return {
+      is,
+      label: titles[s.screen] || '',
+      stepNote: notes[s.screen] || '',
+      barBg: s.screen === 'pass' ? '#ffffff' : 'transparent',
+      barInk: '#0c3543',
+      nav,
+
+      offline: s.offline,
+      toggleOffline: () => this.setState(x => ({ offline: !x.offline })),
+      offlineBtnLabel: s.offline ? 'Restore the network' : 'Simulate a dropped network',
+      offlineBtnBg: s.offline ? '#f9a200' : 'transparent',
+      offlineBtnInk: s.offline ? '#16201f' : '#43585f',
+      offlineBtnBorder: s.offline ? '#a86800' : '#a6b4ba',
+
+      qty: { floor: s.floor, sticks: s.sticks, comp: s.comp },
+      inc: {
+        floor: this.bump('floor', 1, 0, 40),
+        sticks: this.bump('sticks', 1, 0, 40),
+        comp: this.bump('comp', 1, 0, 10)
+      },
+      dec: {
+        floor: this.bump('floor', -1, 0, 40),
+        sticks: this.bump('sticks', -1, 0, 40),
+        comp: this.bump('comp', -1, 0, 10)
+      },
+
+      // the door argument, caught in the cart
+      showTrap: s.comp > 0 && s.floor === 0,
+      compLine: s.comp === 1 ? '1 group entered' : s.comp + ' groups entered',
+      addSix: () => this.setState({ floor: 6 }),
+
+      cartSummary: cartCount === 0 ? 'Nothing yet' :
+        [s.floor ? s.floor + ' admission' + (s.floor > 1 ? 's' : '') : null,
+         s.sticks ? s.sticks + ' stick' + (s.sticks > 1 ? 's' : '') : null,
+         s.comp ? s.comp + ' entry' + (s.comp > 1 ? 's' : '') : null
+        ].filter(Boolean).join(' · '),
+      subtotalStr: '$' + subtotal,
+
+      // code entry
+      d,
+      key,
+      backspace: () => this.setState(x => ({ code: x.code.slice(0, -1), codeError: false })),
+      codeError: s.codeError,
+      codeClean: !s.codeError,
+      attemptsLine: s.attempts === 1 ? '1 attempt left before we lock this code'
+                                     : s.attempts + ' attempts left',
+      boxBorder: s.codeError ? '#a86800' : '#0c3543',
+      submitCode: ready ? this.go('partial', { member: 'verified', floor: 6, sticks: 2 })
+                        : this.go('wrong', { codeError: true, attempts: 2 }),
+      submitLabel: ready ? 'Confirm my membership' : 'Enter all 6 digits',
+      submitBg: ready ? '#0c3543' : '#cbd7d9',
+      submitInk: ready ? '#ffffff' : '#5e737c',
+
+      // resend: visible, secondary, locked 60s
+      resend: locked ? (() => {}) : this.go(s.screen, { resendIn: 60, code: '', codeError: false }),
+      resendLocked: locked,
+      resendLabel: locked ? 'Send a new code in ' + s.resendIn + 's' : 'Send a new code',
+      resendInk: locked ? '#5e737c' : '#0c3543',
+      resendBorder: locked ? '#cbd7d9' : '#0c3543',
+      resendCursor: locked ? 'not-allowed' : 'pointer',
+      resendOpacity: locked ? '0.6' : '1',
+
+      // comp arithmetic, shown as arithmetic
+      allowanceWord: allowance + ' free admission' + (allowance === 1 ? '' : 's'),
+      beyondLine: 'Beyond your ' + available + ' included',
+      exhausted,
+      compHeadline: free
+        ? 'Your membership covers this whole order'
+        : exhausted
+          ? 'Membership found · allowance already used'
+          : comped + ' free admission' + (comped === 1 ? '' : 's') + ' applied',
+      compCountLine: exhausted
+        ? 'No free admissions left for this event'
+        : comped + ' of ' + available + ' free member admission' + (available === 1 ? '' : 's'),
+      compSubLine: exhausted
+        ? 'Your ' + allowance + ' were used on an earlier order for tonight'
+        : 'Included with your family membership',
+      reviewHeadBg: exhausted ? '#43585f' : '#a86800',
+      hasHeadroom: verified && available > s.floor,
+      headroomLine: (available - s.floor) + ' free admission' + (available - s.floor === 1 ? '' : 's') + ' still unused',
+      compValueStr: '−$' + comped * P.floor,
+      hasPaidFloor: paidFloor > 0,
+      paidFloorLine: paidFloor + ' additional at $15',
+      paidFloorAmt: '$' + paidFloor * P.floor,
+      hasSticks: s.sticks > 0,
+      sticksLine: s.sticks + ' pair' + (s.sticks === 1 ? '' : 's') + ' of sticks at $5',
+      sticksAmt: '$' + s.sticks * P.sticks,
+      hasComp: s.comp > 0,
+      compEntryLine: s.comp + ' competition entr' + (s.comp === 1 ? 'y' : 'ies') + ' at $30',
+      compEntryAmt: '$' + s.comp * P.comp,
+      headcountLine: s.floor + ' people on the floor' + (s.sticks ? ' · ' + s.sticks + ' pairs of sticks to collect' : ''),
+
+      totalStr: '$' + total,
+      checkout: free ? this.go('pass') : this.go('pay'),
+      checkoutLabel: free ? 'Get my pass' : 'Pay $' + total,
+      checkoutBg: free ? '#a86800' : '#0c3543',
+      checkoutNote: free
+        ? 'Nothing to pay. Your pass is issued straight away.'
+        : 'Free admissions are already taken off this total.',
+      payButtonLabel: 'Pay $' + total + ' and get my pass',
+
+      // The pass reads from the same arithmetic as the review — a volunteer and a
+      // guest must never see two different numbers for one order.
+      passPeople: s.floor,
+      passComped: comped,
+      passPaid: paidFloor,
+      passStatus: free ? 'MEMBER' : 'PAID',
+      passAmount: free ? 'Nothing due' : '$' + total + ' · card',
+      passSticksLine: s.sticks + ' pair' + (s.sticks === 1 ? '' : 's') + ' of sticks',
+      passFooter: 'Order NAV-7K42 · ' + (free ? 'no payment due' : 'paid 14 Sep')
+    };
+  }
+}
+</script>
+</body>
+</html>

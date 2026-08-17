@@ -261,6 +261,14 @@ model ServiceType {
   /// A physical good handed over at the gate (merch — dandiya sticks, T-shirts).
   /// Drives the will-call pickup step; clinical services / admission stay false.
   fulfillable Boolean      @default(false)
+  /// Issues a scannable admission ticket and counts toward the door headcount.
+  /// With `fulfillable` this gives THREE service kinds, not two:
+  ///   admission (admits)      — floor entry, camp attendance
+  ///   merch     (fulfillable) — dandiya sticks, T-shirts
+  ///   fee       (neither)     — a dance-competition entry that grants no floor
+  ///                             access and must not mint a ticket per group.
+  /// Backfilled as NOT fulfillable, so pre-existing events are unchanged.
+  admits      Boolean      @default(true)
   active      Boolean      @default(true)
 
   caps        ServiceCap[]
@@ -283,6 +291,10 @@ model ServiceCap {
   /// same catalogue service can be coded at different prices per event. Seeded
   /// from ServiceType.priceCents when an offering is first created.
   priceCents    Int         @default(0)
+  /// Price charged at the door, when it differs from the online price (e.g.
+  /// $15 online / $20 walk-up). Null = charge the online price both ways.
+  /// Read only by the gate POS; online checkout always uses priceCents.
+  onsitePriceCents Int?
   capacity      Int // null-equivalent: very large number for "uncapped"
   sold          Int         @default(0)
 

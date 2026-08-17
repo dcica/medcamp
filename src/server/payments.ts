@@ -30,7 +30,13 @@ export async function createCheckoutForOrder(orderId: string): Promise<string> {
     include: { lineItems: true, event: true },
   });
 
-  const totalCents = order.lineItems.reduce((s, li) => s + li.amountCents, 0);
+  // Quantity-aware: a qty-5 merch line costs 5 × the unit price. Must match the
+  // total confirmOrderPaid records, or Stripe under-collects and the ledger and
+  // the charge disagree (only bites quantity-mode events — camps are all qty 1).
+  const totalCents = order.lineItems.reduce(
+    (s, li) => s + li.amountCents * li.quantity,
+    0,
+  );
   if (totalCents === 0) {
     throw new Error("Order total is $0 — confirm directly, no checkout needed.");
   }
@@ -45,14 +51,19 @@ export async function createCheckoutForOrder(orderId: string): Promise<string> {
     customer_email: order.registrantEmail,
     // Webhook reads this to confirm the right order (decision #2).
     metadata: { orderId: order.id, orgId: order.orgId },
-    line_items: order.lineItems.map((li) => ({
-      quantity: 1,
-      price_data: {
-        currency: "usd",
-        unit_amount: li.amountCents,
-        product_data: { name: li.description },
-      },
-    })),
+    // Comped ($0) lines are omitted — Stripe's hosted page is the payment
+    // receipt, and our own /confirm page shows the full breakdown including
+    // comps. Sending them would also risk a zero-amount line-item rejection.
+    line_items: order.lineItems
+      .filter((li) => li.amountCents > 0)
+      .map((li) => ({
+        quantity: li.quantity,
+        price_data: {
+          currency: "usd",
+          unit_amount: li.amountCents,
+          product_data: { name: li.description },
+        },
+      })),
   });
 
   await db.payment.create({
@@ -89,6 +100,7 @@ export async function confirmOrderPaid(
   input: ConfirmInput,
 ): Promise<{ alreadyConfirmed: boolean; campIds: string[] }> {
   return db.$transaction(async (tx) => {
+    const now = new Date();
     const order = await tx.order.findUniqueOrThrow({
       where: { id: orderId },
       include: {
@@ -175,6 +187,52 @@ export async function confirmOrderPaid(
       where: { orderId: order.id },
       data: { status: "PAID" },
     });
+
+    // ── Family membership: created/extended ONLY here, on confirmed payment ──
+    // Previously done at cart creation, which let an abandoned PENDING order
+    // mint a real (non-purgeable) membership term for free. Confirmation is the
+    // authoritative step (decision #2), so the upsert belongs in this transaction.
+    const membershipLine = order.lineItems.find((li) => li.membershipPlanId);
+    if (membershipLine?.membershipPlanId) {
+      const plan = await tx.membershipPlan.findUnique({
+        where: { id: membershipLine.membershipPlanId },
+      });
+      if (plan) {
+        const existing = await tx.member.findUnique({
+          where: {
+            orgId_email: { orgId: order.orgId, email: order.registrantEmail },
+          },
+        });
+        // Extend from the later of now / current expiry (renewal stacks).
+        const base =
+          existing && existing.validTo > now ? existing.validTo : now;
+        const validTo = new Date(base);
+        validTo.setFullYear(validTo.getFullYear() + plan.termYears);
+
+        await tx.member.upsert({
+          where: {
+            orgId_email: { orgId: order.orgId, email: order.registrantEmail },
+          },
+          update: {
+            name: order.registrantName,
+            phone: order.registrantPhone,
+            planId: plan.id,
+            partySize: plan.partySize,
+            validTo,
+          },
+          create: {
+            orgId: order.orgId,
+            name: order.registrantName,
+            email: order.registrantEmail,
+            phone: order.registrantPhone,
+            planId: plan.id,
+            partySize: plan.partySize,
+            validFrom: now,
+            validTo,
+          },
+        });
+      }
+    }
 
     const totalCents = order.lineItems.reduce(
       (s, li) => s + li.amountCents * li.quantity,
