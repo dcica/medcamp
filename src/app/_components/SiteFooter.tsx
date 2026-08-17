@@ -13,16 +13,22 @@ export function SiteFooter() {
     // Flag-green band mirrors dcica.org's footer.
     <footer className="no-print bg-accent2 px-4 py-6 text-center text-xs text-accent2-fg">
       <p>© {year} dcica · Non-profit event management &amp; commerce</p>
-      <p className="mt-1 space-x-3">
+      {/* Inline-flex links at min-h-tap: the platform rule is a 48px target on
+          every interactive element, and these were 15px tall — the smallest tap
+          targets on the site. */}
+      <p className="mt-1 flex flex-wrap items-center justify-center gap-x-6">
         <a
           href="https://github.com/dcica/medcamp"
           target="_blank"
           rel="noreferrer"
-          className="underline"
+          className="inline-flex min-h-tap items-center underline"
         >
           Open source (AGPL-3.0)
         </a>
-        <a href="mailto:sachin@buzzclan.com" className="underline">
+        <a
+          href="mailto:sachin@buzzclan.com"
+          className="inline-flex min-h-tap items-center underline"
+        >
           Contact
         </a>
       </p>
