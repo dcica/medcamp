@@ -69,6 +69,28 @@ type BaseOrder = {
   marketingConsentAt: Date | null;
 };
 
+/**
+ * Whether the public form may sell for this event right now.
+ *
+ * ONE predicate, called by both the page that renders the form and the action
+ * that accepts it. They disagreed before: the page rendered a full checkout for
+ * an ACTIVE event and the action then refused it, so the day a coordinator
+ * flipped the event live, online registration became a dead end — the form took
+ * a name, a phone and a total, then failed on submit. A walk-in told to
+ * "register on your phone" at the door hit a wall.
+ *
+ * ACTIVE counts as open only once walk-in selling has been opened, which is what
+ * `walkInOpensAt` already exists to express — being mid-event is not by itself
+ * permission to keep selling online.
+ */
+export function isRegistrationOpen(event: {
+  status: string;
+  walkInOpensAt: Date | null;
+}): boolean {
+  if (event.status === "OPEN") return true;
+  return event.status === "ACTIVE" && event.walkInOpensAt !== null;
+}
+
 export async function createRegistration(
   input: RegistrationInput,
 ): Promise<CreatedOrder> {
@@ -78,7 +100,7 @@ export async function createRegistration(
     where: { id: data.eventId },
     include: { org: true },
   });
-  if (event.status !== "OPEN") {
+  if (!isRegistrationOpen(event)) {
     throw new Error("Registration for this event is not open.");
   }
 

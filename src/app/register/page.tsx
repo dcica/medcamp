@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { RegisterForm } from "./RegisterForm";
 import { resolvePrice } from "@/lib/pricing";
+import { isRegistrationOpen } from "@/server/registration";
 
 export const dynamic = "force-dynamic";
 
@@ -18,14 +19,16 @@ export default async function RegisterPage({
 }) {
   const { event: eventId } = await searchParams;
 
-  const event = eventId
-    ? await db.event.findFirst({
-        where: { id: eventId, status: { in: ["OPEN", "ACTIVE"] } },
-      })
+  // Fetch first, then apply isRegistrationOpen — the same predicate the submit
+  // action uses. Filtering on status in the query is what let the two disagree:
+  // this page would render a checkout the action then refused.
+  const candidate = eventId
+    ? await db.event.findFirst({ where: { id: eventId } })
     : await db.event.findFirst({
         where: { status: "OPEN" },
         orderBy: { startsAt: "asc" },
       });
+  const event = candidate && isRegistrationOpen(candidate) ? candidate : null;
 
   if (!event) {
     return (
