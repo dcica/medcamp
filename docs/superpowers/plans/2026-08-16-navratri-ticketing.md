@@ -468,7 +468,15 @@ Add the event scope and the per-row order state: not yet purchased / purchased w
 
 Two real roster states to build, not idealise: no email on file, and expiry never recorded (*"treat as current and ask the membership chair"*). Lifetime reads as **"Lifetime"**, never a date.
 
-### Task F3: Volunteer module UI
+### Task F3: Seeds must not overwrite coordinator configuration
+
+Found by the B1/B2 review, 2026-08-17. Both `seed-events.ts` and `seed-test.ts` upsert `ServiceType` rows with an `update` half that rewrites `name`, `colorHex`, and `priceCents`. So **any coordinator edit to a service's display fields is silently reverted by the next seed run** — and where two scripts share a key (`dandiya-sticks` is the same org-scoped key in both files), whichever ran last wins.
+
+This bears directly on the configuration-over-code mandate: a coordinator is told these are their settings, and a routine `db:seed` takes them back. Blast radius is dev and CI today, since neither seed runs against production — which is exactly why it is cheap to fix now rather than after someone loses an afternoon's configuration.
+
+Narrow each seed's `update` half to the fields it genuinely owns (identity and the three-kind flags), and stop rewriting display fields on rows that already exist. Also record in each file's header which fields the seed considers authoritative.
+
+### Task F4: Volunteer module UI
 
 Functionally complete already (`src/server/volunteers.ts`, `docs/Volunteer-Module.md`). Design: Operations 04–07 — signup with capacity bars, coordinator roster with late-volunteer tinting and a Call action, a dark outdoor check-in/out screen with the volunteer's own clock large, and hours plus certificate.
 
