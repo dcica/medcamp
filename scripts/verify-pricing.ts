@@ -49,6 +49,7 @@ async function checkoutTotal(orderId: string): Promise<number> {
 async function main(): Promise<void> {
   const { createRegistration } = await import("../src/server/registration");
   const { confirmOrderPaid } = await import("../src/server/payments");
+  const { resolvePrice } = await import("../src/lib/pricing");
 
   const org = await db.organization.findFirstOrThrow();
   await cleanup(org.id);
@@ -94,6 +95,28 @@ async function main(): Promise<void> {
       },
     });
   }
+
+  // A third price: promotional early-bird, online only, gone after the
+  // deadline. earlyBirdUntil is set far in the future (real wall-clock, not a
+  // pinned `now`) so the end-to-end test in section 7 — which goes through
+  // createRegistration and therefore the real `new Date()` — is always inside
+  // the window.
+  const earlyBird = await db.serviceType.upsert({
+    where: { orgId_key: { orgId: org.id, key: "verify-earlybird" } },
+    update: { fulfillable: false, admits: true, priceCents: 1500 },
+    create: { orgId: org.id, key: "verify-earlybird", name: "Early Bird Entry", priceCents: 1500, fulfillable: false, admits: true },
+  });
+  await db.serviceCap.create({
+    data: {
+      eventId: event.id,
+      serviceTypeId: earlyBird.id,
+      priceCents: 1500,
+      onsitePriceCents: 2000,
+      earlyBirdPriceCents: 1000,
+      earlyBirdUntil: new Date("2030-01-01T00:00:00Z"),
+      capacity: 1000,
+    },
+  });
 
   const plan = await db.membershipPlan.upsert({
     where: { orgId_key: { orgId: org.id, key: "verify-family" } },
@@ -235,6 +258,67 @@ async function main(): Promise<void> {
     })),
     { priceCents: 1500, onsitePriceCents: 2000 },
   );
+
+  // ── 6. Early-bird pricing: a third price, resolved pure ──
+  // Against a cap with priceCents 1500 / onsitePriceCents 2000 /
+  // earlyBirdPriceCents 1000. Pinning `now` on both sides of the deadline
+  // exercises resolvePrice directly — no DB round trip needed since it's pure.
+  console.log("\n6. Early-bird price resolution (resolvePrice, pinned time)");
+  const earlyBirdCap = {
+    priceCents: 1500,
+    onsitePriceCents: 2000,
+    earlyBirdPriceCents: 1000,
+    earlyBirdUntil: new Date("2026-01-01T00:00:00Z"),
+  };
+  const beforeDeadline = new Date("2025-12-01T00:00:00Z");
+  const afterDeadline = new Date("2026-02-01T00:00:00Z");
+
+  const onlineBefore = resolvePrice(earlyBirdCap, "online", beforeDeadline);
+  check("online before deadline: charges the early-bird price", onlineBefore.amountCents, 1000);
+  check("online before deadline: phase is early-bird", onlineBefore.phase, "early-bird");
+  check("online before deadline: nextAmountCents is the regular online price", onlineBefore.nextAmountCents, 1500);
+
+  const onlineAfter = resolvePrice(earlyBirdCap, "online", afterDeadline);
+  check("online after deadline: charges the regular online price", onlineAfter.amountCents, 1500);
+  check("online after deadline: phase is online", onlineAfter.phase, "online");
+  check("online after deadline: nextAmountCents is the door price", onlineAfter.nextAmountCents, 2000);
+
+  const doorBefore = resolvePrice(earlyBirdCap, "door", beforeDeadline);
+  check("door before deadline: ignores early bird, charges the door price", doorBefore.amountCents, 2000);
+  check("door before deadline: phase is door", doorBefore.phase, "door");
+
+  const doorAfter = resolvePrice(earlyBirdCap, "door", afterDeadline);
+  check("door after deadline: still the door price", doorAfter.amountCents, 2000);
+  check("door after deadline: phase is door", doorAfter.phase, "door");
+
+  const halfConfigured = {
+    priceCents: 1500,
+    onsitePriceCents: 2000,
+    earlyBirdPriceCents: 1000,
+    earlyBirdUntil: null,
+  };
+  const halfConfiguredOnline = resolvePrice(halfConfigured, "online", beforeDeadline);
+  check("price set but no deadline: resolves as if there were no early bird", halfConfiguredOnline.amountCents, 1500);
+  check("price set but no deadline: phase is online, not early-bird", halfConfiguredOnline.phase, "online");
+
+  // ── 7. Early bird end to end, through createRegistration ──
+  // Proves the AUTHORITATIVE server path (not just the resolver in isolation)
+  // charges the early-bird price during an open window. Uses the earlyBird cap
+  // created above, whose deadline is 2030 — real wall-clock `now`, since
+  // createRegistration resolves with `new Date()` and cannot be pinned from
+  // outside.
+  console.log("\n7. Early bird charged end to end through createRegistration");
+  const earlyBirdOrder = await createRegistration({
+    eventId: event.id,
+    registrant: { ...registrant, email: "verify-earlybird@example.test" },
+    marketingConsent: false,
+    quantities: [{ serviceKey: "verify-earlybird", quantity: 1 }],
+  });
+  check("order total is the early-bird price, not the regular online price", earlyBirdOrder.totalCents, 1000);
+  const earlyBirdLine = await db.lineItem.findFirstOrThrow({
+    where: { orderId: earlyBirdOrder.orderId, serviceTypeId: earlyBird.id },
+  });
+  check("the frozen line item itself carries the early-bird price", earlyBirdLine.amountCents, 1000);
 
   await cleanup(org.id);
 }

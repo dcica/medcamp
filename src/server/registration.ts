@@ -1,11 +1,15 @@
 import { z } from "zod";
 import type { ServiceCap, ServiceType } from "@prisma/client";
 import { db } from "@/lib/db";
+import { resolvePrice } from "@/lib/pricing";
 
 /**
  * Registration service. Creates a PENDING order from a validated submission;
  * payment confirmation (webhook or cash) is the authoritative step (payments.ts).
- * Prices come from the event's offerings (ServiceCap.priceCents), never the client.
+ * Prices come from the event's offerings, resolved through the single
+ * resolvePrice (src/lib/pricing.ts) for the "online" channel — never the
+ * client, and never re-resolved later: a LineItem's amountCents is frozen at
+ * creation.
  *
  * Two modes, chosen by Event.collectsAttendeeDetails (server-authoritative):
  *   - ATTENDEE (medcamp/CAMP): one row per person with a profile + per-person
@@ -110,10 +114,15 @@ export async function createRegistration(
     marketingConsentAt: data.marketingConsent ? new Date() : null,
   };
 
+  // Resolved once and reused for every line on this order — price resolution
+  // happens here, before any line exists, and never again (a LineItem's
+  // amountCents is frozen at creation; confirmation must not re-resolve it).
+  const now = new Date();
+
   // Mode-specific: create the order + attendees + service line items.
   const { orderId, serviceTotalCents } = event.collectsAttendeeDetails
-    ? await createAttendeeOrder(event.orgId, event.id, baseOrder, data, byKey, compUnits)
-    : await createQuantityOrder(event.orgId, event.id, baseOrder, data, byKey, compUnits);
+    ? await createAttendeeOrder(event.orgId, event.id, baseOrder, data, byKey, compUnits, now)
+    : await createQuantityOrder(event.orgId, event.id, baseOrder, data, byKey, compUnits, now);
 
   let total = serviceTotalCents;
 
@@ -167,6 +176,7 @@ async function createAttendeeOrder(
   data: RegistrationInput,
   byKey: Map<string, Offering>,
   compUnits: number,
+  now: Date,
 ): Promise<{ orderId: string; serviceTotalCents: number }> {
   const attendees = data.attendees ?? [];
   if (attendees.length === 0) throw new Error("Add at least one attendee.");
@@ -182,14 +192,16 @@ async function createAttendeeOrder(
   // Membership comps the first `compUnits` admission (non-fulfillable) units;
   // everything beyond the family's party size is charged. Priced in ONE pass so
   // the allowance is spent once — the totals and the line items read the same
-  // array rather than each re-running the allocation.
+  // array rather than each re-running the allocation. A comp zeroes the
+  // resolved (online/early-bird) price, never bypasses resolution.
   let compRemaining = compUnits;
   const priced = attendees.map((att) =>
     att.serviceKeys.map((key) => {
       const offering = byKey.get(key)!;
       const comped = offering.serviceType.admits && compRemaining > 0;
       if (comped) compRemaining -= 1;
-      return { offering, amountCents: comped ? 0 : offering.priceCents };
+      const resolved = resolvePrice(offering, "online", now);
+      return { offering, resolved, amountCents: comped ? 0 : resolved.amountCents };
     }),
   );
 
@@ -214,14 +226,14 @@ async function createAttendeeOrder(
 
   const lineItemData = attendees.flatMap((att, i) => {
     const attendee = order.attendees[i];
-    return priced[i].map(({ offering, amountCents }) => ({
+    return priced[i].map(({ offering, resolved, amountCents }) => ({
       orgId,
       orderId: order.id,
       attendeeId: attendee.id,
       serviceTypeId: offering.serviceType.id,
       description:
         `${offering.serviceType.name} — ${att.name}` +
-        (amountCents === 0 && offering.priceCents > 0 ? " (member comp)" : ""),
+        (amountCents === 0 && resolved.amountCents > 0 ? " (member comp)" : ""),
       amountCents,
       status: "PENDING_PAYMENT" as const,
     }));
@@ -244,6 +256,7 @@ async function createQuantityOrder(
   data: RegistrationInput,
   byKey: Map<string, Offering>,
   compUnits: number,
+  now: Date,
 ): Promise<{ orderId: string; serviceTotalCents: number }> {
   const picked = (data.quantities ?? []).filter((q) => q.quantity > 0);
   if (picked.length === 0) throw new Error("Pick at least one item.");
@@ -257,7 +270,8 @@ async function createQuantityOrder(
   // Membership comps the first `compUnits` admission units; the rest are
   // charged. A partially-comped pick splits into TWO lines (qty N @ $0 and
   // qty M @ price) because a LineItem carries one unit price for its quantity —
-  // a family of 6 with a 4-person membership pays for 2.
+  // a family of 6 with a 4-person membership pays for 2. A comp zeroes the
+  // resolved (online/early-bird) price, never bypasses resolution.
   let compRemaining = compUnits;
   const priced = picked.flatMap((q) => {
     const offering = byKey.get(q.serviceKey)!;
@@ -265,6 +279,7 @@ async function createQuantityOrder(
     const compQty = isAdmission ? Math.min(compRemaining, q.quantity) : 0;
     compRemaining -= compQty;
     const paidQty = q.quantity - compQty;
+    const resolved = resolvePrice(offering, "online", now);
 
     const lines: {
       offering: Offering;
@@ -278,7 +293,7 @@ async function createQuantityOrder(
     if (paidQty > 0) {
       lines.push({
         offering,
-        amountCents: offering.priceCents,
+        amountCents: resolved.amountCents,
         quantity: paidQty,
         comped: false,
       });

@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { RegisterForm } from "./RegisterForm";
+import { resolvePrice } from "@/lib/pricing";
 
 export const dynamic = "force-dynamic";
 
@@ -44,10 +45,16 @@ export default async function RegisterPage({
     include: { serviceType: true },
     orderBy: { serviceType: { name: "asc" } },
   });
+  // Display prices resolve through the SAME function registration.ts uses for
+  // the authoritative total (src/lib/pricing.ts resolvePrice, "online"
+  // channel) — this is a display feed, not a second source of truth. If this
+  // diverged from registration.ts, the buyer would see one number and be
+  // charged another.
+  const now = new Date();
   const services = offerings.map((o) => ({
     key: o.serviceType.key,
     name: o.serviceType.name,
-    priceCents: o.priceCents,
+    priceCents: resolvePrice(o, "online", now).amountCents,
     colorHex: o.serviceType.colorHex,
     /** Non-fulfillable services are admission (scannable); merch is fulfillable. */
     fulfillable: o.serviceType.fulfillable,

@@ -295,6 +295,12 @@ model ServiceCap {
   /// $15 online / $20 walk-up). Null = charge the online price both ways.
   /// Read only by the gate POS; online checkout always uses priceCents.
   onsitePriceCents Int?
+  /// Promotional price, charged online until earlyBirdUntil. Null = no early
+  /// bird. Resolved by src/lib/pricing.ts; the door ignores this entirely.
+  earlyBirdPriceCents Int?
+  /// Deadline for earlyBirdPriceCents. Null = no early bird. A price without a
+  /// deadline (or vice versa) resolves as if there were no early bird.
+  earlyBirdUntil      DateTime?
   capacity      Int // null-equivalent: very large number for "uncapped"
   sold          Int         @default(0)
 

@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
 import { parseCampId } from "@/lib/campId";
 import { confirmOrderPaid } from "@/server/payments";
+import { resolvePrice } from "@/lib/pricing";
 
 /**
  * Gate service (general / ticketed events — e.g. a dandia dance night). The
@@ -257,8 +258,9 @@ export async function sellAtGate(
   // Walk-ups pay the door price; a pre-bought will-call order settled here keeps
   // its original online price, because that path confirms existing lines and
   // never routes through this function.
-  const doorPrice = (o: (typeof offerings)[number]) =>
-    o.onsitePriceCents ?? o.priceCents;
+  const now = new Date();
+  const doorCents = (o: (typeof offerings)[number]) =>
+    resolvePrice(o, "door", now).amountCents;
 
   await db.lineItem.createMany({
     data: serviceTypeIds.map((id) => {
@@ -269,7 +271,7 @@ export async function sellAtGate(
         attendeeId,
         serviceTypeId: offering.serviceTypeId,
         description: `${offering.serviceType.name} — ${name}`,
-        amountCents: doorPrice(offering),
+        amountCents: doorCents(offering),
         status: "PENDING_PAYMENT" as const,
       };
     }),
@@ -277,7 +279,7 @@ export async function sellAtGate(
 
   const totalCents = serviceTypeIds.reduce((s, id) => {
     const offering = byId.get(id);
-    return s + (offering ? doorPrice(offering) : 0);
+    return s + (offering ? doorCents(offering) : 0);
   }, 0);
   return { orderId: order.id, totalCents };
 }
@@ -332,24 +334,25 @@ export async function getGateCatalog(eventId: string): Promise<{
     orderBy: { serviceType: { name: "asc" } },
   });
   // The gate menu shows DOOR prices — $20 walk-up where online was $15.
-  const doorPrice = (o: (typeof offerings)[number]) =>
-    o.onsitePriceCents ?? o.priceCents;
+  const now = new Date();
+  const doorCents = (o: (typeof offerings)[number]) =>
+    resolvePrice(o, "door", now).amountCents;
   return {
     admission: offerings
       .filter((o) => o.serviceType.admits && !o.serviceType.hasLab)
-      .map((o) => ({ id: o.serviceType.id, name: o.serviceType.name, priceCents: doorPrice(o) })),
+      .map((o) => ({ id: o.serviceType.id, name: o.serviceType.name, priceCents: doorCents(o) })),
     merch: offerings
       .filter((o) => o.serviceType.fulfillable)
       .map((o) => ({
         id: o.serviceType.id,
         name: o.serviceType.name,
-        priceCents: doorPrice(o),
+        priceCents: doorCents(o),
         colorHex: o.serviceType.colorHex,
       })),
     // Neither admission nor merch: a competition entry sold at the desk. Buying
     // one admits nobody and hands over nothing.
     fees: offerings
       .filter((o) => !o.serviceType.admits && !o.serviceType.fulfillable && !o.serviceType.hasLab)
-      .map((o) => ({ id: o.serviceType.id, name: o.serviceType.name, priceCents: doorPrice(o) })),
+      .map((o) => ({ id: o.serviceType.id, name: o.serviceType.name, priceCents: doorCents(o) })),
   };
 }
