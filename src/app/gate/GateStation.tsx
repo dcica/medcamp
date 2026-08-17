@@ -16,7 +16,9 @@ import {
 
 type CatalogItem = { id: string; name: string; priceCents: number };
 type MerchItem = CatalogItem & { colorHex: string };
-type Catalog = { admission: CatalogItem[]; merch: MerchItem[] };
+// Must name every bucket getGateCatalog sends — structural typing let `fees`
+// go missing here before and the compiler never caught it (see task A3).
+type Catalog = { admission: CatalogItem[]; merch: MerchItem[]; fees: CatalogItem[] };
 
 type Flash = { kind: "ok" | "warn" | "err"; text: string };
 
@@ -434,7 +436,7 @@ function WalkUpForm({
 }) {
   const [name, setName] = useState("");
   const [sel, setSel] = useState<Set<string>>(new Set());
-  const all = [...catalog.admission, ...catalog.merch];
+  const all = [...catalog.admission, ...catalog.merch, ...catalog.fees];
   const total = sum(all, sel);
 
   return (
@@ -458,6 +460,28 @@ function WalkUpForm({
         <div>
           <p className="mb-1 text-xs text-gray-500">Merch</p>
           <ItemPicker items={catalog.merch} selected={sel} onToggle={setSel} />
+        </div>
+      )}
+      {/* Fees (e.g. dance-competition entry): neither admission nor merch — buying
+          one mints no ticket and hands over nothing, so it gets its own visually
+          loud block. A volunteer who mistakes this for a ticket lets a group onto
+          the floor without paying for it. Colors are the handoff's exact fee
+          treatment, not the shared brand palette. */}
+      {catalog.fees.length > 0 && (
+        <div
+          className="rounded-lg border p-3"
+          style={{ backgroundColor: "#fff7e6", borderColor: "#a86800", borderWidth: 3 }}
+        >
+          <p
+            className="mb-1 text-xs font-semibold uppercase tracking-wide"
+            style={{ color: "#a86800" }}
+          >
+            Fees
+          </p>
+          <ItemPicker items={catalog.fees} selected={sel} onToggle={setSel} />
+          <p className="mt-2 text-xs font-semibold" style={{ color: "#a86800" }}>
+            NOT A TICKET · NO FLOOR ACCESS
+          </p>
         </div>
       )}
       <div className="flex gap-2">
