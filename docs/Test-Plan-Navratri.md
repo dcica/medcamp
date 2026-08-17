@@ -161,6 +161,8 @@ Buy a competition entry alone. Assert: no ticket code is minted, the order confi
 
 This is subtle and worth stating plainly: `createQuantityOrder` mints a fallback "receipt" attendee for an order with no admission units. `getEventHeadcount` counts every attendee with a `checkedInAt`. So a competition-only or sticks-only group inflates the floor count the moment they scan — unless the headcount counts admission line items instead of scans. Task E4.
 
+**Blocked until Task B1.** No seeded service currently satisfies `admits: false, fulfillable: false, hasLab: false`, so nothing lands in the gate's `fees` bucket — the dandiya fixture defines admission plus two merch items and no fee at all. The only fee-kind service that has ever existed in the dev database is the transient `verify-fee` that `scripts/verify-pricing.ts` creates and self-deletes. Task A3 made the bucket reachable; B1 is what puts something in it. Until then this case is scripted-only.
+
 ### B-3 · Declines and abandonment
 
 Decline card → order stays `PENDING`, nothing minted, no ledger row, no capacity consumed. Abandon at the Stripe page → same. **Specifically:** no `Member` row is created for an abandoned membership purchase. Free membership on an abandoned cart shipped once.
