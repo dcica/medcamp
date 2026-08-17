@@ -20,6 +20,13 @@ const db = new PrismaClient();
  *
  * Idempotent: drops and rebuilds the test camp (code MC-2027S) on each run.
  * Run with:  npm run db:seed:test
+ *
+ * Required run order: db:seed → db:seed:events → db:seed:test. seed-events.ts
+ * (:170) deletes every event in the org before reseeding its own set, so
+ * running it AFTER this script destroys the fixtures created here — there is
+ * no code-based scoping that would let it spare them. Running this script
+ * again afterward is always safe (it only ever touches its own MC-2027S /
+ * GB-2026W rows), so seed-test must be the last step, not seed-events.
  */
 
 const CAMP_CODE = "MC-2027S";
@@ -154,8 +161,16 @@ async function main() {
   // The staff screens resolve "the active camp" via findFirst({status:"ACTIVE"}),
   // which is nondeterministic with more than one. Demote any OTHER active camps so
   // this test camp is unambiguously the one shown on the dashboard/queues.
+  //
+  // type: "CAMP" is load-bearing, not incidental: without it this query closes
+  // ACTIVE events of every type, including GENERAL ones. A real GENERAL event
+  // (e.g. RON-2026) seeds OPEN, but a coordinator flips it to ACTIVE the night
+  // of the event — and from that moment any CI run of db:seed:test would set
+  // the live, selling event to CLOSED, killing the door and online sales. This
+  // script only ever needs to disambiguate "the active camp," so it must never
+  // reach outside type: "CAMP".
   const demoted = await db.event.updateMany({
-    where: { orgId: org.id, status: "ACTIVE", code: { not: CAMP_CODE } },
+    where: { orgId: org.id, type: "CAMP", status: "ACTIVE", code: { not: CAMP_CODE } },
     data: { status: "CLOSED" },
   });
 
@@ -603,15 +618,19 @@ async function main() {
   // money movement writes a Ledger entry. Resolved by the gate via
   // getActiveGeneralEvent; medcamp screens ignore it (getActiveCamp scopes to CAMP).
   const DANDIA_CODE = "GB-2026W";
+  // `admits` defaults to true on ServiceType (medcamp's every service admits
+  // the patient to the camp), so it must be set explicitly here or the merch
+  // rows silently come out BOTH merch and admission on a fresh database —
+  // handing over a t-shirt would also mint a scannable door ticket.
   const DANDIA_SERVICES = [
-    { key: "dandia-entry", name: "Dandia Entry", priceCents: 2500, colorHex: "#9333ea", fulfillable: false },
-    { key: "dandiya-sticks", name: "Dandiya Sticks", priceCents: 1500, colorHex: "#f59e0b", fulfillable: true },
-    { key: "event-tshirt", name: "Event T-Shirt", priceCents: 2000, colorHex: "#0ea5e9", fulfillable: true },
+    { key: "dandia-entry", name: "Dandia Entry", priceCents: 2500, colorHex: "#9333ea", admits: true, fulfillable: false },
+    { key: "dandiya-sticks", name: "Dandiya Sticks", priceCents: 1500, colorHex: "#f59e0b", admits: false, fulfillable: true },
+    { key: "event-tshirt", name: "Event T-Shirt", priceCents: 2000, colorHex: "#0ea5e9", admits: false, fulfillable: true },
   ];
   for (const s of DANDIA_SERVICES) {
     await db.serviceType.upsert({
       where: { orgId_key: { orgId: org.id, key: s.key } },
-      update: { name: s.name, priceCents: s.priceCents, colorHex: s.colorHex, fulfillable: s.fulfillable },
+      update: { name: s.name, priceCents: s.priceCents, colorHex: s.colorHex, admits: s.admits, fulfillable: s.fulfillable },
       create: { orgId: org.id, ...s },
     });
   }
@@ -630,6 +649,21 @@ async function main() {
     await db.event.delete({ where: { id: existingDandia.id } });
   }
 
+  // Dates deliberately in the PAST (not Oct 10, where the real RON-2026 lives)
+  // while STAYING ACTIVE — both are load-bearing, not a plan deviation to
+  // "fix" later:
+  //   - This fixture's whole point is a gate a volunteer can rehearse on. If
+  //     it were CLOSED, the only ACTIVE general event would be the real one,
+  //     so rehearsal would mean flipping RON-2026 to ACTIVE — mutating the
+  //     live event just to run a test.
+  //   - getActiveGeneralEvent() (src/server/gate.ts:46-53) resolves ties by
+  //     startsAt DESC when more than one GENERAL event is ACTIVE. A past
+  //     start date is what keeps that ordering on the real event's side: the
+  //     moment a coordinator flips RON-2026 (Oct 10) to ACTIVE, Oct 10 sorts
+  //     after March 14 and RON-2026 wins deterministically — not by luck, as
+  //     it did when both events shared the same night.
+  //   - A past ACTIVE event stays out of the public event list once Task C1
+  //     adds its endsAt >= now filter, so it never appears as if for sale.
   const dandia = await db.event.create({
     data: {
       orgId: org.id,
@@ -637,8 +671,8 @@ async function main() {
       status: "ACTIVE",
       code: DANDIA_CODE,
       name: "Dandia Night 2026",
-      startsAt: new Date("2026-10-10T19:00:00Z"),
-      endsAt: new Date("2026-10-10T23:30:00Z"),
+      startsAt: new Date("2026-03-14T19:00:00Z"),
+      endsAt: new Date("2026-03-14T23:30:00Z"),
       // New event-config flags (admin toggles):
       collectsAttendeeDetails: false, // quantity-only checkout — anon tickets + merch
       honorsMembership: true, // a current family membership admits the party free
@@ -656,6 +690,14 @@ async function main() {
   // Each line carries a quantity (qty-mode); fulfillable merch can be picked up
   // (will-call). A spec may add a donation, buy a membership, be a membership comp,
   // or be refunded.
+  //
+  // `admitted` is a COUNT, not a boolean: how many of this order's admission
+  // units have arrived. createQuantityOrder (src/server/registration.ts) mints
+  // one Attendee per admission unit — a verified live purchase of 5 admissions
+  // produced 5 codes (GB-2026W-0009..0013) — so a single order can have some
+  // attendees checked in and others still queued outside. A boolean can only
+  // say "all" or "none," which made wave arrival (a party of 5 arriving 2, then
+  // 2, then 1 — the client's stated real pattern) unrepresentable.
   type DLine = { key: string; qty: number; fulfilled?: boolean };
   type DandiaSpec = {
     name: string;
@@ -664,34 +706,37 @@ async function main() {
     membershipPlan?: string; // a family membership bought as a registration upsell
     method: "STRIPE" | "CASH" | "COMP";
     status: "CONFIRMED" | "PENDING" | "REFUNDED";
-    admitted: boolean;
+    admitted: number; // admission units checked in (0..sum of admits-qty on this order)
     comp?: boolean; // membership comp admission ($0, COMP, no Payment row)
   };
   const dandiaSpecs: DandiaSpec[] = [
     // Stripe ticket, not yet admitted.
-    { name: "Asha Mehta", lines: [{ key: "dandia-entry", qty: 1 }], method: "STRIPE", status: "CONFIRMED", admitted: false },
-    // Ticket ×2 + 5 dandiya sticks (quantity line); sticks already picked up.
-    { name: "Ravi Kapoor", lines: [{ key: "dandia-entry", qty: 2 }, { key: "dandiya-sticks", qty: 5, fulfilled: true }], method: "STRIPE", status: "CONFIRMED", admitted: true },
+    { name: "Asha Mehta", lines: [{ key: "dandia-entry", qty: 1 }], method: "STRIPE", status: "CONFIRMED", admitted: 0 },
+    // Ticket ×2 + 5 dandiya sticks (quantity line); sticks already picked up. Both admission units arrived.
+    { name: "Ravi Kapoor", lines: [{ key: "dandia-entry", qty: 2 }, { key: "dandiya-sticks", qty: 5, fulfilled: true }], method: "STRIPE", status: "CONFIRMED", admitted: 2 },
     // Cash ticket + 2 t-shirts, admitted, shirts NOT yet handed over (will-call pending).
-    { name: "Neha Shah", lines: [{ key: "dandia-entry", qty: 1 }, { key: "event-tshirt", qty: 2 }], method: "CASH", status: "CONFIRMED", admitted: true },
+    { name: "Neha Shah", lines: [{ key: "dandia-entry", qty: 1 }, { key: "event-tshirt", qty: 2 }], method: "CASH", status: "CONFIRMED", admitted: 1 },
     // Unpaid will-call (created, awaiting payment at the desk).
-    { name: "Imran Vora", lines: [{ key: "dandia-entry", qty: 1 }], method: "STRIPE", status: "PENDING", admitted: false },
-    // Membership comp: a current member's family admitted free ($0, COMP, no Payment).
-    { name: "The Kapoor Family", lines: [{ key: "dandia-entry", qty: 4 }], method: "COMP", status: "CONFIRMED", admitted: true, comp: true },
+    { name: "Imran Vora", lines: [{ key: "dandia-entry", qty: 1 }], method: "STRIPE", status: "PENDING", admitted: 0 },
+    // Membership comp: a current member's family (party of 4) admitted free ($0, COMP, no Payment), all arrived together.
+    { name: "The Kapoor Family", lines: [{ key: "dandia-entry", qty: 4 }], method: "COMP", status: "CONFIRMED", admitted: 4, comp: true },
     // Stripe ticket ×2 + an optional donation.
-    { name: "Sara Ali", lines: [{ key: "dandia-entry", qty: 2 }], donationCents: 5000, method: "STRIPE", status: "CONFIRMED", admitted: false },
+    { name: "Sara Ali", lines: [{ key: "dandia-entry", qty: 2 }], donationCents: 5000, method: "STRIPE", status: "CONFIRMED", admitted: 0 },
     // Registration upsell: buys a 2-year family membership alongside a ticket.
-    { name: "Diego Lopez", lines: [{ key: "dandia-entry", qty: 2 }], membershipPlan: "family-2yr", method: "STRIPE", status: "CONFIRMED", admitted: false },
+    { name: "Diego Lopez", lines: [{ key: "dandia-entry", qty: 2 }], membershipPlan: "family-2yr", method: "STRIPE", status: "CONFIRMED", admitted: 0 },
     // Refunded order: payment REFUNDED, lines REFUNDED, DEBIT ledger entry.
-    { name: "Mei Chen", lines: [{ key: "dandia-entry", qty: 3 }], method: "STRIPE", status: "REFUNDED", admitted: false },
+    { name: "Mei Chen", lines: [{ key: "dandia-entry", qty: 3 }], method: "STRIPE", status: "REFUNDED", admitted: 0 },
+    // Wave arrival: party of 5, only 2 have come through the gate so far — lets a
+    // volunteer rehearse the remaining 3 arriving in separate waves (2 then 2 then 1).
+    { name: "Patel Family", lines: [{ key: "dandia-entry", qty: 5 }], method: "STRIPE", status: "CONFIRMED", admitted: 2 },
   ];
 
+  // Dates deliberately in the past to match the fixture event's own past start
+  // date (see the ACTIVE-but-past comment above) rather than the real event's
+  // Oct 10 date.
   let dseq = 1;
-  const dandiaNow = new Date("2026-10-10T19:15:00Z");
+  const dandiaNow = new Date("2026-03-14T19:15:00Z");
   for (const spec of dandiaSpecs) {
-    const campId = `${DANDIA_CODE}-${String(dseq).padStart(4, "0")}`;
-    dseq++;
-
     const email = `${spec.name.toLowerCase().replace(/\s+/g, ".")}@example.com`;
     const lineRows = spec.lines.map((l) => ({ svc: dandiaSvc.get(l.key)!, qty: l.qty, fulfilled: l.fulfilled }));
     const isComp = Boolean(spec.comp);
@@ -739,17 +784,35 @@ async function main() {
       }
     }
 
-    const attendee = await db.attendee.create({
-      data: {
-        orgId: org.id,
-        eventId: dandia.id,
-        orderId: order.id,
-        campId,
-        // Quantity-only event: a light label, no mailing address collected.
-        name: spec.name,
-        checkedInAt: spec.admitted ? dandiaNow : null,
-      },
-    });
+    // Mint one Attendee per admission unit, matching createQuantityOrder
+    // (src/server/registration.ts): only `admits` services consume a code —
+    // merch (dandiya-sticks, event-tshirt) and any fee never do. An order with
+    // no admission units still gets ONE fallback "receipt" attendee so a
+    // merch-only or fee-only order has something to attach line items to.
+    const admissionUnits = lineRows.filter((l) => l.svc.admits).reduce((s, l) => s + l.qty, 0);
+    const ticketCount = admissionUnits > 0 ? admissionUnits : 1;
+    const admittedCount = Math.min(spec.admitted, admissionUnits);
+    const attendees: { id: string }[] = [];
+    for (let t = 0; t < ticketCount; t++) {
+      const campId = `${DANDIA_CODE}-${String(dseq).padStart(4, "0")}`;
+      dseq++;
+      const attendee = await db.attendee.create({
+        data: {
+          orgId: org.id,
+          eventId: dandia.id,
+          orderId: order.id,
+          campId,
+          // Quantity-only event: a light label, no mailing address collected.
+          name: spec.name,
+          checkedInAt: t < admittedCount ? dandiaNow : null,
+        },
+      });
+      attendees.push(attendee);
+    }
+    // Line items are order-scoped for money purposes; the attendee link is
+    // incidental (there's no per-person allocation to make in quantity mode),
+    // so every line on the order attaches to its first minted attendee.
+    const firstAttendeeId = attendees[0].id;
 
     const lineStatus =
       spec.status === "REFUNDED" ? "REFUNDED" : spec.status === "PENDING" ? "PENDING_PAYMENT" : "PAID";
@@ -760,7 +823,7 @@ async function main() {
         data: {
           orgId: org.id,
           orderId: order.id,
-          attendeeId: attendee.id,
+          attendeeId: firstAttendeeId,
           serviceTypeId: l.svc.id,
           description: `${l.svc.name}${l.qty > 1 ? ` ×${l.qty}` : ""} — ${spec.name}`,
           amountCents: isComp ? 0 : l.svc.priceCents,
@@ -778,7 +841,7 @@ async function main() {
         data: {
           orgId: org.id,
           orderId: order.id,
-          attendeeId: attendee.id,
+          attendeeId: firstAttendeeId,
           description: `Donation — ${spec.name}`,
           amountCents: donationCents,
           isDonation: true,
@@ -793,7 +856,7 @@ async function main() {
         data: {
           orgId: org.id,
           orderId: order.id,
-          attendeeId: attendee.id,
+          attendeeId: firstAttendeeId,
           membershipPlanId: membership.id,
           description: `${membership.name} — ${spec.name}`,
           amountCents: membership.priceCents,
