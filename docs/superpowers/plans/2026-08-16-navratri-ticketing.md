@@ -150,10 +150,11 @@ All prices are **tentative** and coordinator-editable — this seeds a starting 
 
 ### Task B2: De-conflict the test fixture
 
-Two problems, both in `prisma/seed-test.ts`:
+Three problems, all in `prisma/seed-test.ts`:
 
 1. `GB-2026W` "Dandia Night 2026" is `ACTIVE` on **2026-10-10** (`:633-648`) — the same night as the real event. `getActiveGeneralEvent()` (`src/server/gate.ts:45`) orders by `startsAt: "desc"` and takes one, so the gate could staff the fixture.
 2. `:157-160` demotes **every** ACTIVE event whose code isn't `MC-2027S` to `CLOSED` — including a real ACTIVE event added in Task B1, and it runs on every push to test via CI.
+3. **The fixtures misrepresent the ticket model** (ledger F6, found in the day-of simulation). Each Dandia order gets exactly ONE attendee regardless of quantity: "Ravi Kapoor" paid for 2 admission units and has 1 code; "The Kapoor Family" COMP'd 4 and has 1 code. Real orders mint one code per unit — verified against a live Stripe purchase — so the fixtures under-count bodies in the room by 5 and **cannot exercise wave arrival at all**, which is the one thing the gate most needs rehearsed. Mint one attendee per admission unit, matching `createQuantityOrder` (`src/server/registration.ts`), and give at least one fixture order 5 units so a 2+2+1 arrival can be practised without a card.
 
 Move `GB-2026W` well into the past and off `ACTIVE`, and narrow the demote to `type: "CAMP"` so it stops reaching across to general events.
 
@@ -363,6 +364,78 @@ Design: Operations 09. Gross, then by payment method, then **cash counted agains
 
 Builds on `src/server/dashboard.ts:157` `getReconciliationRows()` and `src/app/api/reports/reconciliation/route.ts`.
 
+### Task E7: Merch hands over in waves
+
+**Found in the 2026-08-17 day-of simulation (ledger F1, F3). Not in the original plan.**
+
+The 4 stick pairs of a real order are ONE `LineItem` with `quantity: 4`, and `fulfillLineItems` stamps a single `fulfilledAt` on the line. The gate therefore shows one checkbox — "Dandiya Sticks ×4" — and one button, "Hand over selected (1)", which marks all four at once. The client's actual requirement is *"2 now, 2 later, as they request."* Today that is impossible.
+
+Compounding it (F3): every one of the five scans on that order offered the same unfulfilled "Dandiya Sticks ×4". Fulfilment is idempotent so the DB cannot double-issue, but two volunteers on two doors can physically hand out 8 pairs before either taps the button.
+
+**Files:** `prisma/schema.prisma` + migration, `src/server/gate.ts` (`fulfillLineItems`, `getGateView`), `src/app/gate/actions.ts`, `src/app/gate/GateStation.tsx`
+
+```prisma
+model LineItem {
+  /// Units physically handed over. 0 = none, == quantity = complete.
+  /// fulfilledAt is set only when fulfilledQty reaches quantity.
+  fulfilledQty Int @default(0)
+}
+```
+
+Migration backfills `fulfilledQty = quantity` where `fulfilledAt IS NOT NULL`, else 0 — so lines already handed over stay complete.
+
+```ts
+export async function fulfillLineItems(
+  items: { lineItemId: string; qty: number }[],
+  userId: string,
+): Promise<void>;
+```
+Clamp each `qty` to `quantity - fulfilledQty` and reject a negative. Set `fulfilledAt` only on reaching `quantity`. Write a `FULFILL` audit row per call carrying the qty (Task E1), so "who gave out which pairs" survives the night.
+
+`getGateView` must return `remainingQty` per merch line, and the gate row reads **"Dandiya Sticks — 2 of 4 handed over · 2 left"** with a stepper defaulting to the remaining count. A fully handed-over line shows as done and is not selectable. This is also the F3 fix: a second volunteer sees "2 left", not "×4".
+
+**Verify:** in `scripts/verify-pricing.ts` — hand over 1 of 4, assert `fulfilledQty = 1` and `fulfilledAt` still null; hand over 3 more, assert complete; attempt a 5th, assert it is rejected or clamped and the total never exceeds `quantity`.
+
+### Task E8: The gate shows the party, not just the person
+
+**Found in the day-of simulation (ledger F2).**
+
+Scanning one of five codes on one order shows "Guest / GB-2026W-0009" and nothing else. The volunteer cannot see that four more people on this order are still outside, nor that a code being re-presented belongs to a party already through. Design Events 13 specifies exactly this line, and it is the control that stops a party of five being waved in on one scan.
+
+**Files:** `src/server/gate.ts` (`getGateView`), `src/app/gate/GateStation.tsx`
+
+Return the order's admission siblings with the view: total admission units, how many are `checkedInAt`-stamped, and this attendee's position. Render above the primary action:
+
+**THIS PARTY — 1 of 5 in · 4 still to scan**
+
+After admitting, it reads 2 of 5. For a single-unit order the line is suppressed rather than reading "1 of 1". For an order with **no** admission line it reads the entitlement plainly — **"Competition entry — no floor access"** — which is the same copy Task E4 needs for the headcount fix, so build it once here.
+
+### Task E9: The door pass shows its own state
+
+**Found in the day-of simulation (ledger F4).**
+
+`/confirm/<orderId>` renders a QR per `campId` but never reads `checkedInAt`. A family of five at the door cannot see which of their tickets are already in, so a re-presented phone looks identical to an unused one.
+
+**Files:** `src/app/confirm/[orderId]/page.tsx`
+
+Per ticket: the QR, the code, and a state chip — **Not yet scanned** (navy outline) / **Admitted 6:42 PM** (flag-green), with the QR de-emphasised once admitted so the eye lands on the unused ones. Header carries the party line from E8 in the guest's own words. Merch reads its `fulfilledQty` from E7 — **"Dandiya sticks: 2 of 4 collected."** No refund language anywhere on this page.
+
+### Task E10: The confirmation email carries the pass
+
+**Found in the day-of simulation (ledger F5). Raises what Task D4 assumed.**
+
+`src/lib/email.ts` has **no HTML part anywhere** — every function builds `string[]`, joins with `\n`, and sends SES `Content.Simple.Body.Text`. The confirmation body is four lines: name, event, camp IDs, a link. Design Operations 10 requires the email to *carry* the pass, and a guest in a school gym with no signal cannot open a link.
+
+**Files:** `src/lib/email.ts`, `src/server/payments.ts` (the confirmation send site)
+
+Add an HTML part alongside the existing text part — `Content.Simple.Body.Html` plus `Text`, never HTML alone, so text clients and the no-provider log path both still work. Keep the text part exactly as it is today; it is the fallback, not the deliverable.
+
+The QR must be **embedded, not linked** — a `cid:` inline attachment requires SES `SendRawEmail`/MIME, which this codebase does not do; a `data:` URI is blocked by Gmail. So: switch this one send to a raw MIME message with the QR PNGs as inline attachments, generated server-side with the `qrcode` package already in `dependencies`. If that proves too large a change for the window, the fallback is one QR per ticket rendered as a hosted image route — write down which you chose and why.
+
+Body carries, in order: party name and headcount, each ticket's code + QR, a PAID block itemising what was bought, sticks to collect, venue and doors time, and the no-refunds line. Keep it single-column, inline-styled, tables not flexbox — this is email, the design system's border-radius rule and palette still apply but the layout technology does not.
+
+**Task D4's scope is unchanged by this** — the OTP code email stays plain text. Only the order confirmation gains an HTML layer.
+
 ---
 
 # Phase F — Operations surfaces
@@ -389,13 +462,18 @@ Functionally complete already (`src/server/volunteers.ts`, `docs/Volunteer-Modul
 
 ## Verification
 
-No test framework exists — a deliberate call given the deadline. Standing up Vitest now costs days the defect list needs; add it after the event, when the payment code stops moving.
+**Full test plan: `docs/Test-Plan-Navratri.md`** — six suites (admin/setup, buying, the door, the pass, reconciliation, rehearsal), a per-task gate table, and the go-live gate. Read it before starting any task; it names what that task's completion requires.
 
-1. **`npm run verify:pricing`** — extend per phase. It currently runs 16 assertions and cleans up after itself. Add: early-bird resolution across the deadline, comp allocation against a real household allowance, once-per-event claim enforcement, and a fee issuing no ticket at the door.
-2. **`npx tsc --noEmit`** after every task.
-3. **Stripe test-mode pass on the deployed test env** — a real checkout and a real webhook, then check the ledger row. The pricing script asserts the checkout invariant but does not exercise the Stripe SDK.
-4. **Gate rehearsal on two real phones** — scan, undo, comp, cash with change, and a fee sale. This is the only way to catch the two-phones-diverging-headcount problem (`GateStation` holds the count in local `useState` and never polls).
-5. **Seed order check:** `db:seed` → `db:seed:events` → `db:seed:test`, then confirm `/api/health` and that the gate resolves the real Oct 10 event, not the fixture.
+No test framework exists — a deliberate call given the deadline. Standing up Vitest now costs days the defect list needs; add it after the event, when the payment code stops moving. Coverage comes from four layers instead:
+
+1. **`npx tsc --noEmit`** after every task.
+2. **`npm run verify:pricing`** — extend per phase. Currently 30 assertions, self-cleaning. Add: comp allocation against a real household allowance, once-per-event claim enforcement, a fee issuing no ticket at the door, and `fulfilledQty` partial hand-over (Task E7).
+3. **Browser (Playwright) per phase** — the only layer that can reach the admin surfaces at all, because every admin action calls `requireAdmin()`/`requireCoordinator()` and a tsx script has no session. Includes a real Stripe test checkout with a real webhook.
+4. **Two real phones, on-site rehearsal** — two doors scanning at once, network loss mid-scan, legibility in gym lighting. `GateStation` holds the headcount in local `useState` and never polls, so a two-device divergence is unreachable from a single browser by construction.
+
+**Setup is tested through the UI, not the seed.** The night runs on what a coordinator typed into `/admin/camps/[id]/services`, so the real Oct 10 event must be configured through those forms at least once before go-live. `db:seed:events` produces a starting point for development; it is not the go-live path.
+
+**Seed order is load-bearing:** `db:seed` → `db:seed:events` → `db:seed:test`. `seed-events.ts:170` deletes all events in the org, so running it last destroys the fixtures.
 
 ## Risks and open items
 
