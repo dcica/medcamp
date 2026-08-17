@@ -19,6 +19,10 @@ export type ServiceRow = {
   offered: boolean;
   capacity: number;
   sold: number;
+  /** Promotional price, or null when there's no early bird. */
+  earlyBirdPriceDollars: number | null;
+  /** "YYYY-MM-DDTHH:mm" for the datetime-local input, or null. */
+  earlyBirdUntil: string | null;
 };
 
 const inputCls =
@@ -82,6 +86,10 @@ function ServiceCard({
   const [active, setActive] = useState(row.active);
   const [offered, setOffered] = useState(row.offered);
   const [capacity, setCapacity] = useState(String(row.capacity));
+  const [earlyBirdPrice, setEarlyBirdPrice] = useState(
+    row.earlyBirdPriceDollars === null ? "" : String(row.earlyBirdPriceDollars),
+  );
+  const [earlyBirdUntil, setEarlyBirdUntil] = useState(row.earlyBirdUntil ?? "");
 
   return (
     <li className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
@@ -131,6 +139,27 @@ function ServiceCard({
             className={`w-full ${inputCls}`}
             value={onsitePrice}
             onChange={(e) => setOnsitePrice(e.target.value)}
+          />
+        </label>
+        <label className="text-sm text-gray-600">
+          Early-bird price ($)
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="no early bird"
+            className={`w-full ${inputCls}`}
+            value={earlyBirdPrice}
+            onChange={(e) => setEarlyBirdPrice(e.target.value)}
+          />
+        </label>
+        <label className="text-sm text-gray-600">
+          Early bird ends
+          <input
+            type="datetime-local"
+            className={`w-full ${inputCls}`}
+            value={earlyBirdUntil}
+            onChange={(e) => setEarlyBirdUntil(e.target.value)}
           />
         </label>
       </div>
@@ -205,6 +234,8 @@ function ServiceCard({
               active,
               offered,
               capacity: Number(capacity) || 0,
+              earlyBirdPriceDollars: earlyBirdPrice.trim() === "" ? null : Number(earlyBirdPrice) || 0,
+              earlyBirdUntil: earlyBirdUntil.trim() === "" ? null : earlyBirdUntil,
             }),
           )
         }
@@ -234,6 +265,8 @@ function NewService({
   const [admits, setAdmits] = useState(true);
   const [onsitePrice, setOnsitePrice] = useState("");
   const [capacity, setCapacity] = useState("200");
+  const [earlyBirdPrice, setEarlyBirdPrice] = useState("");
+  const [earlyBirdUntil, setEarlyBirdUntil] = useState("");
 
   if (!open) {
     return (
@@ -290,6 +323,24 @@ function NewService({
           value={onsitePrice}
           onChange={(e) => setOnsitePrice(e.target.value)}
         />
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          className={inputCls}
+          placeholder="Early-bird price $ (optional)"
+          value={earlyBirdPrice}
+          onChange={(e) => setEarlyBirdPrice(e.target.value)}
+        />
+        <label className="text-sm text-gray-600">
+          Early bird ends
+          <input
+            type="datetime-local"
+            className={`w-full ${inputCls}`}
+            value={earlyBirdUntil}
+            onChange={(e) => setEarlyBirdUntil(e.target.value)}
+          />
+        </label>
       </div>
       <label className="flex min-h-tap items-center gap-2 text-sm">
         <input
@@ -336,6 +387,8 @@ function NewService({
                 admits,
                 onsitePriceDollars: onsitePrice.trim() === "" ? null : Number(onsitePrice) || 0,
                 capacity: Number(capacity) || 0,
+                earlyBirdPriceDollars: earlyBirdPrice.trim() === "" ? null : Number(earlyBirdPrice) || 0,
+                earlyBirdUntil: earlyBirdUntil.trim() === "" ? null : earlyBirdUntil,
               });
               if (res.ok) {
                 setOpen(false);

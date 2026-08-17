@@ -9,6 +9,17 @@ import { ServicesManager } from "./ServicesManager";
 export const dynamic = "force-dynamic";
 
 /**
+ * Format a Date as the local "YYYY-MM-DDTHH:mm" string a datetime-local
+ * input expects. Must round-trip exactly through `new Date(str)` on save
+ * (see actions.ts's unchanged-deadline check) — using local components
+ * here matches how the browser parses what it submits back.
+ */
+function toDatetimeLocal(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/**
  * Service menu (org-level) + capacity caps (per camp). Editing a service changes
  * it org-wide; the capacity applies to this camp only.
  */
@@ -96,6 +107,16 @@ export default async function CampServicesPage({
           offered: s.caps.length > 0,
           capacity: s.caps[0]?.capacity ?? 0,
           sold: s.caps[0]?.sold ?? 0,
+          earlyBirdPriceDollars:
+            s.caps[0]?.earlyBirdPriceCents == null
+              ? null
+              : s.caps[0].earlyBirdPriceCents / 100,
+          // datetime-local input value: "YYYY-MM-DDTHH:mm" in local time, to
+          // match how the browser interprets what it submits back.
+          earlyBirdUntil:
+            s.caps[0]?.earlyBirdUntil == null
+              ? null
+              : toDatetimeLocal(s.caps[0].earlyBirdUntil),
         }))}
       />
     </div>

@@ -34,7 +34,59 @@ type RowInput = {
   /** Whether this service is offered at THIS event (controls cap existence). */
   offered: boolean;
   capacity: number;
+  /** Promotional price in dollars. Null = no early bird. */
+  earlyBirdPriceDollars: number | null;
+  /** ISO datetime-local string, e.g. "2026-09-15T23:59". Null = no early bird. */
+  earlyBirdUntil: string | null;
 };
+
+/**
+ * Half an early bird is a silent mispricing: resolvePrice treats a price
+ * without a deadline (or vice versa) as "no early bird," so a coordinator
+ * who set one half would believe a discount was live while customers paid
+ * full price. Reject before writing rather than let it resolve silently.
+ *
+ * A deadline being set or changed to a past instant is rejected too — the
+ * resolver would never open that window, so saving it can't be what the
+ * coordinator intended. `previousUntil` is the deadline already stored on
+ * this cap (null for a brand-new row); when the incoming deadline is exactly
+ * that same instant, the coordinator isn't touching the date at all — e.g.
+ * fixing a typo in the service name a year after the event — so a stale
+ * deadline from a past event must not block an unrelated edit.
+ */
+function validateEarlyBird(
+  priceDollars: number | null,
+  until: string | null,
+  previousUntil: Date | null,
+): { ok: true; priceCents: number | null; untilDate: Date | null } | { ok: false; error: string } {
+  const hasPrice = priceDollars !== null && !Number.isNaN(priceDollars);
+  const hasUntil = until !== null && until.trim() !== "";
+
+  if (hasPrice && !hasUntil) {
+    return { ok: false, error: "Early-bird price is set — also pick a deadline, or clear the price." };
+  }
+  if (hasUntil && !hasPrice) {
+    return { ok: false, error: "Early-bird deadline is set — also enter a price, or clear the deadline." };
+  }
+  if (!hasPrice && !hasUntil) {
+    return { ok: true, priceCents: null, untilDate: null };
+  }
+
+  const untilDate = new Date(until!);
+  if (Number.isNaN(untilDate.getTime())) {
+    return { ok: false, error: "Early-bird deadline is not a valid date." };
+  }
+  const deadlineUnchanged = previousUntil !== null && previousUntil.getTime() === untilDate.getTime();
+  if (!deadlineUnchanged && untilDate.getTime() < Date.now()) {
+    return { ok: false, error: "Early-bird deadline is in the past — pick a future date or clear it." };
+  }
+
+  return {
+    ok: true,
+    priceCents: Math.max(0, Math.round(priceDollars! * 100)),
+    untilDate,
+  };
+}
 
 /** Create a new catalogue service + offer it at this camp (cap with price). */
 export async function createService(
@@ -57,6 +109,11 @@ export async function createService(
   });
   if (exists) return { ok: false, error: `A service "${key}" already exists.` };
 
+  // A brand-new row has no stored deadline to fall back on — any past
+  // deadline here is one the coordinator just typed in.
+  const earlyBird = validateEarlyBird(input.earlyBirdPriceDollars, input.earlyBirdUntil, null);
+  if (!earlyBird.ok) return earlyBird;
+
   const priceCents = Math.max(0, Math.round(input.priceDollars * 100));
   const service = await db.serviceType.create({
     data: {
@@ -78,6 +135,8 @@ export async function createService(
       priceCents,
       onsitePriceCents: onsiteCents(input.onsitePriceDollars),
       capacity: Math.max(0, Math.round(input.capacity)),
+      earlyBirdPriceCents: earlyBird.priceCents,
+      earlyBirdUntil: earlyBird.untilDate,
     },
   });
   revalidatePath(`/admin/camps/${eventId}/services`);
@@ -109,6 +168,18 @@ export async function saveServiceRow(
   const existingCap = await db.serviceCap.findUnique({
     where: { eventId_serviceTypeId: { eventId, serviceTypeId: serviceId } },
   });
+
+  // Only validated when a cap is actually being written (the `offered`
+  // branch below) — un-offering deletes the cap, so stale early-bird form
+  // state left over in the UI must not block dropping the offering.
+  const earlyBird = input.offered
+    ? validateEarlyBird(
+        input.earlyBirdPriceDollars,
+        input.earlyBirdUntil,
+        existingCap?.earlyBirdUntil ?? null,
+      )
+    : null;
+  if (earlyBird && !earlyBird.ok) return earlyBird;
 
   // Catalogue attributes (org-wide). Price is NOT here — it's per-event.
   const updateCatalog = db.serviceType.update({
@@ -143,12 +214,25 @@ export async function saveServiceRow(
         error: `Capacity can't be below ${existingCap.sold} already sold.`,
       };
     }
+    // Computed above (and already confirmed ok) whenever input.offered is
+    // true, which is this branch — never null here.
+    const validated = earlyBird as { ok: true; priceCents: number | null; untilDate: Date | null };
+    const earlyBirdPriceCents = validated.priceCents;
+    const earlyBirdUntil = validated.untilDate;
     await db.$transaction([
       updateCatalog,
       db.serviceCap.upsert({
         where: { eventId_serviceTypeId: { eventId, serviceTypeId: serviceId } },
-        update: { priceCents, onsitePriceCents, capacity },
-        create: { eventId, serviceTypeId: serviceId, priceCents, onsitePriceCents, capacity },
+        update: { priceCents, onsitePriceCents, capacity, earlyBirdPriceCents, earlyBirdUntil },
+        create: {
+          eventId,
+          serviceTypeId: serviceId,
+          priceCents,
+          onsitePriceCents,
+          capacity,
+          earlyBirdPriceCents,
+          earlyBirdUntil,
+        },
       }),
     ]);
   }
