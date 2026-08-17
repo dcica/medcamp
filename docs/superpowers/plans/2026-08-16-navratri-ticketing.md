@@ -38,6 +38,9 @@ The design handoff arrived after the functional work, so this plan merges them: 
 | Medical camp | Absent from the designs by request. **Unchanged in code** — schema, stations, labs, badges all stay. |
 | Pricing | Configurable per item: early-bird (until a deadline) → online → door. Any may be unset. |
 | Payment override | Routes into `docs/Payment-Gateway.md` §5 (reason codes, separate role flag). **Do not build a second waiver path.** |
+| Merchandise at Navratri | **Three items only: admission, dandiya sticks, competition entry.** No event T-shirt — dropped by the client 2026-08-17 and un-offered from the fixture event. B1 must not seed one. |
+| Admin catalogue clutter | **Accepted as-is.** The services screen lists all org-wide services with an "Offered at this camp" checkbox; medical-camp services appear on the Navratri screen unchecked and marked "(hidden from this event's registration)". Client reviewed and elected to leave it. Do not add a filter/collapse task. |
+| Phase order | **B → C → E → D.** Event night (E) precedes member verification (D): E holds live defects, D is blocked on committee poll 4, and if D never ships members are comped at the door exactly as they are today. The plan's own risk section already said verification is "sequenced last"; the letters were wrong, not the sentence. |
 
 ---
 
