@@ -40,3 +40,7 @@ client_secret_*.json
 
 # Local design reference sketches (large PNG screenshots, not versioned)
 docs/sketches/
+.playwright-mcp/
+
+# Agent worktrees (isolated workspaces, never versioned)
+.claude/worktrees/
