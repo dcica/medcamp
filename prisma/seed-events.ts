@@ -36,6 +36,29 @@ type Seed = {
   externallyHosted?: boolean;
   hostedByName?: string;
   externalUrl?: string;
+  // Event lifecycle + config flags. All optional, defaulting to today's
+  // behaviour (OPEN, and the schema's own column defaults) so the five
+  // pre-existing events come out of the seed unchanged.
+  status?: "DRAFT" | "OPEN" | "ACTIVE";
+  collectsAttendeeDetails?: boolean;
+  honorsMembership?: boolean;
+  acceptsDonations?: boolean;
+  allowsRefunds?: boolean;
+  // Ticketed-event service menu (admission / merch / fee). Absent for events
+  // that don't sell anything at the door — see the three-kind table on
+  // ServiceType (admits × fulfillable) before adding one of these.
+  services?: {
+    key: string;
+    name: string;
+    colorHex: string;
+    priceCents: number;
+    onsitePriceCents?: number;
+    earlyBirdPriceCents?: number;
+    earlyBirdUntil?: string;
+    admits: boolean;
+    fulfillable: boolean;
+    capacity: number;
+  }[];
   volunteerRoles?: {
     key: string;
     name: string;
@@ -46,6 +69,12 @@ type Seed = {
     description?: string;
   }[];
 };
+
+// The base camp's clinical menu (prisma/seed.ts). CAMP events below mirror it
+// by explicit key, not by grabbing every org ServiceType — the org catalogue
+// now also holds ticketed-event services (see RON-2026), and a blind
+// findMany would wrongly cap those onto every camp too.
+const CAMP_SERVICE_KEYS = ["vision", "dental", "bloodwork", "general"];
 
 // Reusable volunteer-role templates. `key` is unique per event, so the same
 // template set can be shared across events without collision.
@@ -105,16 +134,60 @@ const EVENTS: Seed[] = [
     volunteerRoles: COMMUNITY_VOL_ROLES,
   },
   {
-    code: "DAN-2026",
+    // Real Oct 10 evening — the org's actual ticketed sale, not a fixture.
+    // Doors 4:30 PM / competition 5:00 PM local (CDT, UTC-5): 21:30Z–04:00Z.
+    code: "RON-2026",
     type: "GENERAL",
-    name: "Dandiya",
-    startsAt: "2026-09-27T23:00:00Z",
-    endsAt: "2026-09-28T03:00:00Z",
+    name: "Rhythm of Navratri",
+    startsAt: "2026-10-10T21:30:00Z",
+    endsAt: "2026-10-11T04:00:00Z",
     imageUrl: null,
     offersRegistration: true,
     offersVendors: true,
     offersVolunteers: true,
+    location: "McKamy Middle School, Flower Mound, TX",
     volunteerRoles: COMMUNITY_VOL_ROLES,
+    // Sells at the door too, so it stays OPEN (online sales) until a
+    // coordinator flips it to ACTIVE on the night — not seeded ACTIVE.
+    status: "OPEN",
+    collectsAttendeeDetails: false, // quantity-only checkout — tickets + merch, no per-person profile
+    honorsMembership: true, // a current family membership admits the party free
+    acceptsDonations: true,
+    allowsRefunds: false,
+    // Prices are a starting point for the committee, not a constant — the
+    // admin UI (Task A2) lets a coordinator edit any of these before doors.
+    // No early bird here: the columns exist for a coordinator to set later,
+    // but that's a committee call this seed doesn't make.
+    services: [
+      {
+        key: "floor-admission",
+        name: "Floor Admission",
+        colorHex: "#9333ea",
+        priceCents: 1500,
+        onsitePriceCents: 2000,
+        admits: true,
+        fulfillable: false,
+        capacity: 500,
+      },
+      {
+        key: "dandiya-sticks",
+        name: "Dandiya Sticks",
+        colorHex: "#f59e0b",
+        priceCents: 500,
+        admits: false,
+        fulfillable: true,
+        capacity: 500,
+      },
+      {
+        key: "competition-entry",
+        name: "Competition Entry",
+        colorHex: "#dc2626",
+        priceCents: 3000,
+        admits: false,
+        fulfillable: false,
+        capacity: 40,
+      },
+    ],
   },
   {
     code: "DIW-2026",
@@ -175,7 +248,7 @@ async function main() {
       data: {
         orgId: org.id,
         type: e.type,
-        status: "OPEN",
+        status: e.status ?? "OPEN",
         code: e.code,
         name: e.name,
         startsAt: new Date(e.startsAt),
@@ -189,6 +262,12 @@ async function main() {
         externallyHosted: e.externallyHosted ?? false,
         hostedByName: e.hostedByName ?? null,
         externalUrl: e.externalUrl ?? null,
+        // Defaults mirror the schema's own column defaults, so an event that
+        // doesn't set these comes out exactly as it did before this field existed.
+        collectsAttendeeDetails: e.collectsAttendeeDetails ?? true,
+        honorsMembership: e.honorsMembership ?? false,
+        acceptsDonations: e.acceptsDonations ?? true,
+        allowsRefunds: e.allowsRefunds ?? false,
       },
     });
 
@@ -209,11 +288,51 @@ async function main() {
       });
     }
 
+    // Explicit ticketed-service menu (RON-2026's admission/merch/fee ladder).
+    // Upsert into the org catalogue by key so a re-seed doesn't duplicate rows,
+    // then create this event's own cap. `admits` is set explicitly on every
+    // entry — the column defaults to true, and leaving it off would make a
+    // fee-kind service (competition-entry) both a fee AND a free admission.
+    for (const s of e.services ?? []) {
+      const svc = await db.serviceType.upsert({
+        where: { orgId_key: { orgId: org.id, key: s.key } },
+        update: {
+          name: s.name,
+          colorHex: s.colorHex,
+          priceCents: s.priceCents,
+          admits: s.admits,
+          fulfillable: s.fulfillable,
+        },
+        create: {
+          orgId: org.id,
+          key: s.key,
+          name: s.name,
+          colorHex: s.colorHex,
+          priceCents: s.priceCents,
+          admits: s.admits,
+          fulfillable: s.fulfillable,
+        },
+      });
+      await db.serviceCap.create({
+        data: {
+          eventId: event.id,
+          serviceTypeId: svc.id,
+          priceCents: s.priceCents,
+          onsitePriceCents: s.onsitePriceCents ?? null,
+          earlyBirdPriceCents: s.earlyBirdPriceCents ?? null,
+          earlyBirdUntil: s.earlyBirdUntil ? new Date(s.earlyBirdUntil) : null,
+          capacity: s.capacity,
+        },
+      });
+    }
+
     // The camp needs capacity caps so the registration portal can show + cap
-    // its service menu, mirroring the base seed.
+    // its service menu, mirroring the base seed. Scoped to the base clinical
+    // menu by key (CAMP_SERVICE_KEYS), not every org ServiceType — see the
+    // const's own comment for why a blind findMany is unsafe now.
     if (e.type === "CAMP") {
       const services = await db.serviceType.findMany({
-        where: { orgId: org.id },
+        where: { orgId: org.id, key: { in: CAMP_SERVICE_KEYS } },
       });
       for (const s of services) {
         await db.serviceCap.create({
