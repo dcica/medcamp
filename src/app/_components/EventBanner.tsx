@@ -46,7 +46,13 @@ export function EventBanner({
             ? "240px"
             : "(min-width: 640px) 50vw, 100vw"
         }
-        className="h-auto w-full rounded-lg"
+        // The card variant sits inside an `overflow-hidden rounded-xl` card that
+        // already clips the corners; a second 8px radius here just exposes a
+        // sliver of wrapper at the top corners. Compact has no clipping parent,
+        // so it keeps its own radius.
+        className={
+          variant === "compact" ? "h-auto w-full rounded-lg" : "h-auto w-full"
+        }
       />
     </div>
   );
