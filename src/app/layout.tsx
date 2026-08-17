@@ -19,10 +19,12 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  // Phone-first: lock the viewport so volunteer screens never need pinch/zoom.
+  // Phone-first means volunteer screens never NEED pinch/zoom — it does not mean
+  // blocking it. maximumScale: 1 fails WCAG 1.4.4 (Resize Text): low-vision users
+  // and anyone reading a badge in bad light lose the ability to zoom at all.
+  // Design for no-zoom-required; still allow zoom.
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
 };
 
 export default function RootLayout({
