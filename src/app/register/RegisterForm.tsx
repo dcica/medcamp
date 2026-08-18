@@ -3,6 +3,11 @@
 import { useState, useTransition } from "react";
 import { formatCents } from "@/lib/money";
 import { AddressInput } from "@/app/_components/AddressInput";
+import {
+  ValidatedInput,
+  validateEmail,
+  validatePhone,
+} from "@/app/_components/ValidatedInput";
 import { submitRegistration } from "./actions";
 
 type Service = {
@@ -178,19 +183,33 @@ export function RegisterForm({
           value={registrant.name}
           onChange={(e) => onRegistrantName(e.target.value)}
         />
-        <input
+        {/* Email and phone are ValidatedInput, not bare <input>: this page has no
+            <form> element and the submit below is an onClick type="button", so
+            native constraint validation never fires — type="email"/type="tel"
+            only pick the mobile keyboard. The inline check is the whole
+            mechanism; do not "simplify" it away as redundant with the input
+            type. Its rules are looser than registrationSchema's on purpose. */}
+        <ValidatedInput
           className={inputCls}
           type="email"
+          inputMode="email"
+          autoComplete="email"
+          aria-label="Email"
           placeholder="Email"
           value={registrant.email}
-          onChange={(e) => setRegistrant({ ...registrant, email: e.target.value })}
+          onChange={(email) => setRegistrant((r) => ({ ...r, email }))}
+          validate={validateEmail}
         />
-        <input
+        <ValidatedInput
           className={inputCls}
           type="tel"
+          inputMode="tel"
+          autoComplete="tel"
+          aria-label="Phone"
           placeholder="Phone"
           value={registrant.phone}
-          onChange={(e) => setRegistrant({ ...registrant, phone: e.target.value })}
+          onChange={(phone) => setRegistrant((r) => ({ ...r, phone }))}
+          validate={validatePhone}
         />
         {collectsAttendeeDetails && (
           <label className="flex min-h-tap items-center gap-3 text-sm">
