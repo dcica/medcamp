@@ -239,13 +239,41 @@ async function main() {
     },
   });
 
-  // Clear the existing (test/sample) events; cascades their orders/attendees.
-  const removed = await db.event.deleteMany({ where: { orgId: org.id } });
-  console.log(`Removed ${removed.count} existing event(s).`);
-
+  // 2026-08-17: a routine run of this script deleted every event in the org —
+  // cascading orders, attendees, and volunteer roles — because it treated the
+  // whole table as disposable "test/sample" data. It destroyed the QA fixtures
+  // (GB-2026W, MC-2027S), a completed $185 Stripe test order with five admitted
+  // attendees, and orphaned 58 payments (Payment.orderId is SetNull, not
+  // cascade, so the payment rows survived with no order to explain them). This
+  // seed does not own every event in the org — only the ones in EVENTS below —
+  // so it must never delete anything. Upsert only, forever.
   for (const e of EVENTS) {
-    const event = await db.event.create({
-      data: {
+    const event = await db.event.upsert({
+      where: { orgId_code: { orgId: org.id, code: e.code } },
+      // A coordinator drives status DRAFT → OPEN → ACTIVE → CLOSED from the
+      // admin UI. If a re-seed reset it, the door could stop working mid-event
+      // (see RON-2026 going ACTIVE on the night of Oct 10). status is set on
+      // create only — an existing event keeps whatever the coordinator set.
+      update: {
+        type: e.type,
+        name: e.name,
+        startsAt: new Date(e.startsAt),
+        endsAt: new Date(e.endsAt),
+        imageUrl: e.imageUrl,
+        offersRegistration: e.offersRegistration,
+        offersVendors: e.offersVendors,
+        offersVolunteers: e.offersVolunteers,
+        location: e.location ?? null,
+        description: e.description ?? null,
+        externallyHosted: e.externallyHosted ?? false,
+        hostedByName: e.hostedByName ?? null,
+        externalUrl: e.externalUrl ?? null,
+        collectsAttendeeDetails: e.collectsAttendeeDetails ?? true,
+        honorsMembership: e.honorsMembership ?? false,
+        acceptsDonations: e.acceptsDonations ?? true,
+        allowsRefunds: e.allowsRefunds ?? false,
+      },
+      create: {
         orgId: org.id,
         type: e.type,
         status: e.status ?? "OPEN",
@@ -272,9 +300,20 @@ async function main() {
     });
 
     // Per-event volunteer roles (so the "Volunteer" CTA leads to a real form).
+    // Upsert by (eventId, key) so a re-seed updates the template in place
+    // instead of duplicating rows.
     for (const r of e.volunteerRoles ?? []) {
-      await db.volunteerRole.create({
-        data: {
+      await db.volunteerRole.upsert({
+        where: { eventId_key: { eventId: event.id, key: r.key } },
+        update: {
+          name: r.name,
+          ageGroup: r.ageGroup,
+          minAge: r.minAge,
+          capacity: r.capacity,
+          shift: r.shift,
+          description: r.description,
+        },
+        create: {
           orgId: org.id,
           eventId: event.id,
           key: r.key,
@@ -290,9 +329,10 @@ async function main() {
 
     // Explicit ticketed-service menu (RON-2026's admission/merch/fee ladder).
     // Upsert into the org catalogue by key so a re-seed doesn't duplicate rows,
-    // then create this event's own cap. `admits` is set explicitly on every
+    // then upsert this event's own cap. `admits` is set explicitly on every
     // entry — the column defaults to true, and leaving it off would make a
     // fee-kind service (competition-entry) both a fee AND a free admission.
+    const seededServiceTypeIds: string[] = [];
     for (const s of e.services ?? []) {
       const svc = await db.serviceType.upsert({
         where: { orgId_key: { orgId: org.id, key: s.key } },
@@ -313,17 +353,57 @@ async function main() {
           fulfillable: s.fulfillable,
         },
       });
-      await db.serviceCap.create({
-        data: {
+      seededServiceTypeIds.push(svc.id);
+
+      // ServiceCap.sold is incremented atomically at payment confirmation, so
+      // a re-seed must never write a capacity below what's already sold —
+      // that would leave a cap that contradicts its own sales and corrupts
+      // capacity checks. Read the existing row first and clamp.
+      const existingCap = await db.serviceCap.findUnique({
+        where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: svc.id } },
+      });
+      const capacity = existingCap ? Math.max(s.capacity, existingCap.sold) : s.capacity;
+
+      await db.serviceCap.upsert({
+        where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: svc.id } },
+        update: {
+          priceCents: s.priceCents,
+          onsitePriceCents: s.onsitePriceCents ?? null,
+          earlyBirdPriceCents: s.earlyBirdPriceCents ?? null,
+          earlyBirdUntil: s.earlyBirdUntil ? new Date(s.earlyBirdUntil) : null,
+          capacity,
+        },
+        create: {
           eventId: event.id,
           serviceTypeId: svc.id,
           priceCents: s.priceCents,
           onsitePriceCents: s.onsitePriceCents ?? null,
           earlyBirdPriceCents: s.earlyBirdPriceCents ?? null,
           earlyBirdUntil: s.earlyBirdUntil ? new Date(s.earlyBirdUntil) : null,
-          capacity: s.capacity,
+          capacity,
         },
       });
+    }
+
+    // If a service was dropped from this event's seed list, its cap is stale.
+    // History (and anything already sold) is not the seed's to discard, so we
+    // only remove caps with sold = 0 — anything else is left in place and
+    // logged for a human to look at.
+    if (e.services) {
+      const staleCaps = await db.serviceCap.findMany({
+        where: { eventId: event.id, serviceTypeId: { notIn: seededServiceTypeIds } },
+        include: { serviceType: true },
+      });
+      for (const cap of staleCaps) {
+        if (cap.sold > 0) {
+          console.log(
+            `  ! kept stale cap for "${cap.serviceType.key}" on ${e.code} — sold=${cap.sold} > 0, not seed's to discard.`,
+          );
+        } else {
+          await db.serviceCap.delete({ where: { id: cap.id } });
+          console.log(`  - removed unsold stale cap for "${cap.serviceType.key}" on ${e.code}.`);
+        }
+      }
     }
 
     // The camp needs capacity caps so the registration portal can show + cap
@@ -335,8 +415,14 @@ async function main() {
         where: { orgId: org.id, key: { in: CAMP_SERVICE_KEYS } },
       });
       for (const s of services) {
-        await db.serviceCap.create({
-          data: { eventId: event.id, serviceTypeId: s.id, priceCents: s.priceCents, capacity: 200 },
+        const existingCap = await db.serviceCap.findUnique({
+          where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: s.id } },
+        });
+        const capacity = existingCap ? Math.max(200, existingCap.sold) : 200;
+        await db.serviceCap.upsert({
+          where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: s.id } },
+          update: { priceCents: s.priceCents, capacity },
+          create: { eventId: event.id, serviceTypeId: s.id, priceCents: s.priceCents, capacity },
         });
       }
     }
