@@ -27,7 +27,24 @@ const db = new PrismaClient();
  * no code-based scoping that would let it spare them. Running this script
  * again afterward is always safe (it only ever touches its own MC-2027S /
  * GB-2026W rows), so seed-test must be the last step, not seed-events.
+ *
+ * A SEED BOOTSTRAPS; IT DOES NOT SYNC — but only for the SHARED CATALOGUE.
+ * This file's own fixtures (MC-2027S, GB-2026W and everything under them) are
+ * deliberately owned and rebuilt: the delete-then-recreate above is correct
+ * and untouched by this rule. The *org-level* ServiceType rows it also writes
+ * (the clinical SERVICES menu, and DANDIA_SERVICES — which shares its
+ * "dandiya-sticks" key with seed-events.ts's RON-2026 menu) are not this
+ * file's alone to own, and are coordinator-editable via the admin UI
+ * (saveServiceRow: name/colorHex/priceCents/hasLab/admits/fulfillable). So
+ * those upserts follow the same rule as seed-events.ts: name/colorHex/
+ * priceCents/hasLab/admits/fulfillable are authoritative on CREATE only; an
+ * existing row is left alone by default, and only reasserted when
+ * SEED_FORCE_UPDATE=1 is set. admits/fulfillable is additionally a
+ * correctness invariant (wrong pair = a merch item minting a scannable
+ * ticket, or a fee item admitting for free) — a mismatch on an existing row
+ * is logged as a loud warning rather than silently kept or silently fixed.
  */
+const FORCE_UPDATE = process.env.SEED_FORCE_UPDATE === "1";
 
 const CAMP_CODE = "MC-2027S";
 
@@ -93,10 +110,15 @@ async function main() {
   }
 
   // ── Service menu (org-level; upsert so this works standalone) ──
+  // Bootstrap-only: this is the shared catalogue, not this fixture's alone to
+  // own (see file header). No admits/fulfillable here to check for mismatch —
+  // this array never declares them, so there's nothing to contradict.
   for (const s of SERVICES) {
     await db.serviceType.upsert({
       where: { orgId_key: { orgId: org.id, key: s.key } },
-      update: { name: s.name, priceCents: s.priceCents, colorHex: s.colorHex, hasLab: s.hasLab },
+      update: FORCE_UPDATE
+        ? { name: s.name, priceCents: s.priceCents, colorHex: s.colorHex, hasLab: s.hasLab }
+        : {},
       create: { orgId: org.id, ...s },
     });
   }
@@ -628,9 +650,37 @@ async function main() {
     { key: "event-tshirt", name: "Event T-Shirt", priceCents: 2000, colorHex: "#0ea5e9", admits: false, fulfillable: true },
   ];
   for (const s of DANDIA_SERVICES) {
+    const existingSvc = await db.serviceType.findUnique({
+      where: { orgId_key: { orgId: org.id, key: s.key } },
+    });
+
+    // admits/fulfillable is a correctness invariant, not a coordinator
+    // preference (see file header) — and dandiya-sticks is the exact shared
+    // key that motivated this rule: seed-events.ts (RON-2026, $5) and this
+    // fixture ($15) both upsert the same org-scoped row. Warn loudly on a
+    // flag-pair mismatch instead of silently keeping it (default) or
+    // silently overwriting it (force).
+    if (
+      existingSvc &&
+      (existingSvc.admits !== s.admits || existingSvc.fulfillable !== s.fulfillable)
+    ) {
+      console.warn(
+        `  ! WARNING: "${s.key}" admits/fulfillable mismatch — DB has ` +
+          `(admits=${existingSvc.admits}, fulfillable=${existingSvc.fulfillable}), seed ` +
+          `declares (admits=${s.admits}, fulfillable=${s.fulfillable}). ` +
+          (FORCE_UPDATE
+            ? `SEED_FORCE_UPDATE=1 is set — overwriting to the seed's declared pair.`
+            : `NOT overwritten — SEED_FORCE_UPDATE=1 would correct it. Verify this isn't ` +
+              `a live safety bug (scannable ticket on merch, or a free admission via a fee) ` +
+              `before forcing.`),
+      );
+    }
+
     await db.serviceType.upsert({
       where: { orgId_key: { orgId: org.id, key: s.key } },
-      update: { name: s.name, priceCents: s.priceCents, colorHex: s.colorHex, admits: s.admits, fulfillable: s.fulfillable },
+      update: FORCE_UPDATE
+        ? { name: s.name, priceCents: s.priceCents, colorHex: s.colorHex, admits: s.admits, fulfillable: s.fulfillable }
+        : {},
       create: { orgId: org.id, ...s },
     });
   }

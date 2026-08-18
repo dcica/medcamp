@@ -19,7 +19,22 @@ const db = new PrismaClient();
  * NOTE: dcica.org lists these as annual events with mostly past dates. Dates
  * here are rolled to each event's next occurrence relative to mid-2026 so the
  * "Upcoming events" page is meaningful. Times are placeholders — adjust freely.
+ *
+ * A SEED BOOTSTRAPS; IT DOES NOT SYNC. Every field below can also be edited by
+ * a coordinator through the admin UI (updateCamp for name/dates/location,
+ * setEventFlags for the collectsAttendeeDetails/honorsMembership/
+ * acceptsDonations/allowsRefunds flags, saveServiceRow for ServiceType name/
+ * colorHex/admits/fulfillable and ServiceCap priceCents/onsitePriceCents/
+ * earlyBirdPriceCents/earlyBirdUntil/capacity). On CREATE this seed sets the
+ * full definition. On an existing row it changes NOTHING by default — a
+ * routine re-run (e.g. redeploying the test environment) must not silently
+ * revert whatever a coordinator just configured. Set SEED_FORCE_UPDATE=1 to
+ * opt back into full overwrite for a developer who genuinely wants seed
+ * values reasserted (e.g. resetting a scratch database) — except
+ * Event.status, which is create-only in every mode: see the comment on the
+ * event upsert below for why.
  */
+const FORCE_UPDATE = process.env.SEED_FORCE_UPDATE === "1";
 
 type Seed = {
   code: string;
@@ -154,10 +169,13 @@ const EVENTS: Seed[] = [
     honorsMembership: true, // a current family membership admits the party free
     acceptsDonations: true,
     allowsRefunds: false,
-    // Prices are a starting point for the committee, not a constant — the
-    // admin UI (Task A2) lets a coordinator edit any of these before doors.
-    // No early bird here: the columns exist for a coordinator to set later,
-    // but that's a committee call this seed doesn't make.
+    // Prices below are a starting point for the committee, not a constant —
+    // the admin UI (Task A2, ServicesManager/saveServiceRow) lets a
+    // coordinator edit any of these before doors. That edit now sticks: this
+    // seed only sets these values on first create, and leaves them alone on
+    // every re-run (SEED_FORCE_UPDATE=1 to reassert them deliberately). No
+    // early bird here: the columns exist for a coordinator to set later, but
+    // that's a committee call this seed doesn't make.
     services: [
       {
         key: "floor-admission",
@@ -239,6 +257,15 @@ async function main() {
     },
   });
 
+  // Counts for the end-of-run summary — an operator must be able to tell
+  // whether a run changed anything without querying the database. Scoped to
+  // events + services (the two things logged with a per-row prefix below);
+  // ServiceCap/VolunteerRole follow the identical create-only-by-default rule
+  // but aren't individually logged, to keep a routine run's output short.
+  let created = 0;
+  let unchanged = 0;
+  let updatedCount = 0;
+
   // 2026-08-17: a routine run of this script deleted every event in the org —
   // cascading orders, attendees, and volunteer roles — because it treated the
   // whole table as disposable "test/sample" data. It destroyed the QA fixtures
@@ -248,71 +275,81 @@ async function main() {
   // seed does not own every event in the org — only the ones in EVENTS below —
   // so it must never delete anything. Upsert only, forever.
   for (const e of EVENTS) {
+    const existingEvent = await db.event.findUnique({
+      where: { orgId_code: { orgId: org.id, code: e.code } },
+    });
+
+    // Descriptive + config fields only — status is handled separately below
+    // and must never appear in this object, in either mode.
+    const eventFields = {
+      type: e.type,
+      name: e.name,
+      startsAt: new Date(e.startsAt),
+      endsAt: new Date(e.endsAt),
+      imageUrl: e.imageUrl,
+      offersRegistration: e.offersRegistration,
+      offersVendors: e.offersVendors,
+      offersVolunteers: e.offersVolunteers,
+      location: e.location ?? null,
+      description: e.description ?? null,
+      externallyHosted: e.externallyHosted ?? false,
+      hostedByName: e.hostedByName ?? null,
+      externalUrl: e.externalUrl ?? null,
+      collectsAttendeeDetails: e.collectsAttendeeDetails ?? true,
+      honorsMembership: e.honorsMembership ?? false,
+      acceptsDonations: e.acceptsDonations ?? true,
+      allowsRefunds: e.allowsRefunds ?? false,
+    };
+
     const event = await db.event.upsert({
       where: { orgId_code: { orgId: org.id, code: e.code } },
       // A coordinator drives status DRAFT → OPEN → ACTIVE → CLOSED from the
       // admin UI. If a re-seed reset it, the door could stop working mid-event
       // (see RON-2026 going ACTIVE on the night of Oct 10). status is set on
-      // create only — an existing event keeps whatever the coordinator set.
-      update: {
-        type: e.type,
-        name: e.name,
-        startsAt: new Date(e.startsAt),
-        endsAt: new Date(e.endsAt),
-        imageUrl: e.imageUrl,
-        offersRegistration: e.offersRegistration,
-        offersVendors: e.offersVendors,
-        offersVolunteers: e.offersVolunteers,
-        location: e.location ?? null,
-        description: e.description ?? null,
-        externallyHosted: e.externallyHosted ?? false,
-        hostedByName: e.hostedByName ?? null,
-        externalUrl: e.externalUrl ?? null,
-        collectsAttendeeDetails: e.collectsAttendeeDetails ?? true,
-        honorsMembership: e.honorsMembership ?? false,
-        acceptsDonations: e.acceptsDonations ?? true,
-        allowsRefunds: e.allowsRefunds ?? false,
-      },
+      // create only — an existing event keeps whatever the coordinator set,
+      // in EVERY mode, including SEED_FORCE_UPDATE=1. Everything else is a
+      // bootstrap default a coordinator may have since changed via updateCamp
+      // / setEventFlags, so by default this update writes nothing at all.
+      update: FORCE_UPDATE ? eventFields : {},
       create: {
         orgId: org.id,
-        type: e.type,
         status: e.status ?? "OPEN",
         code: e.code,
-        name: e.name,
-        startsAt: new Date(e.startsAt),
-        endsAt: new Date(e.endsAt),
-        imageUrl: e.imageUrl,
-        offersRegistration: e.offersRegistration,
-        offersVendors: e.offersVendors,
-        offersVolunteers: e.offersVolunteers,
-        location: e.location ?? null,
-        description: e.description ?? null,
-        externallyHosted: e.externallyHosted ?? false,
-        hostedByName: e.hostedByName ?? null,
-        externalUrl: e.externalUrl ?? null,
+        ...eventFields,
         // Defaults mirror the schema's own column defaults, so an event that
         // doesn't set these comes out exactly as it did before this field existed.
-        collectsAttendeeDetails: e.collectsAttendeeDetails ?? true,
-        honorsMembership: e.honorsMembership ?? false,
-        acceptsDonations: e.acceptsDonations ?? true,
-        allowsRefunds: e.allowsRefunds ?? false,
+        // (Already folded into eventFields above via the same ?? fallbacks.)
       },
     });
 
+    if (!existingEvent) {
+      created++;
+      console.log(`+ ${e.name} (${e.code})`);
+    } else if (FORCE_UPDATE) {
+      updatedCount++;
+      console.log(`~ ${e.name} (${e.code})`);
+    } else {
+      unchanged++;
+      console.log(`= ${e.name} (${e.code})`);
+    }
+
     // Per-event volunteer roles (so the "Volunteer" CTA leads to a real form).
     // Upsert by (eventId, key) so a re-seed updates the template in place
-    // instead of duplicating rows.
+    // instead of duplicating rows. Bootstrap-only by default like everything
+    // else — a coordinator may have retitled a role or resized its capacity.
     for (const r of e.volunteerRoles ?? []) {
       await db.volunteerRole.upsert({
         where: { eventId_key: { eventId: event.id, key: r.key } },
-        update: {
-          name: r.name,
-          ageGroup: r.ageGroup,
-          minAge: r.minAge,
-          capacity: r.capacity,
-          shift: r.shift,
-          description: r.description,
-        },
+        update: FORCE_UPDATE
+          ? {
+              name: r.name,
+              ageGroup: r.ageGroup,
+              minAge: r.minAge,
+              capacity: r.capacity,
+              shift: r.shift,
+              description: r.description,
+            }
+          : {},
         create: {
           orgId: org.id,
           eventId: event.id,
@@ -334,15 +371,44 @@ async function main() {
     // fee-kind service (competition-entry) both a fee AND a free admission.
     const seededServiceTypeIds: string[] = [];
     for (const s of e.services ?? []) {
+      const existingSvc = await db.serviceType.findUnique({
+        where: { orgId_key: { orgId: org.id, key: s.key } },
+      });
+
+      // admits/fulfillable is a correctness invariant, not a coordinator
+      // preference — the three kinds are admission (admits, !fulfillable),
+      // merch (!admits, fulfillable), and fee (neither). A wrong pair either
+      // hands a scannable door ticket to a merch purchase or admits someone
+      // who only paid a fee. Warn loudly on mismatch instead of silently
+      // keeping it (default) or silently overwriting it (force) — either one
+      // could be hiding a live safety bug.
+      if (
+        existingSvc &&
+        (existingSvc.admits !== s.admits || existingSvc.fulfillable !== s.fulfillable)
+      ) {
+        console.warn(
+          `  ! WARNING: "${s.key}" admits/fulfillable mismatch — DB has ` +
+            `(admits=${existingSvc.admits}, fulfillable=${existingSvc.fulfillable}), seed ` +
+            `declares (admits=${s.admits}, fulfillable=${s.fulfillable}). ` +
+            (FORCE_UPDATE
+              ? `SEED_FORCE_UPDATE=1 is set — overwriting to the seed's declared pair.`
+              : `NOT overwritten — SEED_FORCE_UPDATE=1 would correct it. Verify this isn't ` +
+                `a live safety bug (scannable ticket on merch, or a free admission via a fee) ` +
+                `before forcing.`),
+        );
+      }
+
       const svc = await db.serviceType.upsert({
         where: { orgId_key: { orgId: org.id, key: s.key } },
-        update: {
-          name: s.name,
-          colorHex: s.colorHex,
-          priceCents: s.priceCents,
-          admits: s.admits,
-          fulfillable: s.fulfillable,
-        },
+        update: FORCE_UPDATE
+          ? {
+              name: s.name,
+              colorHex: s.colorHex,
+              priceCents: s.priceCents,
+              admits: s.admits,
+              fulfillable: s.fulfillable,
+            }
+          : {},
         create: {
           orgId: org.id,
           key: s.key,
@@ -355,10 +421,23 @@ async function main() {
       });
       seededServiceTypeIds.push(svc.id);
 
+      if (!existingSvc) {
+        created++;
+        console.log(`  + ${s.name} (${s.key})`);
+      } else if (FORCE_UPDATE) {
+        updatedCount++;
+        console.log(`  ~ ${s.name} (${s.key})`);
+      } else {
+        unchanged++;
+        console.log(`  = ${s.name} (${s.key})`);
+      }
+
       // ServiceCap.sold is incremented atomically at payment confirmation, so
       // a re-seed must never write a capacity below what's already sold —
       // that would leave a cap that contradicts its own sales and corrupts
-      // capacity checks. Read the existing row first and clamp.
+      // capacity checks. Read the existing row first and clamp. This clamp
+      // applies even under SEED_FORCE_UPDATE=1 — force reasserts coordinator
+      // config, it does not relicense selling past capacity.
       const existingCap = await db.serviceCap.findUnique({
         where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: svc.id } },
       });
@@ -366,13 +445,15 @@ async function main() {
 
       await db.serviceCap.upsert({
         where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: svc.id } },
-        update: {
-          priceCents: s.priceCents,
-          onsitePriceCents: s.onsitePriceCents ?? null,
-          earlyBirdPriceCents: s.earlyBirdPriceCents ?? null,
-          earlyBirdUntil: s.earlyBirdUntil ? new Date(s.earlyBirdUntil) : null,
-          capacity,
-        },
+        update: FORCE_UPDATE
+          ? {
+              priceCents: s.priceCents,
+              onsitePriceCents: s.onsitePriceCents ?? null,
+              earlyBirdPriceCents: s.earlyBirdPriceCents ?? null,
+              earlyBirdUntil: s.earlyBirdUntil ? new Date(s.earlyBirdUntil) : null,
+              capacity,
+            }
+          : {},
         create: {
           eventId: event.id,
           serviceTypeId: svc.id,
@@ -409,7 +490,9 @@ async function main() {
     // The camp needs capacity caps so the registration portal can show + cap
     // its service menu, mirroring the base seed. Scoped to the base clinical
     // menu by key (CAMP_SERVICE_KEYS), not every org ServiceType — see the
-    // const's own comment for why a blind findMany is unsafe now.
+    // const's own comment for why a blind findMany is unsafe now. Same
+    // bootstrap-only rule and sold-clamp as the ticketed-service caps above —
+    // a coordinator can reprice a camp service from the same admin screen.
     if (e.type === "CAMP") {
       const services = await db.serviceType.findMany({
         where: { orgId: org.id, key: { in: CAMP_SERVICE_KEYS } },
@@ -421,14 +504,17 @@ async function main() {
         const capacity = existingCap ? Math.max(200, existingCap.sold) : 200;
         await db.serviceCap.upsert({
           where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: s.id } },
-          update: { priceCents: s.priceCents, capacity },
+          update: FORCE_UPDATE ? { priceCents: s.priceCents, capacity } : {},
           create: { eventId: event.id, serviceTypeId: s.id, priceCents: s.priceCents, capacity },
         });
       }
     }
-
-    console.log(`+ ${e.name} (${e.code})`);
   }
+
+  console.log(
+    `\nSummary: ${created} created, ${unchanged} left alone, ${updatedCount} updated ` +
+      `(SEED_FORCE_UPDATE=${FORCE_UPDATE ? "1" : "0"}).`,
+  );
 }
 
 main()
