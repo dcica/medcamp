@@ -113,6 +113,14 @@ export default async function EventsPage() {
           // coming to an event the gate is still admitting people to would have
           // the public page contradict the door. DRAFT never went public at all,
           // so it has nothing to be remembered for.
+          //
+          // The consequence, accepted knowingly: an ACTIVE event whose `endsAt`
+          // has passed appears in NEITHER list — the upcoming query requires
+          // `endsAt >= now`, this one refuses ACTIVE — until a coordinator moves
+          // it to CLOSED, at which point it shows up here. That transition is
+          // not extra work invented for this page: the purge state machine
+          // requires it anyway. Do not add code here to paper over the gap; the
+          // durable fix is a coordinator-side stale-ACTIVE warning, in Phase F.
           status: { in: ["OPEN", "CLOSED", "PURGEABLE", "PURGED"] },
         },
         orderBy: { endsAt: "desc" }, // most recently finished first
@@ -263,6 +271,17 @@ export default async function EventsPage() {
           <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
             Recently finished
           </h2>
+          {/* The unconditional half of the thanks. The per-card count below is
+              real when there is a real number behind it, but this org's
+              community events are not ticketed and nobody scans in, so on the
+              rows a visitor actually sees that line never fires — leaving the
+              whole section reading as an index of things that ended. Thanks that
+              counts nothing is true of a sold-out hall and of a booth on a town
+              common alike. */}
+          <p className="mt-2 text-sm text-gray-700">
+            Thank you to everyone who came out, and to the volunteers who made
+            these happen.
+          </p>
           {/* Once, on the section — this is the sentence that stops someone
               turning up with an old QR code, and it stops being read if it is
               stamped on every card. */}

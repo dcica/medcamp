@@ -106,7 +106,7 @@ Assert (L1, via `resolvePrice`): before the deadline online resolves $12; after 
 
 ### A-5 · Capacity caps
 
-Set a capacity of 3 on some item. Sell 3. Assert the 4th purchase is refused **at payment confirmation**, not merely hidden in the UI — capacity is enforced atomically in `confirmOrderPaid`, and the register page's sold-out styling is a courtesy, not the control. Assert the refused buyer is not charged.
+Set a capacity of 3 on some item. Sell 3. Assert the 4th purchase is refused **at payment confirmation**, not merely hidden in the UI — capacity is enforced atomically in `confirmOrderPaid`, which is the *only* control — the register form has no sold-out state at all and never disables an item for capacity. Assert the refused buyer is not charged.
 
 ### A-6 · Lifecycle transitions
 

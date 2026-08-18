@@ -432,8 +432,10 @@ async function main(): Promise<void> {
   // The STATUS axis of the carve-out. This is the realistic post-camp row shape:
   // a camp that ran, opened its walk-in door, and was closed. `transitionCamp`
   // to CLOSED writes only `status` and `closedAt` (`actions.ts:118-125`), and
-  // `setWalkIn` is the only writer of `walkInOpensAt` (`actions.ts:167`). That
-  // writer CAN null the column — `walkInOpensAt: open ? new Date() : null` —
+  // `setWalkIn` is the only writer that can CLEAR `walkInOpensAt`
+  // (`actions.ts:167`) — `prisma/seed-test.ts:209` writes the column too, but
+  // only ever sets it, and never at runtime. That writer CAN null the column
+  // — `walkInOpensAt: open ? new Date() : null` —
   // but the only caller is a toggle (`CampControls.tsx:55`) rendered inside
   // `{status === "ACTIVE" && (…)}` (`CampControls.tsx:85`), and the `NEXT` map
   // gives CLOSED exactly one onward transition, PURGEABLE, with no path back to

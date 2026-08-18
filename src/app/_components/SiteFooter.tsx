@@ -1,3 +1,5 @@
+import { CONTACT_EMAIL } from "@/lib/contact";
+
 /**
  * Global footer. Carries the open-source (AGPL-3.0) notice and contact the
  * platform mandate requires, and gives long pages a clear end. Hidden on print
@@ -26,7 +28,7 @@ export function SiteFooter() {
           Open source (AGPL-3.0)
         </a>
         <a
-          href="mailto:sachin@buzzclan.com"
+          href={`mailto:${CONTACT_EMAIL}`}
           className="inline-flex min-h-tap items-center underline"
         >
           Contact

@@ -139,7 +139,7 @@ export default async function RegisterPage({
         }
       : {
           label: "Services",
-          body: "Use − and + to set how many of each item you want. The total updates live, and prices are confirmed on the server at payment.",
+          body: "Use − and + to change a count, or set it back to zero to drop the item. The total updates live, and prices are confirmed on the server at payment.",
         },
     // Only worth explaining when there is a lab service AND an address field to
     // explain — the field is rendered per attendee, so quantity mode never asks

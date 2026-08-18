@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { PageHelp } from "@/app/_components/PageHelp";
+import { CONTACT_EMAIL } from "@/lib/contact";
 
 export const dynamic = "force-dynamic";
 
-// Where vendor enquiries go. TODO: promote to Organization.settings (per-tenant
-// contact) once the vendor module lands; hardcoded to the documented contact
-// for now to avoid a half-built form.
-const CONTACT_EMAIL = "sachin@buzzclan.com";
+// Where vendor enquiries go: the org's one public address, shared with the
+// footer and the empty calendar state. The per-tenant-settings note lives on the
+// constant itself now, so it cannot rot in one copy and not the others.
 
 /**
  * Vendor interest page. Lightweight by design — the full vendor module (booths,

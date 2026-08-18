@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CONTACT_EMAIL } from "@/lib/contact";
 
 /**
  * The "nothing on the calendar" state shared by the two public event surfaces
@@ -18,12 +19,10 @@ import Link from "next/link";
  * reads, so that is what the page offers and what it says out loud.
  */
 
-// The same mailbox as SiteFooter's Contact link — the product's only contact
-// affordance. There is no /contact route, and no public membership route either
-// (only /admin/membership, behind staff auth), so the membership ask goes to a
-// human here instead of a 404.
-const CONTACT_EMAIL = "sachin@buzzclan.com";
-
+// Literally the same mailbox as SiteFooter's Contact link, now from the same
+// constant rather than a matching literal. There is no /contact route, and no
+// public membership route either (only /admin/membership, behind staff auth), so
+// the membership ask goes to a human here instead of a 404.
 const NOTIFY_HREF = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(
   "Let me know when registration opens",
 )}`;
