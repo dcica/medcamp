@@ -82,11 +82,30 @@ type BaseOrder = {
  * ACTIVE counts as open only once walk-in selling has been opened, which is what
  * `walkInOpensAt` already exists to express — being mid-event is not by itself
  * permission to keep selling online.
+ *
+ * An event that is over is closed whatever its status says, because status is
+ * set by hand and nobody remembers: a finished event sat OPEN for six weeks and
+ * kept taking money. The date test is `endsAt`, NOT `startsAt` — an event in
+ * progress must keep selling to the crowd already in the room, and `startsAt`
+ * would slam the form shut the instant the doors opened. Do not "simplify" it.
+ *
+ * The corollary is deliberate: an event running past its scheduled `endsAt`
+ * stops selling ONLINE at that moment. The door is unaffected — walk-up sales
+ * go through the gate actions, which never call this — so a coordinator who
+ * wants the public form open later moves `endsAt`.
+ *
+ * `now` is injected so both sides of the boundary are testable without waiting
+ * for the wall clock.
  */
-export function isRegistrationOpen(event: {
-  status: string;
-  walkInOpensAt: Date | null;
-}): boolean {
+export function isRegistrationOpen(
+  event: {
+    status: string;
+    walkInOpensAt: Date | null;
+    endsAt: Date;
+  },
+  now: Date = new Date(),
+): boolean {
+  if (event.endsAt < now) return false;
   if (event.status === "OPEN") return true;
   return event.status === "ACTIVE" && event.walkInOpensAt !== null;
 }

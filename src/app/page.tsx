@@ -77,7 +77,14 @@ export default async function Home() {
   const org = await getActiveOrg();
   const events: EventRow[] = org
     ? await db.event.findMany({
-        where: { orgId: org.id, status: { in: ["OPEN", "ACTIVE"] } },
+        // `endsAt`, not `startsAt`: an event in progress stays listed for the
+        // crowd already in the room. Status alone is set by hand and drifts —
+        // a finished event stayed here for six weeks with a live CTA.
+        where: {
+          orgId: org.id,
+          status: { in: ["OPEN", "ACTIVE"] },
+          endsAt: { gte: new Date() },
+        },
         orderBy: { startsAt: "asc" },
       })
     : [];

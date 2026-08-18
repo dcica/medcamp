@@ -47,7 +47,7 @@ async function checkoutTotal(orderId: string): Promise<number> {
 }
 
 async function main(): Promise<void> {
-  const { createRegistration } = await import("../src/server/registration");
+  const { createRegistration, isRegistrationOpen } = await import("../src/server/registration");
   const { confirmOrderPaid } = await import("../src/server/payments");
   const { resolvePrice } = await import("../src/lib/pricing");
 
@@ -62,8 +62,11 @@ async function main(): Promise<void> {
       status: "OPEN",
       code: CODE,
       name: "Pricing Verification",
-      startsAt: new Date("2026-12-01T00:00:00Z"),
-      endsAt: new Date("2026-12-01T04:00:00Z"),
+      // Relative to now, never a literal date: isRegistrationOpen now refuses a
+      // finished event, so a hardcoded endsAt would turn this whole script red
+      // the day it passed — a time bomb, not a test.
+      startsAt: new Date(Date.now() + 30 * 24 * 3600_000),
+      endsAt: new Date(Date.now() + 30 * 24 * 3600_000 + 4 * 3600_000),
       collectsAttendeeDetails: false,
       honorsMembership: true,
     },
@@ -319,6 +322,56 @@ async function main(): Promise<void> {
     where: { orderId: earlyBirdOrder.orderId, serviceTypeId: earlyBird.id },
   });
   check("the frozen line item itself carries the early-bird price", earlyBirdLine.amountCents, 1000);
+
+  // ── 8. A finished event stops selling (pure predicate, no rows needed) ──
+  // `isRegistrationOpen` gates BOTH the public form and createRegistration, so
+  // these six assertions are the whole online sell/no-sell rule. `now` is
+  // injected, which is the only way to sit on both sides of the boundary
+  // without waiting for the clock.
+  console.log("\n8. isRegistrationOpen: a finished event stops selling");
+  const now = new Date("2026-10-10T18:00:00Z");
+  const future = new Date(now.getTime() + 3600_000);
+  const past = new Date(now.getTime() - 3600_000);
+  const walkIn = new Date(now.getTime() - 7200_000);
+
+  check(
+    "OPEN and not yet over: sells",
+    isRegistrationOpen({ status: "OPEN", walkInOpensAt: null, endsAt: future }, now),
+    true,
+  );
+  check(
+    "OPEN but already over: does NOT sell",
+    isRegistrationOpen({ status: "OPEN", walkInOpensAt: null, endsAt: past }, now),
+    false,
+  );
+  check(
+    "ACTIVE with walk-in open, not yet over: sells",
+    isRegistrationOpen({ status: "ACTIVE", walkInOpensAt: walkIn, endsAt: future }, now),
+    true,
+  );
+  check(
+    "ACTIVE with walk-in open but already over: does NOT sell",
+    isRegistrationOpen({ status: "ACTIVE", walkInOpensAt: walkIn, endsAt: past }, now),
+    false,
+  );
+  // Pre-existing rule, asserted here so this task cannot quietly undo it:
+  // mid-event is not by itself permission to keep selling online.
+  check(
+    "ACTIVE with walk-in NOT opened: does NOT sell even though the event is live",
+    isRegistrationOpen({ status: "ACTIVE", walkInOpensAt: null, endsAt: future }, now),
+    false,
+  );
+  // The endsAt-not-startsAt guarantee. Doors opened hours ago and the floor
+  // runs past midnight; the form must stay open. Anyone who "fixes" the filter
+  // to startsAt fails exactly this line.
+  // Not a fresh literal, so the extra `startsAt` is allowed through: the point
+  // of this row is that a started-but-unfinished event carries one.
+  const inProgress = { status: "OPEN", walkInOpensAt: null, startsAt: past, endsAt: future };
+  check(
+    "in progress (started in the past, ends in the future): still sells",
+    isRegistrationOpen(inProgress, now),
+    true,
+  );
 
   await cleanup(org.id);
 }
