@@ -18,8 +18,14 @@ import { useId, useState } from "react";
  *
  * It never blocks. Validation state does not disable submit and never prevents
  * typing — the server schema (registrationSchema) remains the only authority.
- * The rules passed in here are deliberately WEAKER than the server's so a client
- * check can never reject an address or number the server would accept.
+ *
+ * THE INVARIANT, which is load-bearing: no check here may reject anything
+ * registrationSchema accepts. Each rule is therefore either strictly weaker
+ * than its server counterpart (email) or character-for-character identical to
+ * it (name, phone) — never tighter. A client validator stricter than the server
+ * turns a buyer with a working address or number away at the last step, and on
+ * the night of an event there is no recovery path. When a server bound moves,
+ * move the matching rule here in the SAME commit.
  *
  * Drop-in for volunteer / vendor / org-onboarding fields with the same defect.
  */
@@ -114,14 +120,39 @@ export function validateEmail(value: string): string | null {
 }
 
 /**
- * Phone check, identical to the server rule (`z.string().min(7)`) — length only.
- * No formatting, no masking, no country-code inference, and deliberately NOT a
- * digit count: "at least 7 digits" would reject strings the server accepts, and
- * an international or extension-bearing number the buyer types their own way
- * must go through untouched.
+ * Phone check, identical to the server rule (`z.string().trim().min(7)`) —
+ * length of the TRIMMED value, and nothing else. No formatting, no masking, no
+ * country-code inference, and deliberately NOT a digit count: "at least 7
+ * digits" would reject strings the server accepts, and an international or
+ * extension-bearing number the buyer types their own way must go through
+ * untouched.
+ *
+ * The `.trim()` here mirrors the `.trim()` added to registrationSchema in the
+ * same commit and must not drift from it. Before that, BOTH sides measured the
+ * raw string, which is why this check was untrimmed. Trimming only the server
+ * would have re-opened the divergence in the harmless-looking direction —
+ * client accepts seven spaces, server refuses them — costing the buyer a round
+ * trip and a page-level red box instead of inline feedback under the field.
  */
 export function validatePhone(value: string): string | null {
-  if (value.length === 0) return "Phone is required.";
-  if (value.length < 7) return "That phone number looks too short.";
+  const v = value.trim();
+  if (v.length === 0) return "Phone is required.";
+  if (v.length < 7) return "That phone number looks too short.";
+  return null;
+}
+
+/**
+ * Name check, identical to the server rule (`z.string().trim().min(1)`): a
+ * value that is empty once trimmed is not a name. Nothing else is checked —
+ * no minimum word count, no letters-only rule, no length ceiling. Mononyms,
+ * initials, non-Latin scripts and names with punctuation are all real, and
+ * rejecting one costs a sale with no recovery path at the door.
+ *
+ * The name is what `formatCampId` prints on the badge, so "  " here becomes a
+ * blank badge nobody can match to a person at check-in — which is why the
+ * server started trimming and why this exists at all.
+ */
+export function validateName(value: string): string | null {
+  if (value.trim().length === 0) return "Name is required.";
   return null;
 }

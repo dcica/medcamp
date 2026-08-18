@@ -6,6 +6,7 @@ import { AddressInput } from "@/app/_components/AddressInput";
 import {
   ValidatedInput,
   validateEmail,
+  validateName,
   validatePhone,
 } from "@/app/_components/ValidatedInput";
 import { submitRegistration } from "./actions";
@@ -177,11 +178,18 @@ export function RegisterForm({
         <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
           Your contact details
         </h2>
-        <input
+        {/* Name is a ValidatedInput too, since the server began trimming before
+            measuring: a whitespace-only name is now refused, and without an
+            inline check the buyer would learn that only after a submit round
+            trip, in the page-level red box, away from the field at fault. */}
+        <ValidatedInput
           className={inputCls}
+          autoComplete="name"
+          aria-label="Full name"
           placeholder="Full name"
           value={registrant.name}
-          onChange={(e) => onRegistrantName(e.target.value)}
+          onChange={onRegistrantName}
+          validate={validateName}
         />
         {/* Email and phone are ValidatedInput, not bare <input>: this page has no
             <form> element and the submit below is an onClick type="button", so

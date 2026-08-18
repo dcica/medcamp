@@ -19,7 +19,9 @@
     "db:seed:test": "tsx prisma/seed-test.ts",
     "db:seed:events": "tsx prisma/seed-events.ts",
     "db:import:members": "tsx prisma/import-members.ts",
-    "verify:pricing": "tsx scripts/verify-pricing.ts"
+    "verify:pricing": "tsx scripts/verify-pricing.ts",
+    "verify:validation": "tsx scripts/verify-validation.ts",
+    "verify": "npm run verify:pricing && npm run verify:validation"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

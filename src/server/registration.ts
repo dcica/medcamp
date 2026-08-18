@@ -23,8 +23,23 @@ import { resolvePrice } from "@/lib/pricing";
  * services priced at 0 for this order).
  */
 
+/**
+ * `.trim()` BEFORE `.min()` on every required free-text field, throughout this
+ * schema. zod counts a space, so a bare `.min(1)` accepts "   " and a bare
+ * `.min(7)` accepts seven spaces — no crafted request needed, a thumb resting
+ * on the spacebar of a 6" phone does it. What that costs: the name is what
+ * `formatCampId` prints on the badge, so a whitespace name is a blank badge
+ * that registration cannot match to a person at check-in, and a whitespace
+ * phone is an unreachable contact on the ONLY record a camp keeps (No-PHI —
+ * there is no second record to fall back on). `.trim()` is also a transform,
+ * so a padded name is stored without its padding.
+ *
+ * Whenever a bound here tightens, tighten the matching client check in
+ * `src/app/_components/ValidatedInput.tsx` in the same commit — see the
+ * invariant recorded there.
+ */
 const attendeeInput = z.object({
-  name: z.string().min(1, "Attendee name is required"),
+  name: z.string().trim().min(1, "Attendee name is required"),
   mailingAddress: z.string().optional(),
   serviceKeys: z.array(z.string()).min(1, "Pick at least one service"),
 });
@@ -37,9 +52,9 @@ const quantityInput = z.object({
 export const registrationSchema = z.object({
   eventId: z.string().min(1),
   registrant: z.object({
-    name: z.string().min(1, "Name is required"),
+    name: z.string().trim().min(1, "Name is required"),
     email: z.string().email("Valid email required"),
-    phone: z.string().min(7, "Phone is required"),
+    phone: z.string().trim().min(7, "Phone is required"),
   }),
   marketingConsent: z.boolean().default(false),
   membershipPlanId: z.string().optional(),
@@ -139,10 +154,21 @@ export async function createRegistration(
 ): Promise<CreatedOrder> {
   const data = registrationSchema.parse(input);
 
-  const event = await db.event.findUniqueOrThrow({
+  // findUnique + explicit guard, NOT findUniqueOrThrow. Prisma's
+  // NotFoundError is a plain Error whose message is a ~456-character dump
+  // carrying the absolute path of THIS file and a numbered snippet of it, and
+  // `toBuyerMessage` passes plain Errors through verbatim (by design, so the
+  // buyer-facing throws below survive). A bogus eventId is reachable by editing
+  // the POST body — exactly the person who must not be handed the server's
+  // directory layout. The message below is a plain Error on purpose: it is
+  // buyer copy, so passing through toBuyerMessage is intentional, not accidental.
+  const event = await db.event.findUnique({
     where: { id: data.eventId },
     include: { org: true },
   });
+  if (!event) {
+    throw new Error("That event could not be found.");
+  }
   if (!isRegistrationOpen(event)) {
     throw new Error("Registration for this event is not open.");
   }
