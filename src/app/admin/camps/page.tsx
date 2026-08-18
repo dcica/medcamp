@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/server/admin";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
+import { VENUE_TIME_ZONE } from "@/lib/eventTime";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { CreateCampForm } from "./CreateCampForm";
 
@@ -59,7 +60,12 @@ export default async function CampsPage() {
                 </span>
               </div>
               <div className="mt-1 text-xs text-gray-500">
-                {c.code} · {c.startsAt.toLocaleDateString()}
+                {/* Venue day — an admin list must agree with the public page
+                    and the flyer about what date an event is on. */}
+                {c.code} ·{" "}
+                {c.startsAt.toLocaleDateString(undefined, {
+                  timeZone: VENUE_TIME_ZONE,
+                })}
               </div>
             </Link>
           </li>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
+import { VENUE_TIME_ZONE, formatWhen } from "@/lib/eventTime";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { EventBanner } from "@/app/_components/EventBanner";
 import { EmptyEventsState } from "@/app/_components/EmptyEventsState";
@@ -28,19 +29,15 @@ const REGISTER_LABEL: Record<string, string> = {
   MEMBERSHIP_DRIVE: "Join or renew",
 };
 
-function formatWhen(start: Date, end: Date): string {
-  const date = new Intl.DateTimeFormat("en-US", { dateStyle: "medium" });
-  const time = new Intl.DateTimeFormat("en-US", { timeStyle: "short" });
-  const sameDay = start.toDateString() === end.toDateString();
-  return sameDay
-    ? `${date.format(start)} · ${time.format(start)} – ${time.format(end)}`
-    : `${date.format(start)} – ${date.format(end)}`;
-}
-
 // Finished events get the day only. Door times are instructions, and an
-// instruction on something that already happened is just noise.
+// instruction on something that already happened is just noise. Still the venue
+// day, not the server's: an evening event ending after midnight UTC would
+// otherwise be remembered on the wrong date.
 function formatDay(d: Date): string {
-  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium" }).format(d);
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeZone: VENUE_TIME_ZONE,
+  }).format(d);
 }
 
 /**

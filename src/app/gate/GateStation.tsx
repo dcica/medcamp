@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { formatCents } from "@/lib/money";
+import { VENUE_TIME_ZONE } from "@/lib/eventTime";
 import { QrScanner } from "@/app/checkin/QrScanner";
 import type { GateView } from "@/server/gate";
 import {
@@ -184,7 +185,13 @@ export function GateStation({
               Already admitted ✓{" "}
               {view.admittedAt && (
                 <span className="text-green-700">
-                  ({new Date(view.admittedAt).toLocaleTimeString()})
+                  {/* Venue time: the volunteer reading this is standing at the
+                      door and will compare it against the clock on the wall. */}
+                  (
+                  {new Date(view.admittedAt).toLocaleTimeString(undefined, {
+                    timeZone: VENUE_TIME_ZONE,
+                  })}
+                  )
                 </span>
               )}{" "}
               — wristband issued.

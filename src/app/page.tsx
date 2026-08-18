@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
+import { formatWhen } from "@/lib/eventTime";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { EmptyEventsState } from "@/app/_components/EmptyEventsState";
 
@@ -27,15 +28,6 @@ const REGISTER_LABEL: Record<string, string> = {
   GENERAL: "Buy tickets",
   MEMBERSHIP_DRIVE: "Join or renew",
 };
-
-function formatWhen(start: Date, end: Date): string {
-  const date = new Intl.DateTimeFormat("en-US", { dateStyle: "medium" });
-  const time = new Intl.DateTimeFormat("en-US", { timeStyle: "short" });
-  const sameDay = start.toDateString() === end.toDateString();
-  return sameDay
-    ? `${date.format(start)} · ${time.format(start)} – ${time.format(end)}`
-    : `${date.format(start)} – ${date.format(end)}`;
-}
 
 type EventRow = {
   id: string;

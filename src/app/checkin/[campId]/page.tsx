@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireRole } from "@/server/session";
 import { getAttendeeForCheckin } from "@/server/checkin";
+import { VENUE_TIME_ZONE } from "@/lib/eventTime";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { WaiverForm } from "./WaiverForm";
 import { CheckinActions } from "./CheckinActions";
@@ -105,8 +106,12 @@ export default async function CheckinAttendeePage({
         {checkedIn ? (
           <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-center">
             <p className="font-semibold text-green-800">Checked in ✓</p>
+            {/* Venue time: a check-in stamp is read at the desk, against the
+                same clock the queue is being worked to. */}
             <p className="mt-1 text-xs text-green-700">
-              {a.checkedInAt?.toLocaleTimeString()}
+              {a.checkedInAt?.toLocaleTimeString(undefined, {
+                timeZone: VENUE_TIME_ZONE,
+              })}
             </p>
             <Link
               href={`/badge/${encodeURIComponent(a.campId)}`}

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getVolunteerConfirmation } from "@/server/volunteers";
+import { VENUE_TIME_ZONE } from "@/lib/eventTime";
 import { PrintButton } from "@/app/badge/[campId]/PrintButton";
 
 export const dynamic = "force-dynamic";
@@ -31,10 +32,13 @@ export default async function VolunteerCertificatePage({
   }
 
   const eligible = c.status === "CHECKED_OUT";
+  // Venue day. A certificate is a document a school checks against the event's
+  // published date, so it must not shift with whoever prints it.
   const day = c.startsAt.toLocaleDateString(undefined, {
     month: "long",
     day: "numeric",
     year: "numeric",
+    timeZone: VENUE_TIME_ZONE,
   });
 
   if (!eligible) {

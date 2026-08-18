@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { SignupStatus } from "@prisma/client";
 import type { VolunteerRoster } from "@/server/volunteers";
 import { sourceLabel } from "@/lib/volunteerRoles";
+import { VENUE_TIME_ZONE } from "@/lib/eventTime";
 import {
   sendRemindersAction,
   issueCertificatesAction,
@@ -276,11 +277,15 @@ function Tile({ label, value }: { label: string; value: number }) {
   );
 }
 
+// Venue time, not the coordinator's device zone. A roster is read against the
+// shift board at the venue, so a coordinator working from another state must see
+// the same clock as the volunteers she is checking off.
 function fmtTime(d: Date | null): string {
   return d
     ? new Date(d).toLocaleTimeString(undefined, {
         hour: "numeric",
         minute: "2-digit",
+        timeZone: VENUE_TIME_ZONE,
       })
     : "—";
 }

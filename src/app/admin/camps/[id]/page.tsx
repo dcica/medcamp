@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireAdmin } from "@/server/admin";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
+import { VENUE_TIME_ZONE } from "@/lib/eventTime";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { CampControls } from "./CampControls";
 import { EventFlags } from "./EventFlags";
@@ -53,9 +54,17 @@ export default async function CampDetailPage({
             {camp.status}
           </span>
         </div>
+        {/* Venue time. This is the header a coordinator checks a flyer against
+            before opening the doors, so it must not shift with the server. */}
         <p className="mt-1 text-sm text-gray-500">
-          {camp.code} · {camp.startsAt.toLocaleString()} →{" "}
-          {camp.endsAt.toLocaleString()}
+          {camp.code} ·{" "}
+          {camp.startsAt.toLocaleString(undefined, {
+            timeZone: VENUE_TIME_ZONE,
+          })}{" "}
+          →{" "}
+          {camp.endsAt.toLocaleString(undefined, {
+            timeZone: VENUE_TIME_ZONE,
+          })}
         </p>
         <p className="mt-1 text-xs text-gray-400">
           {camp._count.caps} services · {camp._count.stations} stations ·{" "}

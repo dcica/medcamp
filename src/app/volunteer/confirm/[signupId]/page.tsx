@@ -1,6 +1,7 @@
 import QRCode from "qrcode";
 import Link from "next/link";
 import { getVolunteerConfirmation } from "@/server/volunteers";
+import { VENUE_TIME_ZONE } from "@/lib/eventTime";
 import { CancelButton } from "./CancelButton";
 
 export const dynamic = "force-dynamic";
@@ -36,14 +37,19 @@ export default async function VolunteerConfirmPage({
   const waitlisted = c.status === "WAITLISTED";
   const qr = await QRCode.toDataURL(c.code, { margin: 1, width: 256 });
 
+  // Venue day and arrival time. This is the "be there at" instruction a
+  // volunteer reads on their phone, so it has to match the door, not the zone
+  // their phone happens to be in.
   const day = c.startsAt.toLocaleDateString(undefined, {
     weekday: "long",
     month: "long",
     day: "numeric",
+    timeZone: VENUE_TIME_ZONE,
   });
   const arrival = c.startsAt.toLocaleTimeString(undefined, {
     hour: "numeric",
     minute: "2-digit",
+    timeZone: VENUE_TIME_ZONE,
   });
 
   return (

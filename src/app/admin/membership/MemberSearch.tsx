@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { searchMembers, type MemberSearchRow } from "./actions";
+import { VENUE_TIME_ZONE } from "@/lib/eventTime";
 
 const inputCls = "min-h-tap rounded-lg border border-gray-300 px-3 py-2 text-base";
 
@@ -104,9 +105,16 @@ function StatusPill({ row }: { row: MemberSearchRow }) {
       </span>
     );
   }
+  // Pinned like every other time in the app, so two staff at one desk never
+  // read a membership as expiring in different months. Note this is not an
+  // event-local value — it is a term boundary — and the month printed here can
+  // differ by one from `validTo` seen as UTC when a term ends at a month
+  // boundary. Flagged for a follow-up decision (see the G4 report); the rule
+  // today is one zone everywhere, exceptions argued later.
   const through = new Date(row.validTo).toLocaleDateString(undefined, {
     year: "numeric",
     month: "short",
+    timeZone: VENUE_TIME_ZONE,
   });
   return row.isCurrent ? (
     <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">

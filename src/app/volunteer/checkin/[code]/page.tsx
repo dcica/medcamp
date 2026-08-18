@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireRole } from "@/server/session";
 import { getVolunteerByCode } from "@/server/volunteers";
+import { VENUE_TIME_ZONE } from "@/lib/eventTime";
 import { CheckinActions } from "./CheckinActions";
 
 export const dynamic = "force-dynamic";
@@ -87,9 +88,15 @@ export default async function VolunteerCheckinDetailPage({
   );
 }
 
+// Venue time — sign-in/out stamps are read at the venue against the wall clock,
+// and they back the hours total on the certificate.
 function fmtTime(d: Date | null): string {
   return d
-    ? d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+    ? d.toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: VENUE_TIME_ZONE,
+      })
     : "—";
 }
 

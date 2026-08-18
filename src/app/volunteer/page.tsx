@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getVolunteerSignupView } from "@/server/volunteers";
 import { normalizeSourceTag } from "@/lib/volunteerRoles";
+import { VENUE_TIME_ZONE } from "@/lib/eventTime";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { VolunteerSignupForm } from "./VolunteerSignupForm";
 
@@ -32,11 +33,14 @@ export default async function VolunteerSignupPage({
     );
   }
 
+  // Venue day. A signup page read on a phone in another zone must name the day
+  // the shift actually falls on at the venue.
   const day = view.startsAt.toLocaleDateString(undefined, {
     weekday: "long",
     month: "long",
     day: "numeric",
     year: "numeric",
+    timeZone: VENUE_TIME_ZONE,
   });
 
   const subtitleParts = [view.eventName, day];
