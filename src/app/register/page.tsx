@@ -99,34 +99,65 @@ export default async function RegisterPage({
     select: { id: true, name: true, termYears: true, priceCents: true, partySize: true },
   });
 
+  // Does any offering on THIS event mail labs? Derived from the offerings
+  // already fetched above (serviceType is included), so no extra round trip.
+  const hasLab = offerings.some((o) => o.serviceType.hasLab);
+
+  // The help copy is built from the event's own flags, NOT hardcoded. It used to
+  // be a constant written for the medical camp, and that is exactly how a
+  // conditional promise of money back ("except if the camp is rescheduled")
+  // ended up on a no-refunds dandiya event — while the very same flags were
+  // being passed to <RegisterForm> a few lines below, which rendered the correct
+  // policy. Help copy that describes a UI the buyer is not looking at is a
+  // defect, and on the refund item it is a defect about money. If you are
+  // tempted to flatten this back into a constant: don't.
+  const helpItems = [
+    {
+      label: "Your contact details",
+      body: "The registrant receives the confirmation and QR badges. You don't have to be attending yourself.",
+    },
+    event.collectsAttendeeDetails
+      ? {
+          label: "Attendees",
+          body: "Add one row per person attending. Use “+ Add another attendee” for family members; remove extras with Remove.",
+        }
+      : {
+          label: "Quantity",
+          body: "Pick how many of each item you want — no names or per-person details are collected. Every admission gets its own scannable code, emailed to the registrant.",
+        },
+    {
+      label: "Services",
+      body: "Tap to select. Sold-out services are disabled, and the total updates live. Prices are confirmed on the server at payment.",
+    },
+    // Only worth explaining when there is a lab service AND an address field to
+    // explain — the field is rendered per attendee, so quantity mode never asks
+    // for it.
+    ...(hasLab && event.collectsAttendeeDetails
+      ? [
+          {
+            label: "Mailing address",
+            body: "Only used to post lab results back to the attendee. We check it as you go and may suggest a standardized version — accept it or keep your own. Leave blank if no labs are selected.",
+          },
+        ]
+      : []),
+    {
+      label: "Refunds",
+      // Deliberately points at the policy line the form already renders instead
+      // of restating it. Two wordings of the refund policy on one page is how
+      // the contradiction happened; there must not be a third.
+      body: event.allowsRefunds
+        ? "Refunds are handled by staff, not online — there is no self-serve refund in this form. The policy that applies is the one shown next to the pay button."
+        : "All sales are final — no refunds, including no-shows. Please check your selections before you pay.",
+    },
+  ];
+
   return (
     <main className="mx-auto max-w-screen-sm px-4 py-8">
       <PageHelp
         id="register"
         title={event.name}
         subtitle="Register below. You'll get a QR badge by email after payment."
-        items={[
-          {
-            label: "Your contact details",
-            body: "The registrant receives the confirmation and QR badges. You don't have to be attending yourself.",
-          },
-          {
-            label: "Attendees",
-            body: "Add one row per person attending. Use “+ Add another attendee” for family members; remove extras with Remove.",
-          },
-          {
-            label: "Services",
-            body: "Tap to select. Sold-out services are disabled, and the total updates live. Prices are confirmed on the server at payment.",
-          },
-          {
-            label: "Mailing address",
-            body: "Only used to post lab results back to the attendee. We check it as you go and may suggest a standardized version — accept it or keep your own. Leave blank if no labs are selected.",
-          },
-          {
-            label: "Refunds",
-            body: "Registration fees are non-refundable, except if the camp is rescheduled — in that case a refund will be considered. Refunds are handled by staff, not online.",
-          },
-        ]}
+        items={helpItems}
       />
       <RegisterForm
         eventId={event.id}
