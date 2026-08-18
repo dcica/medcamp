@@ -199,8 +199,14 @@ async function main(): Promise<void> {
     data: {
       orgId: org.id, type: "CAMP", status: "OPEN", code: `${CODE}-CAMP`,
       name: "Pricing Verification Camp",
-      startsAt: new Date("2026-12-02T00:00:00Z"),
-      endsAt: new Date("2026-12-02T04:00:00Z"),
+      // Relative to now, for the same reason the GENERAL scratch event above is
+      // — and this one was the more dangerous miss. Its status is OPEN, so the
+      // ACTIVE/walk-in carve-out does NOT exempt it from the clock, and the
+      // createRegistration call below would THROW the day a literal endsAt
+      // passed. An unguarded throw at the top of main() does not report a red
+      // assertion: it kills the run, so sections 5-8 would never execute at all.
+      startsAt: new Date(Date.now() + 30 * 24 * 3600_000),
+      endsAt: new Date(Date.now() + 30 * 24 * 3600_000 + 4 * 3600_000),
       collectsAttendeeDetails: true,
       honorsMembership: false,
     },
@@ -325,9 +331,10 @@ async function main(): Promise<void> {
 
   // ── 8. A finished event stops selling (pure predicate, no rows needed) ──
   // `isRegistrationOpen` gates BOTH the public form and createRegistration, so
-  // these nine assertions are the whole online sell/no-sell rule. `now` is
-  // injected, which is the only way to sit on both sides of the boundary
-  // without waiting for the clock.
+  // these eleven assertions are the online sell/no-sell rule across all four
+  // Event statuses — DRAFT, OPEN, ACTIVE and CLOSED — each of them a row
+  // Test-Plan A-6 specifies. `now` is injected, which is the only way to sit on
+  // both sides of the boundary without waiting for the clock.
   console.log("\n8. isRegistrationOpen: a finished event stops selling");
   const now = new Date("2026-10-10T18:00:00Z");
   const future = new Date(now.getTime() + 3600_000);
@@ -352,8 +359,13 @@ async function main(): Promise<void> {
   // Ruling, 2026-08-18: the clock gates OPEN only. A door a coordinator opened
   // TODAY outranks the scheduled end — a camp booked 8am-1pm that runs to 2:30pm
   // must keep taking walk-ins, and for a camp /register is the only walk-in path
-  // (gate.ts is GENERAL-only). This is not a weakened test: the narrowness is
-  // pinned by the walkInOpensAt-NULL pair immediately below.
+  // (gate.ts is GENERAL-only). This is not a weakened test, and the carve-out
+  // has TWO conditions, each pinned by its own row. The DOOR axis
+  // (`walkInOpensAt !== null`) is pinned by the NULL pair immediately below. The
+  // STATUS axis (`status === "ACTIVE"`) is pinned by the CLOSED row at the end
+  // of this section — nothing ever clears `walkInOpensAt`, so every camp that
+  // ever opened its door sits in CLOSED with it still set, and the status test
+  // is the only thing between those rows and live online sales.
   check(
     "ACTIVE with walk-in OPENED and already over: still sells — an opened door outranks the scheduled end",
     isRegistrationOpen({ status: "ACTIVE", walkInOpensAt: walkIn, endsAt: past }, now),
@@ -408,6 +420,28 @@ async function main(): Promise<void> {
     "a CAMP running 90 minutes past its scheduled end, walk-in open: still sells",
     isRegistrationOpen(overrunningCamp, now),
     true,
+  );
+  // The STATUS axis of the carve-out. This is the realistic post-camp row shape:
+  // a camp that ran, opened its walk-in door, and was closed. `transitionCamp`
+  // to CLOSED writes only `status` and `closedAt`, and `setWalkIn` is the only
+  // writer of `walkInOpensAt` — nothing ever clears it — so this shape is
+  // PERMANENT for every camp the org has ever run. Drop `status === "ACTIVE"`
+  // from the predicate as "redundant" and this line is what goes red; without
+  // it, every closed camp becomes sellable by direct link and joins bare
+  // `/register`'s candidate pool.
+  check(
+    "CLOSED with walk-in still set and already over: does NOT sell — the status test is the only thing refusing it",
+    isRegistrationOpen({ status: "CLOSED", walkInOpensAt: walkIn, endsAt: past }, now),
+    false,
+  );
+  // The fourth status. `endsAt` is deliberately in the FUTURE so nothing but the
+  // status can be doing the refusing: an unpublished event must never sell, and
+  // the predicate reaches it by falling through both arms rather than by an
+  // explicit DRAFT test, which is exactly the behaviour worth pinning.
+  check(
+    "DRAFT with a future endsAt: does NOT sell — an unpublished event is not a sellable one",
+    isRegistrationOpen({ status: "DRAFT", walkInOpensAt: null, endsAt: future }, now),
+    false,
   );
 
   await cleanup(org.id);

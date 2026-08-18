@@ -100,12 +100,24 @@ type BaseOrder = {
  *
  * The residual hole, recorded rather than patched: an event left ACTIVE with
  * `walkInOpensAt` set stays sellable past its `endsAt` — through a direct
- * `?event=<id>` link, and also as bare `/register`'s fallback candidate, whose
- * pool mirrors this predicate on purpose. It is not reachable from the public
- * lists — `/events` and `/` keep an unconditional `endsAt` filter, so a finished
- * event still stops being LISTED even while it stays sellable; that asymmetry is
- * deliberate. The lifecycle (DRAFT → OPEN → ACTIVE → CLOSED) is what closes the
- * hole: closing the event is the fix. Do not add code to compensate.
+ * `?event=<id>` link, and as bare `/register`'s fallback candidate, whose pool
+ * mirrors this predicate on purpose. On that page it is not merely reachable, it
+ * is PREFERRED: the pool is ordered `endsAt` ASC and its ACTIVE arm carries no
+ * date bound at all, so an event whose `endsAt` has passed sorts ahead of every
+ * live OPEN event — and keeps winning, because every future event has a later
+ * `endsAt`. One finished camp left un-CLOSED therefore owns the default
+ * registration page indefinitely. That is why the CLOSED transition is
+ * load-bearing rather than housekeeping: it is the only thing preventing that.
+ * (On camp day the same inversion is exactly what you want — the camp actually
+ * running should outrank an OPEN event three months out. It is wrong only in the
+ * un-CLOSED tail.) The hole is not reachable from the public lists — `/events`
+ * and `/` keep an unconditional `endsAt` filter, so a finished event still stops
+ * being LISTED even while it stays sellable; that asymmetry is deliberate,
+ * because a list is a browse surface where a finished event is just noise,
+ * whereas a direct link or a coordinator-opened door is a deliberate act by
+ * someone who means to register. The lifecycle (DRAFT → OPEN → ACTIVE → CLOSED)
+ * is what closes the hole: closing the event is the fix. Do not add code to
+ * compensate.
  *
  * `now` is injected so both sides of the boundary are testable without waiting
  * for the wall clock.
