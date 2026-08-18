@@ -436,9 +436,19 @@ export function RegisterForm({
         Keep me posted about future camps and events.
       </label>
 
+      {/* This line is the authoritative refund policy: the help panel on
+          /register points at it rather than restating it, so the two must not
+          drift apart. The true branch used to name a circumstance ("considered
+          only if the event is rescheduled"), which reads as a promise of money
+          back before the buyer has paid — the exact phrasing the plan bans on
+          every screen. It now says only WHO handles a refund and that there is
+          no self-serve path, word for word the sentence the help panel opens
+          with. Do not reintroduce an eligibility condition, an outcome, or a
+          timeframe here; whether this event may be refunded at all is the
+          admin's call via the flag, not a sentence on the checkout. */}
       <p className="text-xs text-gray-400">
         {allowsRefunds
-          ? "Refunds are considered only if the event is rescheduled, and are handled by staff."
+          ? "Refunds are handled by staff, not online — there is no self-serve refund in this form."
           : "All sales are final — no refunds, including no-shows."}
       </p>
 

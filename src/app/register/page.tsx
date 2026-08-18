@@ -125,10 +125,22 @@ export default async function RegisterPage({
           label: "Quantity",
           body: "Pick how many of each item you want — no names or per-person details are collected. Every admission gets its own scannable code, emailed to the registrant.",
         },
-    {
-      label: "Services",
-      body: "Tap to select. Sold-out services are disabled, and the total updates live. Prices are confirmed on the server at payment.",
-    },
+    // Same flag as the item above, because the two modes render different
+    // controls: tappable per-attendee rows vs. −/+ steppers. The old single
+    // sentence described the attendee rows to everyone. It also claimed
+    // "sold-out services are disabled", which is untrue in BOTH modes — nothing
+    // in the form is ever disabled for capacity (caps are enforced atomically at
+    // payment confirmation, see the comment above `offerings`). Do not put a
+    // sold-out claim back unless the form actually grows one.
+    event.collectsAttendeeDetails
+      ? {
+          label: "Services",
+          body: "Tap a service to add it for that person, and tap again to remove it. The total updates live, and prices are confirmed on the server at payment.",
+        }
+      : {
+          label: "Services",
+          body: "Use − and + to set how many of each item you want. The total updates live, and prices are confirmed on the server at payment.",
+        },
     // Only worth explaining when there is a lab service AND an address field to
     // explain — the field is rendered per attendee, so quantity mode never asks
     // for it.

@@ -331,9 +331,14 @@ async function main(): Promise<void> {
 
   // ── 8. A finished event stops selling (pure predicate, no rows needed) ──
   // `isRegistrationOpen` gates BOTH the public form and createRegistration, so
-  // these eleven assertions are the online sell/no-sell rule across all four
-  // Event statuses — DRAFT, OPEN, ACTIVE and CLOSED — each of them a row
-  // Test-Plan A-6 specifies. `now` is injected, which is the only way to sit on
+  // these assertions are the online sell/no-sell rule across the four statuses
+  // Test-Plan A-6 specifies — DRAFT, OPEN, ACTIVE and CLOSED. That is NOT the
+  // whole enum: `prisma/schema.prisma` defines six, and the two missing ones
+  // need no rows of their own because PURGEABLE and PURGED reach `false` down
+  // the same non-ACTIVE path the CLOSED row at the end of this section already
+  // pins. No count is stated on purpose — a hand-maintained total was corrected
+  // twice in two tasks and decays silently the moment anyone adds a row, so the
+  // rows are their own tally. `now` is injected, which is the only way to sit on
   // both sides of the boundary without waiting for the clock.
   console.log("\n8. isRegistrationOpen: a finished event stops selling");
   const now = new Date("2026-10-10T18:00:00Z");
@@ -363,9 +368,12 @@ async function main(): Promise<void> {
   // has TWO conditions, each pinned by its own row. The DOOR axis
   // (`walkInOpensAt !== null`) is pinned by the NULL pair immediately below. The
   // STATUS axis (`status === "ACTIVE"`) is pinned by the CLOSED row at the end
-  // of this section — nothing ever clears `walkInOpensAt`, so every camp that
-  // ever opened its door sits in CLOSED with it still set, and the status test
-  // is the only thing between those rows and live online sales.
+  // of this section — the walk-in toggle is rendered only while the camp is
+  // ACTIVE (`CampControls.tsx:85`) and CLOSED has no transition back to ACTIVE
+  // (`actions.ts:18`), so a camp closed without first closing its door sits in
+  // CLOSED with `walkInOpensAt` still set and nothing left in the UI that could
+  // clear it — and the status test is the only thing between that row and live
+  // online sales.
   check(
     "ACTIVE with walk-in OPENED and already over: still sells — an opened door outranks the scheduled end",
     isRegistrationOpen({ status: "ACTIVE", walkInOpensAt: walkIn, endsAt: past }, now),
@@ -423,9 +431,17 @@ async function main(): Promise<void> {
   );
   // The STATUS axis of the carve-out. This is the realistic post-camp row shape:
   // a camp that ran, opened its walk-in door, and was closed. `transitionCamp`
-  // to CLOSED writes only `status` and `closedAt`, and `setWalkIn` is the only
-  // writer of `walkInOpensAt` — nothing ever clears it — so this shape is
-  // PERMANENT for every camp the org has ever run. Drop `status === "ACTIVE"`
+  // to CLOSED writes only `status` and `closedAt` (`actions.ts:118-125`), and
+  // `setWalkIn` is the only writer of `walkInOpensAt` (`actions.ts:167`). That
+  // writer CAN null the column — `walkInOpensAt: open ? new Date() : null` —
+  // but the only caller is a toggle (`CampControls.tsx:55`) rendered inside
+  // `{status === "ACTIVE" && (…)}` (`CampControls.tsx:85`), and the `NEXT` map
+  // gives CLOSED exactly one onward transition, PURGEABLE, with no path back to
+  // ACTIVE (`actions.ts:18`). So once a camp reaches CLOSED with its door set
+  // the control that could clear it is gone and unreachable: this shape is
+  // PERMANENT for every camp closed without first closing its door. (`setWalkIn`
+  // carries no status guard of its own, so a direct action call could still null
+  // it — a deliberate act, not the default state.) Drop `status === "ACTIVE"`
   // from the predicate as "redundant" and this line is what goes red; without
   // it, every closed camp becomes sellable by direct link and joins bare
   // `/register`'s candidate pool.
