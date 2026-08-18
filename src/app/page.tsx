@@ -3,6 +3,7 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
 import { PageHelp } from "@/app/_components/PageHelp";
+import { EmptyEventsState } from "@/app/_components/EmptyEventsState";
 
 export const dynamic = "force-dynamic";
 
@@ -138,9 +139,10 @@ export default async function Home() {
           )}
         </>
       ) : (
-        <p className="mt-8 rounded-lg border border-gray-200 bg-white px-4 py-6 text-center text-sm text-gray-600">
-          No upcoming events right now. Check back soon.
-        </p>
+        // Same empty state as /events, and nothing more. The front door does not
+        // get a past-events section: a landing page leading with events that are
+        // over is worse than one leading with nothing.
+        <EmptyEventsState />
       )}
     </main>
   );
