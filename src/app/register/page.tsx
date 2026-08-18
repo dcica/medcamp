@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
  * Public registration portal (Module 1). Loads the open camp + its service menu
  * server-side, then hands off to the phone-first form. Honours ?event=<id> from
  * the events listing for multi-event selection; with no id it falls back to the
- * first OPEN event.
+ * next open event — the one ending soonest.
  */
 export default async function RegisterPage({
   searchParams,
@@ -24,9 +24,17 @@ export default async function RegisterPage({
   // this page would render a checkout the action then refused.
   const candidate = eventId
     ? await db.event.findFirst({ where: { id: eventId } })
-    : await db.event.findFirst({
-        where: { status: "OPEN" },
-        orderBy: { startsAt: "asc" },
+    : // Narrows the CANDIDATE POOL to events that could plausibly sell —
+      // isRegistrationOpen below is still the only thing that decides, and this
+      // is not a second source of truth. Pre-filtering to a subset the predicate
+      // already accepts cannot make the page more permissive than the action, so
+      // it does not reopen the page/action disagreement above. Without it the
+      // pool included finished events and the earliest one won, so this page
+      // said "nothing is open" while an open event was on sale. `endsAt` asc
+      // picks the soonest-ending open event — the next thing happening.
+      await db.event.findFirst({
+        where: { status: "OPEN", endsAt: { gte: new Date() } },
+        orderBy: { endsAt: "asc" },
       });
   const event = candidate && isRegistrationOpen(candidate) ? candidate : null;
 
