@@ -325,7 +325,7 @@ async function main(): Promise<void> {
 
   // ── 8. A finished event stops selling (pure predicate, no rows needed) ──
   // `isRegistrationOpen` gates BOTH the public form and createRegistration, so
-  // these six assertions are the whole online sell/no-sell rule. `now` is
+  // these nine assertions are the whole online sell/no-sell rule. `now` is
   // injected, which is the only way to sit on both sides of the boundary
   // without waiting for the clock.
   console.log("\n8. isRegistrationOpen: a finished event stops selling");
@@ -349,9 +349,22 @@ async function main(): Promise<void> {
     isRegistrationOpen({ status: "ACTIVE", walkInOpensAt: walkIn, endsAt: future }, now),
     true,
   );
+  // Ruling, 2026-08-18: the clock gates OPEN only. A door a coordinator opened
+  // TODAY outranks the scheduled end — a camp booked 8am-1pm that runs to 2:30pm
+  // must keep taking walk-ins, and for a camp /register is the only walk-in path
+  // (gate.ts is GENERAL-only). This is not a weakened test: the narrowness is
+  // pinned by the walkInOpensAt-NULL pair immediately below.
   check(
-    "ACTIVE with walk-in open but already over: does NOT sell",
+    "ACTIVE with walk-in OPENED and already over: still sells — an opened door outranks the scheduled end",
     isRegistrationOpen({ status: "ACTIVE", walkInOpensAt: walkIn, endsAt: past }, now),
+    true,
+  );
+  // The other half of the pair. The carve-out turns on the opened door, not on
+  // ACTIVE alone — this shape is GB-2026W, ACTIVE with walkInOpensAt NULL and
+  // long past, and it must stay refused.
+  check(
+    "ACTIVE with walk-in NOT opened and already over: does NOT sell — the carve-out is the door, not the status",
+    isRegistrationOpen({ status: "ACTIVE", walkInOpensAt: null, endsAt: past }, now),
     false,
   );
   // Pre-existing rule, asserted here so this task cannot quietly undo it:
@@ -370,6 +383,30 @@ async function main(): Promise<void> {
   check(
     "in progress (started in the past, ends in the future): still sells",
     isRegistrationOpen(inProgress, now),
+    true,
+  );
+  // The equality boundary. The predicate says `endsAt >= now` and the list
+  // queries say `gte` — they agree today and nothing pinned it. Tighten either
+  // side to a strict `>` and the page silently disagrees with the predicate for
+  // the one instant an event ends on.
+  check(
+    "OPEN with endsAt exactly === now: still sells (>=, matching the lists' gte)",
+    isRegistrationOpen({ status: "OPEN", walkInOpensAt: null, endsAt: now }, now),
+    true,
+  );
+  // The camp-day narrative, end to end: a half-day medical camp scheduled to
+  // finish 90 minutes ago, still on the floor, walk-in selling opened this
+  // morning. A real camp overrunning its window is what this row protects — if it
+  // ever flips to false, walk-ins lose /register mid-camp with nowhere else to go.
+  const overrunningCamp = {
+    type: "CAMP",
+    status: "ACTIVE",
+    walkInOpensAt: walkIn,
+    endsAt: new Date(now.getTime() - 90 * 60_000),
+  };
+  check(
+    "a CAMP running 90 minutes past its scheduled end, walk-in open: still sells",
+    isRegistrationOpen(overrunningCamp, now),
     true,
   );
 

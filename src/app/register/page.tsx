@@ -19,24 +19,46 @@ export default async function RegisterPage({
 }) {
   const { event: eventId } = await searchParams;
 
+  // ONE clock for the whole render: the candidate query, the predicate and the
+  // displayed prices all answer to this instant. A single request must not hold
+  // two opinions about whether an event is sellable — that split is the exact
+  // class of bug isRegistrationOpen exists to prevent, so don't call new Date()
+  // again further down.
+  const now = new Date();
+
   // Fetch first, then apply isRegistrationOpen — the same predicate the submit
   // action uses. Filtering on status in the query is what let the two disagree:
-  // this page would render a checkout the action then refused.
+  // this page would render a checkout the action then refused. The ?event=<id>
+  // branch is therefore deliberately UNfiltered — a direct link must reach the
+  // predicate and be judged by it.
   const candidate = eventId
     ? await db.event.findFirst({ where: { id: eventId } })
-    : // Narrows the CANDIDATE POOL to events that could plausibly sell —
-      // isRegistrationOpen below is still the only thing that decides, and this
-      // is not a second source of truth. Pre-filtering to a subset the predicate
-      // already accepts cannot make the page more permissive than the action, so
-      // it does not reopen the page/action disagreement above. Without it the
-      // pool included finished events and the earliest one won, so this page
-      // said "nothing is open" while an open event was on sale. `endsAt` asc
-      // picks the soonest-ending open event — the next thing happening.
+    : // Narrows the CANDIDATE POOL to exactly the states isRegistrationOpen
+      // accepts. It restates the predicate's rule, and that duplication is safe
+      // in one direction only: this query merely SELECTS a candidate, and
+      // isRegistrationOpen below is still the sole decider, applied to whatever
+      // comes back. So drift between the two can only ever produce a false empty
+      // state — "no camp is open" while one is — never a checkout the submit
+      // action then refuses. The harmful direction is unreachable by
+      // construction; that is why the mirror is allowed to exist.
+      // It must mirror the predicate rather than filter status: "OPEN" alone: on
+      // camp night the event is ACTIVE with walkInOpensAt set — a state the
+      // predicate accepts — and a status-only pool answered "no camp is open" to
+      // the walk-in who had just been told to register on their phone. Dropping
+      // the pool filter entirely fails the other way: finished events were in the
+      // pool and the earliest one won, so the page refused while an open event
+      // was on sale. `endsAt` asc picks the soonest-ending — the next thing
+      // happening.
       await db.event.findFirst({
-        where: { status: "OPEN", endsAt: { gte: new Date() } },
+        where: {
+          OR: [
+            { status: "OPEN", endsAt: { gte: now } },
+            { status: "ACTIVE", walkInOpensAt: { not: null } },
+          ],
+        },
         orderBy: { endsAt: "asc" },
       });
-  const event = candidate && isRegistrationOpen(candidate) ? candidate : null;
+  const event = candidate && isRegistrationOpen(candidate, now) ? candidate : null;
 
   if (!event) {
     return (
@@ -60,8 +82,7 @@ export default async function RegisterPage({
   // the authoritative total (src/lib/pricing.ts resolvePrice, "online"
   // channel) — this is a display feed, not a second source of truth. If this
   // diverged from registration.ts, the buyer would see one number and be
-  // charged another.
-  const now = new Date();
+  // charged another. Priced against the same `now` the gating above used.
   const services = offerings.map((o) => ({
     key: o.serviceType.key,
     name: o.serviceType.name,

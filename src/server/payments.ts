@@ -47,7 +47,10 @@ export async function createCheckoutForOrder(orderId: string): Promise<string> {
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     success_url: `${env.NEXT_PUBLIC_APP_URL}/confirm/${order.id}?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${env.NEXT_PUBLIC_APP_URL}/register?cancelled=${order.id}`,
+    // Carries the event back. Without ?event= a cancelling buyer landed on bare
+    // /register and got whatever the fallback pool picked — a cancelled Diwali
+    // buyer dropped onto Navratri's checkout. Read off the order, not threaded in.
+    cancel_url: `${env.NEXT_PUBLIC_APP_URL}/register?event=${order.eventId}&cancelled=${order.id}`,
     customer_email: order.registrantEmail,
     // Webhook reads this to confirm the right order (decision #2).
     metadata: { orderId: order.id, orgId: order.orgId },

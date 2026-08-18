@@ -83,16 +83,27 @@ type BaseOrder = {
  * `walkInOpensAt` already exists to express — being mid-event is not by itself
  * permission to keep selling online.
  *
- * An event that is over is closed whatever its status says, because status is
- * set by hand and nobody remembers: a finished event sat OPEN for six weeks and
- * kept taking money. The date test is `endsAt`, NOT `startsAt` — an event in
+ * An OPEN event that is over is closed whatever its status says, because status
+ * is set by hand and nobody remembers: a finished event sat OPEN for six weeks
+ * and kept taking money. The date test is `endsAt`, NOT `startsAt` — an event in
  * progress must keep selling to the crowd already in the room, and `startsAt`
  * would slam the form shut the instant the doors opened. Do not "simplify" it.
  *
- * The corollary is deliberate: an event running past its scheduled `endsAt`
- * stops selling ONLINE at that moment. The door is unaffected — walk-up sales
- * go through the gate actions, which never call this — so a coordinator who
- * wants the public form open later moves `endsAt`.
+ * The clock applies to OPEN ONLY (ruling, 2026-08-18). ACTIVE *with*
+ * `walkInOpensAt` set is a coordinator's deliberate act today, and a door someone
+ * opened outranks a scheduled end. The reason is that a CAMP has no gate sell
+ * path — `src/server/gate.ts` filters `type: "GENERAL"` and there is no camp
+ * equivalent of `sellAtGate` — so for a camp `/register` IS the walk-in path, the
+ * one `walkInOpensAt` exists to open on camp day. A camp booked 8am–1pm that runs
+ * to 2:30pm (routine for 300–500 patients) would otherwise lose walk-in
+ * registration at 1:00pm sharp, with no fallback path of any kind.
+ *
+ * The residual hole, recorded rather than patched: an event left ACTIVE with
+ * `walkInOpensAt` set stays sellable past its `endsAt` through a direct
+ * `?event=<id>` link. It is not reachable from the public lists — `/events` and
+ * `/` keep an unconditional `endsAt` filter, so a finished event still stops
+ * being listed — and the lifecycle (DRAFT → OPEN → ACTIVE → CLOSED) is what
+ * closes it: closing the event is the fix. Do not add code to compensate.
  *
  * `now` is injected so both sides of the boundary are testable without waiting
  * for the wall clock.
@@ -105,8 +116,7 @@ export function isRegistrationOpen(
   },
   now: Date = new Date(),
 ): boolean {
-  if (event.endsAt < now) return false;
-  if (event.status === "OPEN") return true;
+  if (event.status === "OPEN") return event.endsAt >= now;
   return event.status === "ACTIVE" && event.walkInOpensAt !== null;
 }
 
