@@ -18,7 +18,18 @@ const db = new PrismaClient();
  *
  * NOTE: dcica.org lists these as annual events with mostly past dates. Dates
  * here are rolled to each event's next occurrence relative to mid-2026 so the
- * "Upcoming events" page is meaningful. Times are placeholders — adjust freely.
+ * "Upcoming events" page is meaningful. Times are placeholders — adjust freely,
+ * EXCEPT where an entry's own comment says otherwise. GARBA-2026 and RON-2026
+ * carry times taken off a printed flyer: do not adjust those. Neither name,
+ * date, time nor location is editable through the admin UI (updateCamp is
+ * orphaned), so changing one here is a code change and a deploy, and the paper
+ * in someone's hand does not get redeployed.
+ *
+ * All times in this file are UTC instants. Convert from venue wall-clock, and
+ * check the DST offset for that specific date — America/Chicago is CDT (UTC-5)
+ * from the second Sunday in March to the first Sunday in November, CST (UTC-6)
+ * the rest of the year. One offset applied to a summer and a winter event is
+ * how two camps ended up seeded at 2:00 AM and 3:00 AM.
  *
  * A SEED BOOTSTRAPS; IT DOES NOT SYNC. Every field below can also be edited by
  * a coordinator through the admin UI (updateCamp for name/dates/location,
@@ -159,8 +170,12 @@ const EVENTS: Seed[] = [
     startsAt: "2026-09-19T20:00:00Z",
     endsAt: "2026-09-19T22:30:00Z",
     imageUrl: null,
-    // Ticketed class: online sales only, no vendor booths, and the flyer
-    // advertises no volunteer call — so no volunteerRoles set below either.
+    // What these three flags say: this event takes REGISTRATIONS, has no
+    // vendor booths, and advertises no volunteer call on the flyer — so no
+    // volunteerRoles are set below either. They say nothing about the channel:
+    // this class also sells at the door (onsitePriceCents below, reached once a
+    // coordinator flips it ACTIVE), so do NOT read this as "online sales only"
+    // and do not cite it to argue the cheaper door price is a mistake.
     offersRegistration: true,
     offersVendors: false,
     offersVolunteers: false,
@@ -172,8 +187,11 @@ const EVENTS: Seed[] = [
     collectsAttendeeDetails: false, // quantity-only checkout — one admission, no per-person profile
     // Deliberately NOT honouring the household membership comp, unlike
     // RON-2026. This is a $5-level cost-recovery class: comping a family
-    // membership's party would hand roughly four free entries per household
-    // and the class would not cover the hall. Members still get their
+    // membership's party would hand FIVE free entries per household — every
+    // plan carries partySize 5 (family-1yr/2yr/5yr), and compUnits is that
+    // party size exactly, not an approximation. At the $5.50 online price that
+    // is $27.50 comped against a $51 one-year plan, so the class would not
+    // cover the hall. Members still get their
     // allowance at Navratri. Client decision — do not "fix" for consistency.
     honorsMembership: false,
     acceptsDonations: true,

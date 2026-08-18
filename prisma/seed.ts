@@ -51,8 +51,16 @@ async function main() {
       status: "OPEN",
       code: "MC-2026W",
       name: "Winter Medical Camp 2026",
-      startsAt: new Date("2026-12-05T08:00:00Z"),
-      endsAt: new Date("2026-12-05T14:00:00Z"),
+      // UTC instants, converted from venue wall-clock — an 8:00 AM–2:00 PM
+      // half-day camp at the Flower Mound TX venue (America/Chicago). Dec 5
+      // 2026 is outside US DST (2026: Mar 8 → Nov 1), so the offset is CST =
+      // UTC-6: 8:00 AM → 14:00Z, 2:00 PM → 20:00Z. These used to be 08:00Z →
+      // 14:00Z, i.e. local wall-clock written straight into a UTC field, which
+      // the venue-timezone display then rendered as a 2:00 AM camp. Never
+      // reuse one offset across seasons — the summer camp in seed-test.ts is
+      // CDT (UTC-5), not CST. Check the date's own offset every time.
+      startsAt: new Date("2026-12-05T14:00:00Z"),
+      endsAt: new Date("2026-12-05T20:00:00Z"),
       venueConfig: { layout: "clinic", rooms: 7, tents: 2 },
     },
   });
