@@ -99,11 +99,13 @@ type BaseOrder = {
  * registration at 1:00pm sharp, with no fallback path of any kind.
  *
  * The residual hole, recorded rather than patched: an event left ACTIVE with
- * `walkInOpensAt` set stays sellable past its `endsAt` through a direct
- * `?event=<id>` link. It is not reachable from the public lists — `/events` and
- * `/` keep an unconditional `endsAt` filter, so a finished event still stops
- * being listed — and the lifecycle (DRAFT → OPEN → ACTIVE → CLOSED) is what
- * closes it: closing the event is the fix. Do not add code to compensate.
+ * `walkInOpensAt` set stays sellable past its `endsAt` — through a direct
+ * `?event=<id>` link, and also as bare `/register`'s fallback candidate, whose
+ * pool mirrors this predicate on purpose. It is not reachable from the public
+ * lists — `/events` and `/` keep an unconditional `endsAt` filter, so a finished
+ * event still stops being LISTED even while it stays sellable; that asymmetry is
+ * deliberate. The lifecycle (DRAFT → OPEN → ACTIVE → CLOSED) is what closes the
+ * hole: closing the event is the fix. Do not add code to compensate.
  *
  * `now` is injected so both sides of the boundary are testable without waiting
  * for the wall clock.
