@@ -149,6 +149,61 @@ const EVENTS: Seed[] = [
     volunteerRoles: COMMUNITY_VOL_ROLES,
   },
   {
+    // Real Sept 19 afternoon, from the printed flyer — a live ticketed sale,
+    // not a fixture. Flyer says 3:00–5:30 PM local at a Flower Mound TX venue.
+    // Sept 19 2026 sits inside US daylight saving (2026: Mar 8 → Nov 1), so
+    // America/Chicago is CDT = UTC-5: 3:00 PM → 20:00Z, 5:30 PM → 22:30Z.
+    code: "GARBA-2026",
+    type: "GENERAL",
+    name: "DCICA-Shakti Garba Dance Class",
+    startsAt: "2026-09-19T20:00:00Z",
+    endsAt: "2026-09-19T22:30:00Z",
+    imageUrl: null,
+    // Ticketed class: online sales only, no vendor booths, and the flyer
+    // advertises no volunteer call — so no volunteerRoles set below either.
+    offersRegistration: true,
+    offersVendors: false,
+    offersVolunteers: false,
+    location:
+      "Wellington Activities Center, 3520 Furlong Drive East, Flower Mound, TX 75022",
+    // Sells at the door as well as online, so it stays OPEN until a
+    // coordinator flips it on the day. status is create-only either way.
+    status: "OPEN",
+    collectsAttendeeDetails: false, // quantity-only checkout — one admission, no per-person profile
+    // Deliberately NOT honouring the household membership comp, unlike
+    // RON-2026. This is a $5-level cost-recovery class: comping a family
+    // membership's party would hand roughly four free entries per household
+    // and the class would not cover the hall. Members still get their
+    // allowance at Navratri. Client decision — do not "fix" for consistency.
+    honorsMembership: false,
+    acceptsDonations: true,
+    allowsRefunds: false,
+    services: [
+      {
+        key: "garba-class-entry",
+        name: "Class Entry",
+        colorHex: "#db2777",
+        // THE DOOR IS CHEAPER HERE, ON PURPOSE — this is not a transposition
+        // typo, and it inverts the platform's usual convention (RON-2026 is
+        // $15 online / $20 door). The flyer's entry fee is $5. The client
+        // wants the card processing fee passed to the online buyer instead of
+        // absorbed by the org: at the non-profit rate $5.50 online nets
+        // ~$5.08. Cash at the door carries no processor fee, so it stays
+        // exactly $5.00. resolvePrice needs no special case — the door reads
+        // onsitePriceCents (500) and online reads priceCents (550).
+        priceCents: 550,
+        onsitePriceCents: 500,
+        admits: true,
+        fulfillable: false,
+        // PROVISIONAL. The flyer says "LIMITED ENTRIES" but names no number;
+        // the real hall capacity has to come from the organisers (Madhu Rana /
+        // Abha Joshi). 40 is a placeholder so the cap exists and sells —
+        // a coordinator can edit it in the admin UI before the class.
+        capacity: 40,
+      },
+    ],
+  },
+  {
     // Real Oct 10 evening — the org's actual ticketed sale, not a fixture.
     // Doors 4:30 PM / competition 5:00 PM local (CDT, UTC-5): 21:30Z–04:00Z.
     code: "RON-2026",
