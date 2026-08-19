@@ -5,19 +5,23 @@ import {
 } from "@aws-sdk/client-sesv2";
 import { env } from "@/lib/env";
 import { log } from "@/lib/logger";
+import {
+  buildConfirmationMime,
+  confirmationSubject,
+  confirmationText,
+  type ConfirmationEmail,
+} from "@/lib/confirmationEmail";
 
 /**
  * Pluggable email (Platform-Mandate §6). When no provider is configured the
  * message is logged to the console so local dev and self-host work out of the
  * box. AWS SES is wired up; Resend/SendGrid/SMTP adapters slot in the same way.
  */
-export type ConfirmationEmail = {
-  to: string;
-  registrantName: string;
-  eventName: string;
-  confirmUrl: string;
-  campIds: string[];
-};
+export type {
+  ConfirmationEmail,
+  ConfirmationLine,
+  ConfirmationMerch,
+} from "@/lib/confirmationEmail";
 
 /** Lazily-built SES client (credentials resolve via the standard AWS chain). */
 let sesClient: SESv2Client | null = null;
@@ -89,23 +93,32 @@ export function emailConfig(): EmailConfig {
  * Low-level send. Returns whether a real provider delivered it (false ⇒ logged
  * to console because no provider is configured). THROWS on a provider error so
  * callers can decide whether to surface or swallow it.
+ *
+ * `raw`, when supplied, is a complete MIME message (headers included) and is
+ * sent through SESv2's `Content.Raw` instead of `Content.Simple` — that is what
+ * lets a message carry inline `cid:` images. `body` is still required and is
+ * still the plain-text part inside that MIME; it is also what the no-provider
+ * console path logs, so that path never dumps base64.
  */
 async function send(
   to: string,
   subject: string,
   body: string,
+  raw?: Buffer,
 ): Promise<{ delivered: boolean }> {
   if (env.EMAIL_PROVIDER === "ses" && env.AWS_REGION) {
     await getSes().send(
       new SendEmailCommand({
         FromEmailAddress: env.EMAIL_FROM,
         Destination: { ToAddresses: [to] },
-        Content: {
-          Simple: {
-            Subject: { Data: subject, Charset: "UTF-8" },
-            Body: { Text: { Data: body, Charset: "UTF-8" } },
-          },
-        },
+        Content: raw
+          ? { Raw: { Data: raw } }
+          : {
+              Simple: {
+                Subject: { Data: subject, Charset: "UTF-8" },
+                Body: { Text: { Data: body, Charset: "UTF-8" } },
+              },
+            },
       }),
     );
     return { delivered: true };
@@ -141,9 +154,35 @@ async function send(
  * CONFIRMED, so a thrown error would 500 the Stripe webhook and (because
  * confirmation is idempotent) the retry would skip the email entirely.
  */
-async function dispatch(to: string, subject: string, body: string): Promise<void> {
+async function dispatch(
+  to: string,
+  subject: string,
+  body: string,
+  /**
+   * Optional raw-MIME builder. Deliberately a thunk rather than a Buffer: QR
+   * rendering and MIME assembly then run INSIDE this try, so an image that
+   * fails to render is caught on exactly the same path as a provider error and
+   * cannot roll back an already-paid, already-confirmed order.
+   */
+  buildRaw?: () => Promise<Buffer>,
+): Promise<void> {
   try {
-    await send(to, subject, body);
+    let raw: Buffer | undefined;
+    if (buildRaw) {
+      try {
+        raw = await buildRaw();
+      } catch (err) {
+        // Degrade to the plain-text message rather than send nothing: the guest
+        // still gets their codes and the link. Logged loudly because a guest
+        // without the inline QR is the thing this feature exists to prevent.
+        log.error("confirmation email: MIME/QR build failed, sending text only", {
+          to,
+          subject,
+          err,
+        });
+      }
+    }
+    await send(to, subject, body, raw);
   } catch (err) {
     log.error("email send failed", {
       provider: env.EMAIL_PROVIDER,
@@ -200,14 +239,19 @@ export async function getSesAccountStatus(): Promise<SesAccountStatus | null> {
   }
 }
 
+/**
+ * The one email that CARRIES the pass instead of linking to it: an HTML body
+ * with each ticket's QR embedded as a `cid:` inline image, so it renders with
+ * the phone in airplane mode (Test-Plan D-2). The plain-text part is unchanged
+ * and remains the fallback. See `src/lib/mime.ts` for why `cid:` and not a
+ * hosted image URL.
+ *
+ * The other senders in this file are deliberately still plain text.
+ */
 export async function sendConfirmationEmail(msg: ConfirmationEmail): Promise<void> {
-  const body = [
-    `Hi ${msg.registrantName},`,
-    `Your registration for ${msg.eventName} is confirmed.`,
-    `Camp ID(s): ${msg.campIds.join(", ")}`,
-    `View your QR badge: ${msg.confirmUrl}`,
-  ].join("\n");
-  await dispatch(msg.to, `${msg.eventName} — registration confirmed`, body);
+  await dispatch(msg.to, confirmationSubject(msg), confirmationText(msg), () =>
+    buildConfirmationMime(msg, env.EMAIL_FROM),
+  );
 }
 
 // ── Volunteer module emails ──────────────────────────────────────────────────

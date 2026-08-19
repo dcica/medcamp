@@ -290,7 +290,10 @@ export async function confirmOrderPaid(
     if (!result.alreadyConfirmed) {
       const order = await db.order.findUniqueOrThrow({
         where: { id: orderId },
-        include: { event: true },
+        // Line items (with their service type) drive the PAID block and the
+        // will-call list in the confirmation email; the event carries venue,
+        // times and the refund policy.
+        include: { event: true, lineItems: { include: { serviceType: true } } },
       });
       await sendConfirmationEmail({
         to: order.registrantEmail,
@@ -298,6 +301,27 @@ export async function confirmOrderPaid(
         eventName: order.event.name,
         confirmUrl: `${env.NEXT_PUBLIC_APP_URL}/confirm/${order.id}`,
         campIds: result.campIds,
+        lineItems: order.lineItems.map((li) => ({
+          description: li.serviceType?.name ?? li.description,
+          quantity: li.quantity,
+          amountCents: li.amountCents,
+        })),
+        // Only `fulfillable` service types are physical goods handed over at
+        // the gate — admission and fee lines have nothing to collect.
+        merch: order.lineItems
+          .filter((li) => li.serviceType?.fulfillable)
+          .map((li) => ({
+            description: li.serviceType?.name ?? li.description,
+            quantity: li.quantity,
+          })),
+        totalPaidCents: order.lineItems.reduce(
+          (s, li) => s + li.amountCents * li.quantity,
+          0,
+        ),
+        venue: order.event.location,
+        startsAt: order.event.startsAt,
+        endsAt: order.event.endsAt,
+        allowsRefunds: order.event.allowsRefunds,
       });
     }
     return result;
