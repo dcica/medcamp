@@ -5,18 +5,21 @@
 # Vercel build (build stays `prisma generate && next build`). Vercel deploys the
 # app on the same push; this job migrates the matching database in parallel.
 #
-# Branch → GitHub Environment → Supabase DB (free-tier, schema-separated):
-#   test    → environment "test"        → nonprod project, schema `test`
-#   staging → environment "staging"     → nonprod project, schema `staging`
-#   main    → environment "production"  → prod project, schema `public` (reviewer)
+# Branch → GitHub Environment → Supabase schema (single free project):
+#   test    → environment "test"        → schema `test`
+#   staging → environment "staging"     → schema `staging`
+#   main    → environment "production"  → schema `prod`   (required reviewer)
 #
-# Non-prod envs share ONE Supabase project, isolated by Postgres schema (set via
-# &schema=<name> in the connection URL). Prod has its own dedicated project. Each
-# schema keeps an independent _prisma_migrations history.
+# ALL envs — production included — share ONE Supabase project, isolated only by
+# Postgres schema (set via &schema=<name> in the connection URL). Each schema
+# keeps an independent _prisma_migrations history. This is a deliberate interim
+# choice pending the Azure migration; it means prod shares compute, connection
+# budget and the service-role key with test. Never `prisma migrate reset` here.
 #
-# Each GitHub Environment must hold two secrets:
+# Each GitHub Environment must hold two secrets, and the schema param is
+# MANDATORY on both — a schema-less URL silently writes into `public`:
 #   DATABASE_URL  — Supabase pooled (Supavisor transaction, :6543, pgbouncer=true,
-#                   &schema=<env> for non-prod)
+#                   connection_limit=1, &schema=<env>)
 #   DIRECT_URL    — Supabase direct (:5432, ?schema=<env>) — used by migrate deploy
 #
 # Jobs self-skip when their secrets are absent (clean no-op, not a failure).
@@ -133,6 +136,9 @@ jobs:
         if: steps.check.outputs.configured == 'true'
       - run: npx prisma migrate deploy
         if: steps.check.outputs.configured == 'true'
-      # Prod gets the dcica org + service menu ONLY. NEVER db:seed:test in prod.
+      # Prod gets the dcica org + service menu, then the real public event
+      # lineup. NEVER db:seed:test in prod — no fixtures, no fake orders.
       - run: npm run db:seed
+        if: steps.check.outputs.configured == 'true'
+      - run: npm run db:seed:events
         if: steps.check.outputs.configured == 'true'
