@@ -41,6 +41,51 @@ The design handoff arrived after the functional work, so this plan merges them: 
 | Merchandise at Navratri | **Three items only: admission, dandiya sticks, competition entry.** No event T-shirt — dropped by the client 2026-08-17 and un-offered from the fixture event. B1 must not seed one. |
 | Admin catalogue clutter | **Accepted as-is.** The services screen lists all org-wide services with an "Offered at this camp" checkbox; medical-camp services appear on the Navratri screen unchecked and marked "(hidden from this event's registration)". Client reviewed and elected to leave it. Do not add a filter/collapse task. |
 | Phase order | **B → C → E → D.** Event night (E) precedes member verification (D): E holds live defects, D is blocked on committee poll 4, and if D never ships members are comped at the door exactly as they are today. The plan's own risk section already said verification is "sequenced last"; the letters were wrong, not the sentence. |
+| Opened door beats the clock (Ruling 15) | A finished event stops selling — **but** the date test applies to `OPEN` only. `ACTIVE` **plus** a non-null `walkInOpensAt` overrides it, because that pair is a coordinator's deliberate act *today*. Without this a half-day camp overrunning its window loses walk-in registration mid-camp: `gate.ts` is `type: "GENERAL"` only, so a CAMP has **no door sell path** and `/register` *is* its walk-in path. |
+| Display timezone | **One shared constant now (`VENUE_TIME_ZONE = "America/Chicago"` in `src/lib/eventTime.ts`), an `Organization` setting later.** Never a fixed offset — wrong for half the year. Same treatment as `CONTACT_EMAIL`: one source, documented as owing a settings home. |
+| Empty/past state omissions (Rulings 17–19) | The design assumes three systems that do not exist. **Photos and competition results:** omitted, not stubbed — no model, no upload path. **Notify-me:** a contact link, and Ruling 4's premise was wrong — there is no `/contact` route, only the footer `mailto`; "Text me" would mean SMS consent with no sender. **Attendance:** rendered only when the count exceeds zero, because the org's real past events are non-ticketed and would read "0 people came — thank you". |
+| Garba class (Sept 19 2026) | Seeded, not entered through the admin UI, because the admin UI **cannot** create a general event (see Phase G). Online $5.50 / door $5.00 — deliberately inverted so the card fee is passed to the buyer. `honorsMembership` **off**: a family plan's `partySize` of 5 would comp the whole household on a $5 class. Capacity **40 is a placeholder** pending the real number from the flyer's contacts. |
+| Email HTML | Only the **order confirmation** gains an HTML part. The OTP email (D4) and the three volunteer senders stay plain text. The QR is a `cid:` inline attachment via SESv2 `Content.Raw`, **not** a hosted image — a hosted image needs a round trip at open time and so fails the airplane-mode test (D-2), and Gmail strips `data:` URIs. |
+| `Event.code` is not editable | It is the prefix of every minted ticket (`GARBA-2026-0015`). Changing it after tickets exist orphans every code already in a guest's inbox and on their badge. Not offered as a field on the edit form. |
+
+---
+
+## Execution status (2026-08-19)
+
+Branch `feat/navratri-ticketing`, continuously fast-forwarded into `test` and
+deployed to test.dcica.org. **17 commits landed; the plan grew from 26 tasks to 36**
+as execution surfaced work the plan had not anticipated.
+
+Gates: `npx tsc --noEmit` clean · `npm run verify` = **74 checks** (39 pricing +
+35 validation, both self-cleaning) · roster intact at 323 households.
+
+| Phase | Done | Pending |
+|---|---|---|
+| **A** pricing is configuration | A1 · A2 · A3 | — |
+| **B** the real event exists | B1 · B2 · **B3** | — |
+| **C** the public list tells the truth | C1 · **C1b** · **C1c** · C2 · **C2b** · **C3** · **C4** | — |
+| **D** member self-verification | — | D1 · D2 · D3 · D4 · D5 · D6 — **blocked on committee poll 4** |
+| **E** event night | E10 | **E1 · E2 · E3 · E4 · E5 · E6 · E7 · E8 · E9** |
+| **F** operations surfaces | F3 | F1 · F2 · F4 |
+| **G** discovered during execution | G1 · G2 · G3 · G4 · G5 | G6 · G7 (below) |
+
+Tasks added during execution, and why — each was a defect or a client request the
+plan did not foresee:
+
+| Task | Why it exists |
+|---|---|
+| **B3** | `db:seed:events` wiped every event in the org on each run |
+| **C1b** | Ruling 15 (above), plus Stripe's `cancel_url` dropped buyers on the wrong event |
+| **C1c** | Ruling 15 made `status === "ACTIVE"` load-bearing with nothing asserting it — a plausible refactor would have made **every closed camp sellable**. Also removed a wall-clock time bomb that would have killed the test suite in December. |
+| **C2b** | The past-events band read as an inventory with no thanks; the contact address lived in three files |
+| **C3** | `/register`'s help copy read **no** event flag — it promised money back on a no-refunds event, gave per-person instructions in quantity mode, and showed lab copy on a dance night |
+| **C4** | Comments and copy that asserted things the code disproved, incl. "sold-out services are disabled" — untrue on every event |
+| **G1** | Buyer email/phone were never validated during entry, and a bad email rendered a raw `ZodError` JSON dump in the red box |
+| **G2** | Seed the Sept 19 Garba class (client request from a printed flyer) |
+| **G3** | `updateCamp` was fully written and **orphaned** — no UI called it, so an event's name, dates and location needed a code change and a deploy |
+| **G4** | **No** date/time call site pinned a timezone — a real event stored correctly at 20:00Z rendered as 8:00 PM on Vercel against a flyer saying 3:00 PM |
+| **G5** | A bogus `eventId` returned a ~456-char Prisma dump with absolute source paths; whitespace-only name and phone passed validation |
+| **E10** | The confirmation email was four lines of plain text and a link |
 
 ---
 
@@ -482,6 +527,58 @@ Functionally complete already (`src/server/volunteers.ts`, `docs/Volunteer-Modul
 
 ---
 
+# Phase G — discovered during execution
+
+Not in the original plan. Each of these was either a defect found while doing
+something else, or a client request that arrived mid-flight. G1–G5 have landed and
+been reviewed; G6 and G7 are open.
+
+### Task G6: the services screen corrupts the early-bird deadline (OPEN)
+
+The same defect G4 fixed on the read side and G3 fixed on the camp write side is
+**still live on the services screen**, and here it gates money.
+`services/page.tsx:12` `toDatetimeLocal` builds the input from `getHours()` — the
+*process* zone, in a server component — and `services/actions.ts:75` parses it back
+with `new Date(until!)`. Self-consistent, so it round-trips and no test catches it.
+
+On Vercel a coordinator typing a deadline of `23:59` stores `23:59Z`, which is
+**6:59 PM** in Flower Mound. `earlyBirdUntil` gates the discount in `resolvePrice`,
+so **the early-bird window closes five hours early and buyers pay full price.**
+
+Latent today — no event currently sets early bird — and it fires the moment anyone
+uses the feature Phase A exists for. Test-plan **A-4** explicitly exercises setting
+that deadline through the UI. The fix is the two `eventTime.ts` helpers G3 added,
+two imports away.
+
+Fold in four comment corrections in `src/lib/eventTime.ts` that the G3 review
+disproved: the spring-forward gap resolves one hour **earlier**, not later; the
+two-pass offset iteration **oscillates with period 2** inside the gap rather than
+converging; `hourCycle: "h23"` prevents a **±12-hour** error at every hour from
+13:00, not just a midnight break; and the "moving `endsAt` closes online sales"
+sentence is **false** for `ACTIVE` + walk-in-open events (Ruling 15), which is the
+state the fixture it was written against is in. Plus: the edit form never re-syncs
+from its props after a save, so a server-normalised value leaves the field showing
+what was typed — a `key` closes it.
+
+### Task G7: the admin UI cannot create a general event (OPEN)
+
+`createCamp` hardcodes `type: "CAMP"`, and its code validator
+`/^[A-Z]{2,4}-\d{4}[SW]$/` **rejects 7 of the org's 10 existing event codes** in
+three distinct ways: the mandatory `S`/`W` season letter kills every general code
+*and* `MC-2027`; the `{2,4}` cap kills `GARBA-2026`; letters-only kills
+`JUL4-2026`. Location is settable nowhere on the create path.
+
+So **7 of 10 events in the database could not be created through the product.** This
+is why the Garba class had to be seeded. It is also test-plan case **A-1**, which is
+a go-live gate item and fails today on its first assertion.
+
+Deliberately separated from G3 because changing which codes are accepted alters
+validation semantics and deserves its own review. `parseCampId` shares the same
+three failure modes (benign — both call sites fall back to the raw string) and
+should be folded in.
+
+---
+
 ## Verification
 
 **Full test plan: `docs/Test-Plan-Navratri.md`** — six suites (admin/setup, buying, the door, the pass, reconciliation, rehearsal), a per-task gate table, and the go-live gate. Read it before starting any task; it names what that task's completion requires.
@@ -489,17 +586,32 @@ Functionally complete already (`src/server/volunteers.ts`, `docs/Volunteer-Modul
 No test framework exists — a deliberate call given the deadline. Standing up Vitest now costs days the defect list needs; add it after the event, when the payment code stops moving. Coverage comes from four layers instead:
 
 1. **`npx tsc --noEmit`** after every task.
-2. **`npm run verify:pricing`** — extend per phase. Currently 30 assertions, self-cleaning. Add: comp allocation against a real household allowance, once-per-event claim enforcement, a fee issuing no ticket at the door, and `fulfilledQty` partial hand-over (Task E7).
+2. **`npm run verify`** — the aggregate, **74 checks** as of 2026-08-19, both suites self-cleaning:
+   - **`npm run verify:pricing`** — **39** assertions (was 16 at baseline, then 28; any note saying 30 was a miscount). Covers the three prices, the early-bird boundary, and the full online sell/no-sell rule across the four statuses A-6 specifies.
+   - **`npm run verify:validation`** — **35** assertions. The negative-path sibling: bad form entries, buyer-visible error copy, and no-internal-leak properties. It caught two live defects (the Prisma path leak and whitespace-only contact details) and must never be made green by softening a row.
+   - Still to add per phase: comp allocation against a real household allowance, once-per-event claim enforcement, a fee issuing no ticket at the door, and `fulfilledQty` partial hand-over (Task E7).
 3. **Browser (Playwright) per phase** — the only layer that can reach the admin surfaces at all, because every admin action calls `requireAdmin()`/`requireCoordinator()` and a tsx script has no session. Includes a real Stripe test checkout with a real webhook.
 4. **Two real phones, on-site rehearsal** — two doors scanning at once, network loss mid-scan, legibility in gym lighting. `GateStation` holds the headcount in local `useState` and never polls, so a two-device divergence is unreachable from a single browser by construction.
 
 **Setup is tested through the UI, not the seed.** The night runs on what a coordinator typed into `/admin/camps/[id]/services`, so the real Oct 10 event must be configured through those forms at least once before go-live. `db:seed:events` produces a starting point for development; it is not the go-live path.
 
-**Seed order is load-bearing:** `db:seed` → `db:seed:events` → `db:seed:test`. `seed-events.ts:170` deletes all events in the org, so running it last destroys the fixtures.
+**Seed order is load-bearing:** `db:seed` → `db:seed:events` → `db:seed:test`. Run in that order every time.
+
+**Correction (Task B3, 2026-08-19):** the warning that `seed-events.ts` "deletes all events in the org" is **obsolete**. B3 removed the `deleteMany`; F3 made the update half a no-op without `SEED_FORCE_UPDATE=1`, and `Event.status` is create-only in every mode. Three consecutive CI pushes have now run migrate plus all three seeds against a shared environment and destroyed nothing, reverted no coordinator edit, and left the live event's status alone. That is what made seeding shared environments safe.
+
+**But a seed cannot correct an existing row.** `seed.ts` upserts with `update: {}` and has no force-update escape hatch, so `MC-2026W` on test.dcica.org still carries a wrong time that **no redeploy will fix** — it needs a data correction, now finally possible through Task G3's edit form. `seed-test.ts` is the opposite: it deletes and recreates its fixture, so `db:seed:test` *does* correct `MC-2027S` — while cascading away every order and attendee beneath it.
 
 ## Risks and open items
 
+- **Phase E is entirely unbuilt except E10, and it is where the Oct 10 risk lives.** Every one of E1–E9 is a defect *observed firing in a browser* during the day-of simulation, not a hypothesis: no audit trail at all, a mis-scan that cannot be undone, cash tender never stored so no change is ever computed, comps invisible to reconciliation and capacity, a fee-only door sale that still admits, merch that cannot be handed over in waves, and a confirm page that tells an already-admitted family to go check in.
+- **The Garba class (Sept 19 2026) is selling now**, which reorders priorities: it is one month out against Navratri's seven weeks, and a mis-scan at its door is currently permanent and unattributable. **E1 and E2 matter for that event, not just for Oct 10.**
 - **Committee poll 2** (household allowance policy) and **poll 4** (roster cleanup owner) are unanswered. Poll 4 gates Phase D — the flow is only as good as the roster, and 80% of it currently reads as expired.
+- **No public membership path exists.** The platform sells annual/multi-year membership and comps admissions off it, but a visitor who wants to join has nowhere to go except email. Phase D builds member *verification*, not *acquisition*. Not in the 36 tasks.
+- **Garba capacity is a guess.** 40 is a placeholder; the flyer shouts "LIMITED ENTRIES" and the real number has to come from Madhu Rana or Abha Joshi. Editable through the services screen today.
+- **The flyer directs payment to Zelle** (`Dentoncica@gmail.com`) while the platform sells the same tickets through Stripe. `docs/Payment-Gateway.md` scopes Zelle to vendors and sponsors, so money arriving that way will not reconcile against these tickets.
+- **A personal address is the public contact.** `sachin@buzzclan.com` is now reached from the events empty state's primary CTA as well as every page footer. A committee alias behind a shared mailbox belongs on the pre-launch list; the code side is already one constant (`src/lib/contact.ts`).
+- **Vercel Preview deployments are non-functional** — the Preview environment has no env vars at all, so Prisma cannot initialise and NextAuth refuses to start. `DATABASE_URL` and `NEXTAUTH_SECRET` are the two load-bearing ones; `dev` and `staging` schemas are migrated and seeded and ready to point at. Note the earlier diagnosis blaming the empty schemas was wrong about causation.
+- **Buyer-facing follow-ups logged from reviews, none blocking:** email is the only untrimmed required field (56 cases where the client accepts and the server rejects, all pasted addresses with surrounding whitespace); a server rejection does not mark the field it is about; `role="alert"` is inserted with its content rather than updated, an iOS VoiceOver soft spot on the platform this targets; zero-width characters still defeat the badge on both sides; the attendee-name input is still bare; the mailing-address field renders even on events with no lab service.
 - **Two review lenses argued against building member verification at all** for this event, given no fraud exists in a small known group and 30 households have no usable email. The client elected to build it after hearing that. It is sequenced last.
 - **Network at the venue is the biggest night-of risk** — every scan, comp, and cash sale is a round trip, and there is no offline mode. Print a paper roster, and decide in advance who owns the "network is down, take cash and write names" call.
 - **`getGateView` is not scoped to the active event** (`src/server/gate.ts:66`) — a ticket from another event in the same org resolves and can be admitted. Worth closing while in Phase E.
