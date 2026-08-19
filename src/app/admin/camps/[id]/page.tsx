@@ -3,9 +3,10 @@ import { notFound } from "next/navigation";
 import { requireAdmin } from "@/server/admin";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
-import { VENUE_TIME_ZONE } from "@/lib/eventTime";
+import { instantToVenueInput, VENUE_TIME_ZONE } from "@/lib/eventTime";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { CampControls } from "./CampControls";
+import { EditEventForm } from "./EditEventForm";
 import { EventFlags } from "./EventFlags";
 
 export const dynamic = "force-dynamic";
@@ -66,12 +67,28 @@ export default async function CampDetailPage({
             timeZone: VENUE_TIME_ZONE,
           })}
         </p>
+        {camp.location && (
+          <p className="mt-1 text-sm text-gray-500">{camp.location}</p>
+        )}
         <p className="mt-1 text-xs text-gray-400">
           {camp._count.caps} services · {camp._count.stations} stations ·{" "}
           {camp._count.attendees} registered
           {camp.walkInOpensAt ? " · walk-in OPEN" : ""}
         </p>
       </div>
+
+      {/* The dates and the location are converted to venue wall clock *here*, on
+          the server, so the input shows the same clock the header above and the
+          public card show. */}
+      <EditEventForm
+        id={camp.id}
+        initial={{
+          name: camp.name,
+          startsAt: instantToVenueInput(camp.startsAt),
+          endsAt: instantToVenueInput(camp.endsAt),
+          location: camp.location ?? "",
+        }}
+      />
 
       <PageHelp
         id="admin-camp-detail"

@@ -63,3 +63,131 @@ export function formatWhen(start: Date, end: Date): string {
     ? `${startDay} · ${VENUE_TIME.format(start)} – ${VENUE_TIME.format(end)}`
     : `${startDay} – ${endDay}`;
 }
+
+/* ------------------------------------------------------------------------- *
+ * `<input type="datetime-local">` ⇄ stored instant
+ *
+ * WHY these exist at all — do not replace either with `new Date(value)`:
+ * a `datetime-local` input submits a bare wall-clock string, `"2026-09-19T15:00"`,
+ * with NO zone in it. `new Date()` on that string parses it in the *process*
+ * zone, and Vercel runs UTC. So a coordinator typing the flyer's 3:00 PM stored
+ * `15:00Z`, which is 10:00 AM in Flower Mound — a five-hour error. That is the
+ * defect that put `2:00 AM – 8:00 AM` on a live medical camp. `formatWhen` above
+ * pinned the *display* side to the venue zone; these two pin the *write* side, so
+ * the number the coordinator types is the number on the door.
+ *
+ * WHY the offset is derived at the converted instant and never written as a
+ * constant: December in Flower Mound is CST (UTC−6) and June is CDT (UTC−5). A
+ * hardcoded `-06:00` is wrong for half the year and would break silently at each
+ * DST boundary — the same reason `VENUE_TIME_ZONE` is an IANA name.
+ * ------------------------------------------------------------------------- */
+
+// Whole-part read-out of an instant *in the venue zone*. `hourCycle: "h23"`
+// matters: the default `h12` yields hour "24" for midnight, which is not a legal
+// `datetime-local` value and would break the arithmetic below.
+const VENUE_PARTS = new Intl.DateTimeFormat("en-US", {
+  timeZone: VENUE_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+type WallClock = {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+};
+
+function venueWallClock(instant: Date): WallClock {
+  const p: Record<string, string> = {};
+  for (const { type, value } of VENUE_PARTS.formatToParts(instant)) {
+    p[type] = value;
+  }
+  return {
+    year: Number(p.year),
+    month: Number(p.month),
+    day: Number(p.day),
+    hour: Number(p.hour),
+    minute: Number(p.minute),
+    second: Number(p.second),
+  };
+}
+
+/**
+ * The venue zone's offset from UTC, in ms, *at a given instant* — positive west
+ * of Greenwich (CST = 21_600_000).
+ *
+ * Reading the instant's venue wall clock and re-interpreting those same digits
+ * as UTC gives an instant that is exactly one offset away from the real one.
+ * `Intl` supplies the DST rules, so this is correct on both sides of every
+ * transition without a table or a date library.
+ */
+function venueOffsetMs(instant: number): number {
+  const w = venueWallClock(new Date(instant));
+  const asUtc = Date.UTC(w.year, w.month - 1, w.day, w.hour, w.minute, w.second);
+  return asUtc - instant;
+}
+
+/**
+ * Stored instant → the `YYYY-MM-DDTHH:mm` string a `datetime-local` input wants,
+ * in venue wall-clock time. Round-trips with `venueInputToInstant` below.
+ */
+export function instantToVenueInput(instant: Date): string {
+  if (isNaN(+instant)) return "";
+  const w = venueWallClock(instant);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${w.year}-${pad(w.month)}-${pad(w.day)}T${pad(w.hour)}:${pad(w.minute)}`;
+}
+
+/**
+ * A `datetime-local` value read as venue wall-clock time → the UTC instant to
+ * store. `null` when the string is not a usable date-time (the caller turns that
+ * into readable copy rather than storing `Invalid Date`).
+ *
+ * Two passes: the first offset is sampled at the naive UTC reading of the digits,
+ * which lands within a day of the answer and so gives the right DST rule almost
+ * always; the second samples at that candidate, which fixes the few hours either
+ * side of a transition where the first guess sits on the wrong side of the
+ * boundary. It converges — a third pass never changes the result.
+ *
+ * Spring-forward gap (2:30 AM on 2027-03-14 does not exist in Flower Mound): the
+ * result is the real instant one hour later. That is the same thing the browser's
+ * own picker does and it is a legal time; refusing it would block a coordinator
+ * over an hour nobody schedules an event in.
+ */
+export function venueInputToInstant(value: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(
+    value.trim(),
+  );
+  if (!m) return null;
+  const [year, month, day, hour, minute, second] = [
+    Number(m[1]),
+    Number(m[2]),
+    Number(m[3]),
+    Number(m[4]),
+    Number(m[5]),
+    Number(m[6] ?? 0),
+  ];
+  // Reject 2026-13-40T25:99 — the regex only proves shape, not that the date is
+  // real. Date.UTC rolls overflow silently, so compare it back.
+  const naive = Date.UTC(year, month - 1, day, hour, minute, second);
+  const back = new Date(naive);
+  if (
+    back.getUTCFullYear() !== year ||
+    back.getUTCMonth() !== month - 1 ||
+    back.getUTCDate() !== day ||
+    back.getUTCHours() !== hour ||
+    back.getUTCMinutes() !== minute
+  ) {
+    return null;
+  }
+  const firstPass = naive - venueOffsetMs(naive);
+  return new Date(naive - venueOffsetMs(firstPass));
+}

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import type { EventStatus } from "@prisma/client";
 import { db } from "@/lib/db";
+import { venueInputToInstant } from "@/lib/eventTime";
 import { getActiveOrg } from "@/lib/tenant";
 import { requireAdmin, requireCoordinator } from "@/server/admin";
 
@@ -36,10 +37,17 @@ export async function createCamp(input: {
   if (!/^[A-Z]{2,4}-\d{4}[SW]$/.test(code)) {
     return { ok: false, error: "Code must look like MC-2026W." };
   }
-  const startsAt = new Date(input.startsAt);
-  const endsAt = new Date(input.endsAt);
-  if (isNaN(+startsAt) || isNaN(+endsAt)) {
+  // Venue wall clock in, UTC instant out. NOT `new Date(input.startsAt)` — that
+  // parses the input's bare wall-clock string in the server's zone (UTC on
+  // Vercel) and shifted every camp created here five hours earlier. See
+  // `venueInputToInstant`.
+  const startsAt = venueInputToInstant(input.startsAt);
+  const endsAt = venueInputToInstant(input.endsAt);
+  if (!startsAt || !endsAt) {
     return { ok: false, error: "Valid start and end dates required." };
+  }
+  if (endsAt < startsAt) {
+    return { ok: false, error: "End must be after the start." };
   }
 
   const dupe = await db.event.findUnique({
@@ -62,23 +70,52 @@ export async function createCamp(input: {
   return { ok: true, id: event.id };
 }
 
+/**
+ * Edit an event's label and when/where.
+ *
+ * `code` is deliberately NOT patchable. It is identity, not a label: it is the
+ * prefix `formatCampId` mints every ticket number from (`GARBA-2026-0015`), so
+ * changing it after a single ticket exists orphans every code already sitting in
+ * a guest's confirmation email and printed on their pass. Renaming the event is
+ * safe; renumbering the tickets is not. Do not add it as a field.
+ */
 export async function updateCamp(
   id: string,
-  patch: { name: string; startsAt: string; endsAt: string },
+  patch: {
+    name: string;
+    startsAt: string;
+    endsAt: string;
+    location: string;
+  },
 ): Promise<ActionResult> {
   await requireAdmin();
   const org = await getActiveOrg();
   if (!org) return { ok: false, error: "No active org." };
 
-  const startsAt = new Date(patch.startsAt);
-  const endsAt = new Date(patch.endsAt);
-  if (!patch.name.trim() || isNaN(+startsAt) || isNaN(+endsAt)) {
+  const name = patch.name.trim();
+  // Venue wall clock in, UTC instant out — see `venueInputToInstant`. A plain
+  // `new Date(patch.startsAt)` here would read the datetime-local string in the
+  // server's zone and move every saved time five hours.
+  const startsAt = venueInputToInstant(patch.startsAt);
+  const endsAt = venueInputToInstant(patch.endsAt);
+  if (!name || !startsAt || !endsAt) {
     return { ok: false, error: "Name and valid dates required." };
   }
+  if (endsAt < startsAt) {
+    return { ok: false, error: "End must be after the start." };
+  }
+  const location = patch.location.trim();
 
   const res = await db.event.updateMany({
     where: { id, orgId: org.id },
-    data: { name: patch.name.trim(), startsAt, endsAt },
+    data: {
+      name,
+      startsAt,
+      endsAt,
+      // Cleared back to NULL rather than "" so the public card's `e.location &&`
+      // test keeps hiding the line instead of printing an empty separator.
+      location: location || null,
+    },
   });
   if (res.count === 0) return { ok: false, error: "Camp not found." };
   revalidatePath(`/admin/camps/${id}`);
