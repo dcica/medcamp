@@ -36,7 +36,7 @@ export function CheckinStation() {
       >
         <input
           className="w-full min-h-tap rounded-lg border border-gray-300 px-3 py-2 text-base uppercase"
-          placeholder="Camp ID (e.g. MC-2026W-0001)"
+          placeholder="Camp ID (e.g. MC-2026W-K7M2XQ9T)"
           value={campId}
           onChange={(e) => setCampId(e.target.value)}
           autoCapitalize="characters"

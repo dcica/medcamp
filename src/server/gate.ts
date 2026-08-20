@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
-import { parseCampId } from "@/lib/campId";
+import { normalizeCampId } from "@/lib/campId";
 import { confirmOrderPaid } from "@/server/payments";
 import { resolvePrice } from "@/lib/pricing";
 
@@ -57,10 +57,7 @@ export async function getGateView(rawCode: string): Promise<GateView | null> {
   const org = await getActiveOrg();
   if (!org) return null;
 
-  const parsed = parseCampId(rawCode);
-  const campId = parsed
-    ? `${parsed.eventCode}-${parsed.sequence.toString().padStart(4, "0")}`
-    : rawCode.trim().toUpperCase();
+  const campId = normalizeCampId(rawCode);
 
   const attendee = await db.attendee.findFirst({
     where: { orgId: org.id, campId },

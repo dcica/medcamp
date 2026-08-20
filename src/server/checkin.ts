@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
-import { parseCampId } from "@/lib/campId";
+import { normalizeCampId } from "@/lib/campId";
 
 /**
  * Check-in service (Module 2). All reads/writes are scoped to the active org
@@ -28,10 +28,7 @@ export async function getAttendeeForCheckin(
   if (!org) return null;
 
   // Normalize scanned/typed input (case, whitespace) before matching.
-  const parsed = parseCampId(rawCampId);
-  const campId = parsed
-    ? `${parsed.eventCode}-${parsed.sequence.toString().padStart(4, "0")}`
-    : rawCampId.trim().toUpperCase();
+  const campId = normalizeCampId(rawCampId);
 
   const attendee = await db.attendee.findFirst({
     where: { orgId: org.id, campId },

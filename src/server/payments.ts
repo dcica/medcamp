@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { stripe } from "@/lib/stripe";
 import { env } from "@/lib/env";
 import { sendConfirmationEmail } from "@/lib/email";
-import { formatCampId } from "@/lib/campId";
+import { newCampId } from "@/lib/campId";
 
 /**
  * The single PaymentService (locked decision #6). Every billable thing is a
@@ -210,18 +210,41 @@ export async function confirmOrderPaid(
       if (claimed.count === 0) throw new OverCapacityError(serviceKey);
     }
 
-    // ── Assign campIds from the per-event sequence (atomic increment) ──
-    const n = order.attendees.length;
-    const ev = await tx.event.update({
+    // ── Assign campIds (random tokens, not a sequence) ──
+    // Event.nextCampSeq is deliberately no longer incremented: the sequence was
+    // a published sales figure on every badge. See src/lib/publicId.ts.
+    //
+    // Tokens are drawn, then checked against the ids already stored, and any
+    // that clash are redrawn. At 40 bits this loop effectively never runs a
+    // second pass — it is here so that the id stays unique by construction
+    // rather than by optimism.
+    //
+    // A collision with a CONCURRENT transaction still can't be seen from
+    // inside this one and would surface as a unique-constraint violation that
+    // aborts the confirmation. That is the correct failure: this runs from the
+    // Stripe webhook, which retries, and confirmOrderPaid is idempotent — so
+    // the retry re-runs with fresh tokens and succeeds. Nobody loses a paid
+    // order, and no id is ever quietly reused.
+    const ev = await tx.event.findUniqueOrThrow({
       where: { id: order.eventId },
-      data: { nextCampSeq: { increment: n } },
-      select: { nextCampSeq: true, code: true },
+      select: { code: true },
     });
-    let seq = ev.nextCampSeq - n; // first id in the reserved range
 
     const campIds: string[] = [];
+    const claimed = new Set<string>();
     for (const att of order.attendees) {
-      const campId = formatCampId(ev.code, seq++);
+      let campId = newCampId(ev.code);
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const taken =
+          claimed.has(campId) ||
+          (await tx.attendee.findUnique({
+            where: { campId },
+            select: { id: true },
+          })) !== null;
+        if (!taken) break;
+        campId = newCampId(ev.code);
+      }
+      claimed.add(campId);
       campIds.push(campId);
       await tx.attendee.update({
         where: { id: att.id },

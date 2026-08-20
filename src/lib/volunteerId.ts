@@ -1,25 +1,28 @@
+import { generateIdToken, normalizePublicId } from "@/lib/publicId";
+
 /**
- * Volunteer signup code: VOL-<eventCode>-NNNN (e.g. VOL-MC-2026W-0231).
- * Encoded in the day-of QR; NNNN is a per-event sequence (Event.nextVolSeq).
- * Mirrors src/lib/campId.ts so the scanner/manual-entry flow normalizes the same
- * way for volunteers as it does for patients.
+ * Volunteer signup code: VOL-<eventCode>-<token> (e.g. VOL-GARBA-2026-4PW9HB2N).
+ * Encoded in the day-of QR for sign in/out.
+ *
+ * Mirrors src/lib/campId.ts deliberately, so the scanner and manual-entry flow
+ * normalize the same way for volunteers as for ticket holders — one convention,
+ * not two. Was a per-event sequence (Event.nextVolSeq); that leaked headcount
+ * the same way ticket sequences leaked sales.
  */
-export function formatVolCode(eventCode: string, sequence: number): string {
-  return `VOL-${eventCode}-${sequence.toString().padStart(4, "0")}`;
+export function formatVolCode(eventCode: string, token: string): string {
+  return `VOL-${eventCode}-${token}`;
 }
 
-const VOL_CODE_RE = /^VOL-([A-Z]{2,4}-\d{4}[SW])-(\d{4})$/;
-
-export function parseVolCode(
-  code: string,
-): { eventCode: string; sequence: number } | null {
-  const m = code.trim().toUpperCase().match(VOL_CODE_RE);
-  if (!m) return null;
-  return { eventCode: m[1], sequence: Number(m[2]) };
+/** A complete volunteer code for an event, with a freshly generated token. */
+export function newVolCode(eventCode: string): string {
+  return formatVolCode(eventCode, generateIdToken());
 }
 
-/** Normalize a scanned/typed code to canonical form, or null if unparseable. */
-export function normalizeVolCode(code: string): string | null {
-  const parsed = parseVolCode(code);
-  return parsed ? formatVolCode(parsed.eventCode, parsed.sequence) : null;
+/**
+ * Canonicalize a scanned or typed volunteer code for lookup. Legacy sequential
+ * codes (VOL-MC-2026W-0231) still resolve — the token is the final segment in
+ * both schemes, and digits are untouched by the confusable mapping.
+ */
+export function normalizeVolCode(raw: string): string {
+  return normalizePublicId(raw);
 }
