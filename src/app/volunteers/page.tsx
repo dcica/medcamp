@@ -1,9 +1,14 @@
 import Link from "next/link";
 import { requireVolunteerCoordinator } from "@/server/admin";
-import { getVolunteerRoster, listVolunteerEvents } from "@/server/volunteers";
+import {
+  getVolunteerRoster,
+  listVolunteerEvents,
+  getGeneralInterestVolunteers,
+} from "@/server/volunteers";
 import { AutoRefresh } from "@/app/dashboard/AutoRefresh";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { RosterView } from "./RosterView";
+import { GeneralInterestPanel } from "./GeneralInterestPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -20,9 +25,10 @@ export default async function VolunteersDashboardPage({
 }) {
   await requireVolunteerCoordinator();
   const { event: eventId } = await searchParams;
-  const [roster, events] = await Promise.all([
+  const [roster, events, generalInterest] = await Promise.all([
     getVolunteerRoster(eventId),
     listVolunteerEvents(),
+    getGeneralInterestVolunteers(),
   ]);
 
   if (!roster) {
@@ -38,6 +44,13 @@ export default async function VolunteersDashboardPage({
         >
           → Camps
         </Link>
+
+        {/* The general list is shown here too. With no event open this is the
+            only volunteer data that exists, and it is the state the site sits
+            in between events — when people are still registering. */}
+        <div className="mt-8">
+          <GeneralInterestPanel rows={generalInterest} />
+        </div>
       </main>
     );
   }
@@ -112,6 +125,10 @@ export default async function VolunteersDashboardPage({
 
       <div className="mt-4">
         <RosterView roster={roster} eventId={roster.eventId} />
+      </div>
+
+      <div className="mt-8">
+        <GeneralInterestPanel rows={generalInterest} />
       </div>
     </main>
   );
