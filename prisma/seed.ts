@@ -41,6 +41,30 @@ async function main() {
     });
   }
 
+  // ── Family membership plans (catalogue) ──
+  // Tenant configuration, not fixtures: these are the products the org sells,
+  // exactly like the service menu above. They lived in seed-test.ts, which
+  // never runs in production — so a prod database had no plans at all, and an
+  // event with honorsMembership=true had nothing to comp against and no upsell
+  // to show at registration. Member INSTANCES stay in seed-test; only the
+  // catalogue belongs here.
+  //
+  // The odd prices are deliberate (51 / 101 / 251, not 50 / 100 / 250) — the
+  // card fee is passed to the buyer. partySize 5 is what the comp admits free
+  // at an honoring event, and compUnits reads it exactly, not approximately.
+  const membershipPlans = [
+    { key: "family-1yr", name: "Family Membership — 1 Year", termYears: 1, priceCents: 5100, partySize: 5 },
+    { key: "family-2yr", name: "Family Membership — 2 Year", termYears: 2, priceCents: 10100, partySize: 5 },
+    { key: "family-5yr", name: "Family Membership — 5 Year", termYears: 5, priceCents: 25100, partySize: 5 },
+  ];
+  for (const p of membershipPlans) {
+    await db.membershipPlan.upsert({
+      where: { orgId_key: { orgId: org.id, key: p.key } },
+      update: { name: p.name, termYears: p.termYears, priceCents: p.priceCents, partySize: p.partySize },
+      create: { orgId: org.id, ...p },
+    });
+  }
+
   // No event is seeded here on purpose. This file provisions the TENANT —
   // the org and its service catalogue — and nothing that is a specific thing
   // happening on a specific day. Events come from seed-events.ts (the real
@@ -53,7 +77,10 @@ async function main() {
   // genuine medical camp is scheduled, add it to seed-events.ts or create it in
   // the admin UI; the per-event stations and roles are seeded from there.
 
-  console.log(`Seeded org ${org.slug} (${services.length} service types, no events).`);
+  console.log(
+    `Seeded org ${org.slug} (${services.length} service types, ` +
+      `${membershipPlans.length} membership plans, no events).`,
+  );
 }
 
 main()

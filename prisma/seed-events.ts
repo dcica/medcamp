@@ -256,6 +256,110 @@ const EVENTS: Seed[] = [
     ],
   },
   {
+    code: "DANDIYA-2026",
+    type: "GENERAL",
+    name: "Dandiya Night",
+    // The SAME NIGHT and the same venue as RON-2026, deliberately two events
+    // rather than one. They are different things sold to different people: the
+    // competition is a $30 per-group fee that admits nobody to the floor, and
+    // this is per-person floor admission. One event could not carry both a
+    // membership comp and a competition fee sensibly, which is exactly the
+    // mess RON-2026 was in before it was split.
+    //
+    // PROVISIONAL TIMES. The competition runs 5:00–11:00 PM; the open floor is
+    // seeded 7:00 PM–midnight CDT (UTC-5) so the two read as one evening. No
+    // flyer states these — a coordinator sets the real ones in the admin UI.
+    startsAt: "2026-10-11T00:00:00Z",
+    endsAt: "2026-10-11T05:00:00Z",
+    // NO POSTER, deliberately. Borrowing RON-2026's artwork put a flyer reading
+    // "Dance Competition — Entry Fee: $30 Per Group" directly above a card that
+    // says entry is $10–$15 per person, and printed the same image twice in a
+    // row on the events page. A wrong poster is worse than none: people read the
+    // picture before the text. Drop a dandiya flyer in /public/events and set it
+    // here.
+    imageUrl: null,
+    location: "McKamy Middle School, Flower Mound, TX",
+    description:
+      "The dandiya floor on Navratri night. Entry is $10 early bird through Sep 15, $12 online after that, and $15 at the door. Family and group packages available.",
+    offersRegistration: true,
+    offersVendors: true,
+    offersVolunteers: true,
+    volunteerRoles: COMMUNITY_VOL_ROLES,
+    status: "OPEN",
+    collectsAttendeeDetails: false,
+    // TRUE here and false on the competition, and the difference is the point:
+    // the comp admits a household's party, so it only means something at an
+    // event that admits people. This is that event.
+    honorsMembership: true,
+    acceptsDonations: true,
+    allowsRefunds: false,
+    // NOTE ON CAPACITY: every figure below is per-SERVICE, and the bundles each
+    // admit several people, so these caps do not add up to a hall limit and are
+    // not enforced as one. 500 singles + 50 families + 20 ten-packs is 900
+    // heads if everything sells. Provisional until the venue confirms.
+    services: [
+      {
+        // Reuses the existing catalogue key rather than minting a new one, so
+        // the service keeps its history. Caps are per-event, so this is a
+        // separate cap from the stale one still sitting on RON-2026 in test.
+        key: "floor-admission",
+        name: "Dandiya Entry",
+        colorHex: "#9333ea",
+        // Sheet: $10 early bird through Sep 15 2026, $12 online, $15 door.
+        priceCents: 1200,
+        onsitePriceCents: 1500,
+        earlyBirdPriceCents: 1000,
+        // End of day Sep 15 CENTRAL (CDT, UTC-5) — same reasoning as RON's.
+        earlyBirdUntil: "2026-09-16T04:59:59Z",
+        admits: true,
+        fulfillable: false,
+        capacity: 500,
+      },
+      {
+        key: "dandiya-sticks",
+        name: "Dandiya Sticks",
+        colorHex: "#f59e0b",
+        // Not on the pricing sheet, which covers entry only. Carried across at
+        // the catalogue's existing $5 so the merch line exists; a coordinator
+        // can reprice it.
+        priceCents: 500,
+        admits: false,
+        fulfillable: true,
+        capacity: 500,
+      },
+      {
+        key: "dandiya-family-4",
+        name: "Family of 4",
+        colorHex: "#0ea5e9",
+        // The sheet marks the packages "(gate)". They are sold online at the
+        // same price as well — a family pre-paying and walking in is strictly
+        // better than making them queue, and the platform has no door-only
+        // concept to express the restriction anyway.
+        //
+        // $50 for 4 against $12 each is a real discount, which is the offer.
+        priceCents: 5000,
+        onsitePriceCents: 5000,
+        admits: true,
+        // The reason ServiceType.admitsCount exists: ONE purchased unit, FOUR
+        // people through the door and four scannable codes.
+        admitsCount: 4,
+        fulfillable: false,
+        capacity: 50,
+      },
+      {
+        key: "dandiya-10-pack",
+        name: "Package of 10 tickets",
+        colorHex: "#14b8a6",
+        priceCents: 10000,
+        onsitePriceCents: 10000,
+        admits: true,
+        admitsCount: 10,
+        fulfillable: false,
+        capacity: 20,
+      },
+    ],
+  },
+  {
     code: "DIW-2026",
     type: "GENERAL",
     name: "DCICA Festival of Lights",

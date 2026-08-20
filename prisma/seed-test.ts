@@ -131,19 +131,16 @@ async function main() {
   // realistic data. A current membership admits the family free at honoring events.
   const YEAR = 365 * 24 * 3600 * 1000;
   const now = Date.now();
-  const MEMBERSHIP_PLANS = [
-    { key: "family-1yr", name: "Family Membership — 1 Year", termYears: 1, priceCents: 5100, partySize: 5 },
-    { key: "family-2yr", name: "Family Membership — 2 Year", termYears: 2, priceCents: 10100, partySize: 5 },
-    { key: "family-5yr", name: "Family Membership — 5 Year", termYears: 5, priceCents: 25100, partySize: 5 },
-  ];
-  for (const p of MEMBERSHIP_PLANS) {
-    await db.membershipPlan.upsert({
-      where: { orgId_key: { orgId: org.id, key: p.key } },
-      update: { name: p.name, termYears: p.termYears, priceCents: p.priceCents, partySize: p.partySize },
-      create: { orgId: org.id, ...p },
-    });
-  }
+  // The plan CATALOGUE is seeded by seed.ts (tenant configuration, and prod
+  // needs it too). Defining it here as well would be the duplication this
+  // codebase keeps getting bitten by — two copies, one updated. Read it, and
+  // fail loudly rather than silently producing members with no plan.
   const plans = await db.membershipPlan.findMany({ where: { orgId: org.id } });
+  if (plans.length === 0) {
+    throw new Error(
+      "No membership plans found — run `npm run db:seed` before `db:seed:test`.",
+    );
+  }
   const planByKey = new Map(plans.map((p) => [p.key, p]));
 
   // Member instances (idempotent by the @member.test domain).
@@ -954,7 +951,7 @@ async function main() {
       `  ${specs.length} attendees (${checkedIn} checked in, ${specs.length - checkedIn} awaiting arrival)`,
       `  consult bottleneck + vitals queue + 3 completed + 2 needs-payment + 2 donations`,
       `  payments: STRIPE + CASH, each with a CREDIT ledger entry; labs: pending/received/mailed`,
-      `  ${MEMBERSHIP_PLANS.length} membership plans, ${MEMBERS.length} family members (current/expiring/expired)`,
+      `  ${plans.length} membership plans (from db:seed), ${MEMBERS.length} family members (current/expiring/expired)`,
       `  ${VOL_ROLES.length} volunteer roles, ${volSpecs.length} signups ` +
         `(${Object.entries(volByStatus).map(([k, n]) => `${n} ${k.toLowerCase()}`).join(", ")})`,
       demoted.count > 0
