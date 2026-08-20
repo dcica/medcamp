@@ -269,6 +269,17 @@ model ServiceType {
   ///                             access and must not mint a ticket per group.
   /// Backfilled as NOT fulfillable, so pre-existing events are unchanged.
   admits      Boolean      @default(true)
+  /// How many people ONE unit of this service admits. Only meaningful when
+  /// `admits` is true; ignored otherwise.
+  ///
+  /// Exists for gate bundles — "family of 4" at $50, "10 tickets" at $100 —
+  /// which are one purchased unit but several people through the door. Without
+  /// it a family ticket would mint one QR code and count one head, so the gate
+  /// would turn three people away and the capacity figure would understate the
+  /// hall by a factor of four.
+  ///
+  /// Default 1 means every existing service behaves exactly as before.
+  admitsCount Int          @default(1)
   active      Boolean      @default(true)
 
   caps        ServiceCap[]

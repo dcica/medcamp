@@ -28,6 +28,8 @@ type RowInput = {
   fulfillable: boolean;
   /** Issues a scannable ticket. Off for a pure fee (e.g. competition entry). */
   admits: boolean;
+  /** Heads per unit; only meaningful when admits. Gate bundles use >1. */
+  admitsCount?: number;
   /** Door price in dollars. Null/blank = charge the online price at the door. */
   onsitePriceDollars: number | null;
   active: boolean;
@@ -126,6 +128,7 @@ export async function createService(
       hasLab: input.hasLab,
       fulfillable: input.fulfillable,
       admits: input.admits,
+      admitsCount: Math.max(1, Math.round(input.admitsCount ?? 1)),
     },
   });
   await db.serviceCap.create({
@@ -190,6 +193,7 @@ export async function saveServiceRow(
       hasLab: input.hasLab,
       fulfillable: input.fulfillable,
       admits: input.admits,
+      admitsCount: Math.max(1, Math.round(input.admitsCount ?? 1)),
       active: input.active,
     },
   });

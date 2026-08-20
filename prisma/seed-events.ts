@@ -82,6 +82,8 @@ type Seed = {
     earlyBirdPriceCents?: number;
     earlyBirdUntil?: string;
     admits: boolean;
+    /** Heads admitted per purchased unit. Gate bundles only (family of 4 = 4). */
+    admitsCount?: number;
     fulfillable: boolean;
     capacity: number;
   }[];
@@ -134,8 +136,7 @@ const EVENTS: Seed[] = [
     // vendor booths, and advertises no volunteer call on the flyer — so no
     // volunteerRoles are set below either. They say nothing about the channel:
     // this class also sells at the door (onsitePriceCents below, reached once a
-    // coordinator flips it ACTIVE), so do NOT read this as "online sales only"
-    // and do not cite it to argue the cheaper door price is a mistake.
+    // coordinator flips it ACTIVE), so do NOT read this as "online sales only".
     offersRegistration: true,
     offersVendors: false,
     offersVolunteers: false,
@@ -161,15 +162,17 @@ const EVENTS: Seed[] = [
         key: "garba-class-entry",
         name: "Class Entry",
         colorHex: "#db2777",
-        // THE DOOR IS CHEAPER HERE, ON PURPOSE — this is not a transposition
-        // typo, and it inverts the platform's usual convention (RON-2026 is
-        // $15 online / $20 door). The flyer's entry fee is $5. The client
-        // wants the card processing fee passed to the online buyer instead of
-        // absorbed by the org: at the non-profit rate $5.50 online nets
-        // ~$5.08. Cash at the door carries no processor fee, so it stays
-        // exactly $5.00. resolvePrice needs no special case — the door reads
-        // onsitePriceCents (500) and online reads priceCents (550).
-        priceCents: 550,
+        // $5 everywhere. The committee's pricing sheet prices this class at $5
+        // early bird, $5 online and $5 at the door — one number in all three
+        // columns, the only row on the sheet that does not vary.
+        //
+        // This previously charged $5.50 online to pass the card fee to the
+        // buyer. That was a deliberate choice, but the pricing sheet is the
+        // committee's own later word on it, so the org now absorbs the ~$0.42
+        // instead. onsitePriceCents is kept and set equal rather than dropped,
+        // so the door price stays explicit rather than inherited — if someone
+        // changes the online price later, the door does not silently follow.
+        priceCents: 500,
         onsitePriceCents: 500,
         admits: true,
         fulfillable: false,
@@ -232,7 +235,17 @@ const EVENTS: Seed[] = [
         // team buys one. admits:false because the entry fee buys a slot in the
         // competition, not admission for spectators; there is no floor sale at
         // this event at all.
+        // Committee pricing sheet: $25 early bird through Aug 31 2026, $30
+        // online after that, $35 at the door. Three prices for one line, and
+        // the door is the dearest — the usual direction, and the opposite of
+        // the Garba class below, which is cheap at the door on purpose.
         priceCents: 3000,
+        onsitePriceCents: 3500,
+        earlyBirdPriceCents: 2500,
+        // End of day Aug 31 CDT (UTC-5), not midnight UTC — a deadline written
+        // as 00:00Z would expire the early bird at 7pm on Aug 30 local, cutting
+        // a day off the offer the sheet advertises.
+        earlyBirdUntil: "2026-09-01T04:59:59Z",
         admits: false,
         fulfillable: false,
         // 40 groups. Provisional, like the class capacity — the flyer says
@@ -433,6 +446,7 @@ async function main() {
               colorHex: s.colorHex,
               priceCents: s.priceCents,
               admits: s.admits,
+              admitsCount: s.admitsCount ?? 1,
               fulfillable: s.fulfillable,
             }
           : {},
@@ -443,6 +457,7 @@ async function main() {
           colorHex: s.colorHex,
           priceCents: s.priceCents,
           admits: s.admits,
+          admitsCount: s.admitsCount ?? 1,
           fulfillable: s.fulfillable,
         },
       });
