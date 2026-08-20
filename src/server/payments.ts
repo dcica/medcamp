@@ -179,18 +179,24 @@ export async function confirmOrderPaid(
       // No row at all ⇒ misconfigured event, not a sold-out service.
       if (!cap) throw new MissingCapError(serviceKey);
 
-      // The oversell guard has to stay atomic, and it does: updateMany compiles
-      // to ONE conditional UPDATE, so Postgres re-evaluates `sold <= capacity -
-      // qty` against the committed row after any concurrent writer, and two
-      // simultaneous claims on the last seat cannot both match.
+      // GUARANTEED: two concurrent confirmations cannot oversell. updateMany
+      // compiles to ONE conditional UPDATE, so under READ COMMITTED Postgres
+      // re-evaluates `sold <= capacity - qty` against the committed row version
+      // after any concurrent writer commits, and two claims on the last seat
+      // cannot both match. That is the property the old raw statement had, and
+      // it is preserved.
       //
-      // `capacity` is the one value read earlier in this transaction rather than
-      // re-read by the UPDATE itself. That is sound: `sold` — the contended
-      // column — is still compared and incremented atomically, and the only way
-      // to stale `capacity` is a coordinator editing the cap mid-transaction.
-      // A cap raised concurrently just means this order is rejected against the
-      // old, lower limit (safe, retryable); a cap lowered concurrently is a
-      // deliberate act by staff who can see `sold`. Neither can oversell.
+      // NOT guaranteed: `capacity` is read one statement earlier (Prisma cannot
+      // compare column-to-column with arithmetic), so a coordinator LOWERING the
+      // cap inside that window lets one already in-flight order commit against
+      // the pre-edit limit — measured sold=33 against capacity=25. Accepted
+      // deliberately: the same end state is already reachable through the admin
+      // action's own unlocked read-then-write of `sold`
+      // (src/app/admin/camps/[id]/services/actions.ts), nothing enforces
+      // sold <= capacity at the DB, and one extra paid seat beats rejecting a
+      // paid order. The durable fix is a CHECK ("sold" <= "capacity") constraint
+      // plus catching the violation; that needs a migration, so it is a later
+      // task — and it is NOT a licence to go back to $executeRaw (see above).
       const claimed = await tx.serviceCap.updateMany({
         where: {
           eventId: order.eventId,

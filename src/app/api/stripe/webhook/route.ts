@@ -87,11 +87,14 @@ export async function POST(req: NextRequest) {
           { status: 500 },
         );
       }
+      // Log the structured line AND rethrow. log.error keeps this failure
+      // attributable to an orderId in the runtime log, but the logger normalises
+      // an Error down to { name, message } and drops `stack` — and this branch is
+      // exactly the class of failure nobody has diagnosed yet, so the stack is
+      // the part that matters. Rethrowing lets the framework print it. Next
+      // still answers an uncaught throw with a 500, so Stripe retries.
       log.error("stripe webhook: confirmation failed", { orderId, err });
-      return NextResponse.json(
-        { error: "Order confirmation failed" },
-        { status: 500 },
-      );
+      throw err;
     }
   }
 
