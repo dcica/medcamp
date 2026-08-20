@@ -32,11 +32,13 @@ type Flash = { kind: "ok" | "warn" | "err"; text: string };
 export function GateStation({
   eventId,
   eventName,
+  eventCode,
   initialHeadcount,
   catalog,
 }: {
   eventId: string;
   eventName: string;
+  eventCode: string;
   initialHeadcount: number;
   catalog: Catalog;
 }) {
@@ -155,7 +157,7 @@ export function GateStation({
       <QrScanner onScan={onScan} continuous />
 
       {/* Manual entry — camera-free fallback (mirrors check-in). */}
-      <ManualEntry disabled={pending} onSubmit={onScan} />
+      <ManualEntry eventCode={eventCode} disabled={pending} onSubmit={onScan} />
 
       {flash && (
         <div
@@ -349,37 +351,66 @@ export function GateStation({
   );
 }
 
+/**
+ * Fallback entry for when a scan won't take — a scuffed badge, a dead camera,
+ * a phone screen someone can't get to brighten.
+ *
+ * The event prefix is shown as fixed text rather than typed. One door is
+ * staffed for one event, the page already knows which, and re-typing
+ * `DANDIYA-2026-` for every manual lookup is 13 characters of transcription
+ * risk per ticket with a queue waiting. What's left is the random token, which
+ * is the only part that actually varies.
+ *
+ * A complete id pasted or scanned into the box is still honoured as-is. Tokens
+ * never contain a hyphen, so its presence is an unambiguous signal that the
+ * operator has a whole id rather than a token — and that case genuinely
+ * happens: someone arrives at the Dandiya door holding a Garba ticket. Blindly
+ * prefixing would turn that into a "not found", when what staff need to see is
+ * the ticket resolving against the wrong event so they can say so.
+ */
 function ManualEntry({
+  eventCode,
   disabled,
   onSubmit,
 }: {
+  eventCode: string;
   disabled: boolean;
   onSubmit: (code: string) => void;
 }) {
-  const [code, setCode] = useState("");
+  const [token, setToken] = useState("");
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        const v = code.trim();
-        if (v) {
-          onSubmit(v);
-          setCode("");
-        }
+        const v = token.trim().toUpperCase();
+        if (!v) return;
+        onSubmit(v.includes("-") ? v : `${eventCode}-${v}`);
+        setToken("");
       }}
       className="flex gap-2"
     >
-      <input
-        className="min-h-tap w-full flex-1 rounded-lg border border-gray-300 px-3 py-2 text-base uppercase"
-        placeholder="Or enter ticket ID (e.g. GARBA-2026-K7M2XQ9T)"
-        value={code}
-        onChange={(e) => setCode(e.target.value)}
-        autoCapitalize="characters"
-      />
+      {/* Prefix and field share one bordered box so they read as a single
+          control. The border lives here, not on the input. */}
+      <div className="flex min-h-tap w-full flex-1 items-center overflow-hidden rounded-lg border border-gray-300 bg-white px-3">
+        <span className="shrink-0 select-none whitespace-nowrap text-base text-gray-500">
+          {eventCode}-
+        </span>
+        <input
+          className="w-full min-w-0 bg-transparent py-2 text-base uppercase outline-none"
+          placeholder="K7M2XQ9T"
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          autoCapitalize="characters"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          aria-label={`Ticket ID, after the ${eventCode}- prefix`}
+        />
+      </div>
       <button
         type="submit"
         disabled={disabled}
-        className="min-h-tap rounded-lg border border-gray-300 px-4 text-sm font-medium disabled:opacity-50"
+        className="min-h-tap shrink-0 rounded-lg border border-gray-300 px-4 text-sm font-medium disabled:opacity-50"
       >
         Look up
       </button>

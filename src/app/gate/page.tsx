@@ -78,6 +78,7 @@ export default async function GatePage() {
       <GateStation
         eventId={event.id}
         eventName={event.name}
+        eventCode={event.code}
         initialHeadcount={headcount}
         catalog={catalog}
       />
