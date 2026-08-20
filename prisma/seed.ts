@@ -20,7 +20,7 @@ async function main() {
     update: {},
     create: {
       slug: "dcica",
-      name: "dcica",
+      name: "DCICA",
       settings: { brand: "#0d6e6e", locale: "en" },
     },
   });

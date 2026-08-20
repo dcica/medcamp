@@ -92,7 +92,7 @@ async function main() {
   const org = await db.organization.upsert({
     where: { slug: "dcica" },
     update: {},
-    create: { slug: "dcica", name: "dcica", settings: { brand: "#0d6e6e", locale: "en" } },
+    create: { slug: "dcica", name: "DCICA", settings: { brand: "#0d6e6e", locale: "en" } },
   });
 
   // ── Members (one per role; match /test-login usernames) ──
