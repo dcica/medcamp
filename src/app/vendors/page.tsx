@@ -28,11 +28,11 @@ export default async function VendorsPage({
     : null;
 
   const subject = encodeURIComponent(
-    event ? `Vendor interest — ${event.name}` : "Vendor interest — dcica events",
+    event ? `Vendor interest — ${event.name}` : "Vendor interest — DCICA events",
   );
   const body = encodeURIComponent(
     [
-      "Hi dcica team,",
+      "Hi DCICA team,",
       "",
       "We'd like to be a vendor/sponsor at an upcoming event.",
       event ? `Event: ${event.name}` : "",
@@ -54,7 +54,7 @@ export default async function VendorsPage({
         subtitle={
           event
             ? `Sell or sponsor at ${event.name}.`
-            : "Sell or sponsor at a dcica event."
+            : "Sell or sponsor at a DCICA event."
         }
         items={[
           {

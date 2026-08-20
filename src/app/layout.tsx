@@ -13,7 +13,7 @@ const ibmPlexSans = IBM_Plex_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "dcica platform",
+  title: "DCICA",
   description:
     "Open-source event management & commerce for non-profits. Medical camp module.",
 };

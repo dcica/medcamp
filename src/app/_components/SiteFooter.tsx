@@ -14,7 +14,7 @@ export function SiteFooter() {
   return (
     // Flag-green band mirrors dcica.org's footer.
     <footer className="no-print bg-accent2 px-4 py-6 text-center text-xs text-accent2-fg">
-      <p>© {year} dcica · Non-profit event management &amp; commerce</p>
+      <p>© {year} DCICA · Non-profit event management &amp; commerce</p>
       {/* Inline-flex links at min-h-tap: the platform rule is a 48px target on
           every interactive element, and these were 15px tall — the smallest tap
           targets on the site. */}

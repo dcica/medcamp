@@ -27,7 +27,7 @@ const NOTIFY_HREF = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(
   "Let me know when registration opens",
 )}`;
 const MEMBERSHIP_HREF = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(
-  "Becoming a dcica member",
+  "Becoming a DCICA member",
 )}`;
 
 /**

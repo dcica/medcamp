@@ -114,51 +114,7 @@ const COMMUNITY_VOL_ROLES: RoleSeed[] = [
   { key: "cleanup", name: "Cleanup Crew", ageGroup: "Any", minAge: 0, capacity: 6, description: "Keep the venue tidy during the event and clear up afterward." },
 ];
 
-const CAMP_VOL_ROLES: RoleSeed[] = [
-  { key: "reg", name: "Registration Helper", ageGroup: "16+", minAge: 16, capacity: 8, description: "Help patients register and print badges at the front desk." },
-  { key: "greet", name: "Greeter / Wayfinding", ageGroup: "Any", minAge: 0, capacity: 6, description: "Welcome patients and guide them between stations." },
-  { key: "translate", name: "Translator", ageGroup: "18+", minAge: 18, capacity: 4, description: "Interpret for patients and clinical volunteers." },
-  { key: "setup", name: "Setup / Teardown", ageGroup: "16+", minAge: 16, capacity: 10, description: "Set up and pack down stations, tents, and signage." },
-  { key: "runner", name: "Runner", ageGroup: "Any", minAge: 0, capacity: 5, description: "Move supplies and messages between stations as needed." },
-];
-
 const EVENTS: Seed[] = [
-  {
-    code: "JUL4-2026",
-    type: "GENERAL",
-    name: "4th of July",
-    startsAt: "2026-07-04T14:00:00Z",
-    endsAt: "2026-07-04T18:00:00Z",
-    imageUrl: null,
-    // Not our event — dcica runs a community booth at the town's celebration, so
-    // there is nothing to sell or register and no vendor play; volunteers only.
-    offersRegistration: false,
-    offersVendors: false,
-    offersVolunteers: true,
-    externallyHosted: true,
-    hostedByName: "Town of Westborough",
-    location: "Town Common, Main St, Westborough MA",
-    description:
-      "dcica is hosting a community booth at the town's 4th of July celebration. Come volunteer with us — greet visitors, hand out flyers, and help run kids' activities.",
-    volunteerRoles: [
-      { key: "booth-host", name: "Booth Host", ageGroup: "Any", minAge: 0, capacity: 6, shift: "2:00–6:00 PM", description: "Welcome visitors, share what dcica does, and hand out flyers." },
-      { key: "booth-kids", name: "Kids' Activity Helper", ageGroup: "16+", minAge: 16, capacity: 4, shift: "2:00–6:00 PM", description: "Run face painting / crafts for kids at the booth." },
-      { key: "booth-setup", name: "Setup / Teardown", ageGroup: "16+", minAge: 16, capacity: 4, shift: "1:00–2:30 & 5:30–7:00 PM", description: "Help put up and pack down the booth, tent, and signage." },
-    ],
-  },
-  {
-    code: "IND-2026",
-    type: "GENERAL",
-    name: "India Independence Day",
-    startsAt: "2026-08-15T15:00:00Z",
-    endsAt: "2026-08-15T19:00:00Z",
-    imageUrl: "/events/independence-day.png",
-    // Community event — vendors + volunteers, no ticketing.
-    offersRegistration: false,
-    offersVendors: true,
-    offersVolunteers: true,
-    volunteerRoles: COMMUNITY_VOL_ROLES,
-  },
   {
     // Real Sept 19 afternoon, from the printed flyer — a live ticketed sale,
     // not a fixture. Flyer says 3:00–5:30 PM local at a Flower Mound TX venue.
@@ -167,9 +123,13 @@ const EVENTS: Seed[] = [
     code: "GARBA-2026",
     type: "GENERAL",
     name: "DCICA-Shakti Garba Dance Class",
+    // Sept 19 2026 is inside US DST, so CDT = UTC-5: 3:00 PM -> 20:00Z,
+    // 5:30 PM -> 22:30Z. Matches the flyer.
     startsAt: "2026-09-19T20:00:00Z",
     endsAt: "2026-09-19T22:30:00Z",
     imageUrl: null,
+    description:
+      "Learn Garba from traditional experts — all levels welcome. Celebrate, dance, connect. $5 per person, and spots are limited.",
     // What these three flags say: this event takes REGISTRATIONS, has no
     // vendor booths, and advertises no volunteer call on the flyer — so no
     // volunteerRoles are set below either. They say nothing about the channel:
@@ -227,9 +187,17 @@ const EVENTS: Seed[] = [
     code: "RON-2026",
     type: "GENERAL",
     name: "Rhythm of Navratri",
-    startsAt: "2026-10-10T21:30:00Z",
+    // Oct 10 2026 is inside US DST (2026: Mar 8 -> Nov 1), so Flower Mound is
+    // CDT = UTC-5. The flyer states two times and they are not the same thing:
+    // the competition starts at 5:00 PM (22:00Z) and the registration desk
+    // opens at 4:30 PM. startsAt is the EVENT, so it is 22:00Z — it previously
+    // read 21:30Z, which put the desk time on the public card and advertised a
+    // start half an hour before the real one. Ends 11:00 PM CDT = 04:00Z+1.
+    startsAt: "2026-10-10T22:00:00Z",
     endsAt: "2026-10-11T04:00:00Z",
     imageUrl: null,
+    description:
+      "DCICA-Shakti presents a Navratri dance competition. Cash prizes: $150 first, $100 second, $50 third. Entry is $30 per group and the registration desk opens at 4:30 PM.",
     offersRegistration: true,
     offersVendors: true,
     offersVolunteers: true,
@@ -239,7 +207,12 @@ const EVENTS: Seed[] = [
     // coordinator flips it to ACTIVE on the night — not seeded ACTIVE.
     status: "OPEN",
     collectsAttendeeDetails: false, // quantity-only checkout — tickets + merch, no per-person profile
-    honorsMembership: true, // a current family membership admits the party free
+    // No membership comp here, unlike a floor-admission night. The comp works
+    // by admitting a household's party free, and this event sells nothing a
+    // person is admitted on — the only line is a per-group competition fee.
+    // Leaving it true would comp a team's entry fee on one member's household
+    // plan, which is not what the allowance is for.
+    honorsMembership: false,
     acceptsDonations: true,
     allowsRefunds: false,
     // Prices below are a starting point for the committee, not a constant —
@@ -251,31 +224,20 @@ const EVENTS: Seed[] = [
     // that's a committee call this seed doesn't make.
     services: [
       {
-        key: "floor-admission",
-        name: "Floor Admission",
-        colorHex: "#9333ea",
-        priceCents: 1500,
-        onsitePriceCents: 2000,
-        admits: true,
-        fulfillable: false,
-        capacity: 500,
-      },
-      {
-        key: "dandiya-sticks",
-        name: "Dandiya Sticks",
-        colorHex: "#f59e0b",
-        priceCents: 500,
-        admits: false,
-        fulfillable: true,
-        capacity: 500,
-      },
-      {
         key: "competition-entry",
         name: "Competition Entry",
         colorHex: "#dc2626",
+        // $30 per GROUP, not per dancer — the unit here is a troupe. Quantity
+        // on the checkout line is a count of groups entering, so a five-person
+        // team buys one. admits:false because the entry fee buys a slot in the
+        // competition, not admission for spectators; there is no floor sale at
+        // this event at all.
         priceCents: 3000,
         admits: false,
         fulfillable: false,
+        // 40 groups. Provisional, like the class capacity — the flyer says
+        // "limited spots" without a number, so a coordinator sets the real
+        // figure in the admin UI once the venue confirms.
         capacity: 40,
       },
     ],
@@ -291,31 +253,6 @@ const EVENTS: Seed[] = [
     offersVendors: true,
     offersVolunteers: true,
     volunteerRoles: COMMUNITY_VOL_ROLES,
-  },
-  {
-    code: "HOLI-2027",
-    type: "GENERAL",
-    name: "Holi",
-    startsAt: "2027-03-21T16:00:00Z",
-    endsAt: "2027-03-21T20:00:00Z",
-    imageUrl: null,
-    offersRegistration: true,
-    offersVendors: true,
-    offersVolunteers: true,
-    volunteerRoles: COMMUNITY_VOL_ROLES,
-  },
-  {
-    code: "MC-2027",
-    type: "CAMP",
-    name: "Free Medical Camp",
-    startsAt: "2027-06-06T13:00:00Z",
-    endsAt: "2027-06-06T19:00:00Z",
-    imageUrl: "/events/medical-camp.jpg",
-    // The camp itself: registrations + volunteers (no vendor booths).
-    offersRegistration: true,
-    offersVendors: false,
-    offersVolunteers: true,
-    volunteerRoles: CAMP_VOL_ROLES,
   },
 ];
 
