@@ -20,6 +20,22 @@ export class OverCapacityError extends Error {
 }
 
 /**
+ * The service has NO cap row for this event at all — a configuration fault, not
+ * a sold-out service. Kept distinct from OverCapacityError because the two need
+ * opposite handling: a full cap is an expected, staff-handled outcome (the buyer
+ * paid, staff refunds), while a missing row means the event was never fully
+ * configured and every purchase of that service will fail. Collapsing the two
+ * is exactly what hid a lost $61 order for a day — the webhook logged "over
+ * capacity" for a cap sitting at 23/40.
+ */
+export class MissingCapError extends Error {
+  constructor(public serviceKey: string) {
+    super(`No capacity row configured for service "${serviceKey}"`);
+    this.name = "MissingCapError";
+  }
+}
+
+/**
  * Create a Stripe hosted Checkout session for a PENDING order (decision #7:
  * hosted Checkout, no native build). Returns the redirect URL. For a $0 order
  * there's nothing to charge — caller should confirm directly instead.
@@ -139,19 +155,59 @@ export async function confirmOrderPaid(
       }
     }
     for (const [serviceTypeId, qty] of counts) {
-      const affected = await tx.$executeRaw`
-        UPDATE service_caps
-        SET sold = sold + ${qty}
-        WHERE "eventId" = ${order.eventId}
-          AND "serviceTypeId" = ${serviceTypeId}
-          AND sold + ${qty} <= capacity
-      `;
-      if (affected === 0) {
-        const st = order.lineItems.find(
-          (li) => li.serviceTypeId === serviceTypeId,
-        )?.serviceType;
-        throw new OverCapacityError(st?.key ?? serviceTypeId);
-      }
+      const serviceKey =
+        order.lineItems.find((li) => li.serviceTypeId === serviceTypeId)
+          ?.serviceType?.key ?? serviceTypeId;
+
+      // NEVER express this as $executeRaw / $queryRaw. An unqualified table name
+      // in raw SQL resolves through the session's `search_path`, and Supabase's
+      // transaction pooler does NOT reliably apply the connection string's
+      // `?schema=` to every pooled backend: measured on the deployed test DB,
+      // 5 of 24 pooled sessions reported `search_path = pg_catalog, public,
+      // extensions` with no `test` in it. A raw `UPDATE service_caps` then hit
+      // `public.service_caps`, matched nothing, and threw OverCapacityError on a
+      // cap that was 23/40 — rolling back the whole confirmation, so a PAID
+      // order silently reverted to PENDING (~1 in 5 confirmations). `prod` is a
+      // named schema too, so the same coin flip applied to real money. Prisma
+      // model operations always emit the schema explicitly
+      // (UPDATE "test"."service_caps"), so the schema comes from the datasource
+      // and cannot be lost. That is the entire point of this block.
+      const cap = await tx.serviceCap.findUnique({
+        where: { eventId_serviceTypeId: { eventId: order.eventId, serviceTypeId } },
+        select: { capacity: true },
+      });
+      // No row at all ⇒ misconfigured event, not a sold-out service.
+      if (!cap) throw new MissingCapError(serviceKey);
+
+      // GUARANTEED: two concurrent confirmations cannot oversell. updateMany
+      // compiles to ONE conditional UPDATE, so under READ COMMITTED Postgres
+      // re-evaluates `sold <= capacity - qty` against the committed row version
+      // after any concurrent writer commits, and two claims on the last seat
+      // cannot both match. That is the property the old raw statement had, and
+      // it is preserved.
+      //
+      // NOT guaranteed: `capacity` is read one statement earlier (Prisma cannot
+      // compare column-to-column with arithmetic), so a coordinator LOWERING the
+      // cap inside that window lets one already in-flight order commit against
+      // the pre-edit limit — measured sold=33 against capacity=25. Accepted
+      // deliberately: the same end state is already reachable through the admin
+      // action's own unlocked read-then-write of `sold`
+      // (src/app/admin/camps/[id]/services/actions.ts), nothing enforces
+      // sold <= capacity at the DB, and one extra paid seat beats rejecting a
+      // paid order. The durable fix is a CHECK ("sold" <= "capacity") constraint
+      // plus catching the violation; that needs a migration, so it is a later
+      // task — and it is NOT a licence to go back to $executeRaw (see above).
+      const claimed = await tx.serviceCap.updateMany({
+        where: {
+          eventId: order.eventId,
+          serviceTypeId,
+          sold: { lte: cap.capacity - qty },
+        },
+        data: { sold: { increment: qty } },
+      });
+      // With the schema no longer in play, count === 0 has exactly one honest
+      // meaning left: the cap is genuinely full.
+      if (claimed.count === 0) throw new OverCapacityError(serviceKey);
     }
 
     // ── Assign campIds from the per-event sequence (atomic increment) ──
