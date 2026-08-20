@@ -804,6 +804,14 @@ model VolunteerSignup {
   guardianName     String?
   guardianSignedAt DateTime?
 
+  /// The school's own hours-approval link (x2VOL / Naviance / a district form)
+  /// that the volunteer would otherwise send over WhatsApp and we would lose.
+  /// Coordinator-visible on the roster. Validated https-only and NEVER fetched
+  /// server-side: it is untrusted, volunteer-supplied text — fetching an
+  /// attacker-chosen URL from our server is SSRF, and a non-https scheme on a
+  /// coordinator's screen is a liability. Stored as text; a human clicks it.
+  hoursApprovalUrl String?
+
   // Day-of hours tracking via QR sign in/out.
   checkedInAt  DateTime?
   checkedOutAt DateTime?

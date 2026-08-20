@@ -1,5 +1,6 @@
 "use server";
 
+import { ZodError } from "zod";
 import {
   createVolunteerSignup,
   cancelSignup,
@@ -7,6 +8,28 @@ import {
   type VolunteerSignupInput,
   type GeneralVolunteerInput,
 } from "@/server/volunteers";
+
+/**
+ * A refused signup has to read as copy, not as a stack. createVolunteerSignup
+ * calls volunteerSignupSchema.parse(), so a validation failure arrives as a
+ * ZodError whose `.message` is a JSON dump of the issue list — which is exactly
+ * what the red box on the form rendered before this existed. Every message in
+ * that schema is written by us for the volunteer to read, so they are surfaced
+ * verbatim (no trailing punctuation added: they already end in a full stop).
+ *
+ * This matters most for the counselor pair: a half-filled pair is now a refusal
+ * rather than a silent drop, so the refusal is the ONLY thing telling the
+ * volunteer we could not keep their answer. It cannot be a JSON blob.
+ */
+function toVolunteerMessage(err: unknown): string {
+  if (err instanceof ZodError) {
+    const messages = [...new Set(err.issues.map((i) => i.message))];
+    if (messages.length === 0) return "Please check your details and try again.";
+    return messages.join(" ");
+  }
+  if (err instanceof Error && err.message) return err.message;
+  return "Signup failed.";
+}
 
 export type SignupResult =
   | { ok: true; redirectUrl: string }
@@ -24,10 +47,7 @@ export async function submitVolunteerSignup(
     const res = await createVolunteerSignup(input);
     return { ok: true, redirectUrl: `/volunteer/confirm/${res.signupId}` };
   } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : "Signup failed.",
-    };
+    return { ok: false, error: toVolunteerMessage(err) };
   }
 }
 
