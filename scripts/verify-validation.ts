@@ -40,7 +40,13 @@
  *                name and an unreachable phone both pass validation.
  *
  * Both are commented in place with the fix. Green means both are fixed — do not
- * make this file green by softening a row.
+ * make this file green by softening a row. (Both WERE fixed, so the suite exits
+ * 0 as of task G9 — the note above is kept for the rule it states.)
+ *
+ * §10–§13 extend the same idea to the VOLUNTEER signup schema: the counselor
+ * name+email pair (all-or-nothing, because a name alone cannot be stored), the
+ * school's hours-approval link (https-only), and the client-is-never-stricter
+ * invariant asserted as a property over a sample table rather than by review.
  */
 import type { RegistrationInput } from "../src/server/registration";
 import type { SubmitResult } from "../src/app/register/actions";
@@ -605,7 +611,283 @@ async function main(): Promise<void> {
     ["registrant.phone"],
   );
 
+  await volunteerCounselorAndLinkChecks();
+
   await cleanup(org.id);
+}
+
+/**
+ * §10–§13 — volunteer signup: the counselor pair and the school's hours-approval
+ * link (task G9). Schema-level only, so no rows are created and there is nothing
+ * to clean up: `volunteerSignupSchema.safeParse` is a pure function and the
+ * roleId below deliberately names no real role (whether a role EXISTS is a later
+ * layer, settled by createVolunteerSignup, not by shape validation).
+ *
+ * Why these rows exist: a counselor NAME with no email used to pass validation
+ * and was then silently discarded, because Counselor.email is non-null and is
+ * the per-org dedupe key. The volunteer believed they had named their approver;
+ * we stored nothing and told them nothing.
+ */
+async function volunteerCounselorAndLinkChecks(): Promise<void> {
+  const volunteers = await import("../src/server/volunteers");
+  const {
+    counselorPairRequired,
+    hasContent,
+    hoursApprovalUrlIssue,
+    HOURS_APPROVAL_URL_MAX,
+  } = await import("../src/lib/volunteerRoles");
+  const { validateEmail } = await import("../src/app/_components/ValidatedInput");
+
+  type VolInput = Record<string, unknown>;
+  const parseVol = (input: VolInput) => {
+    const r = volunteers.volunteerSignupSchema.safeParse(input);
+    if (r.success) return { ok: true as const, paths: [] as string[], messages: [] as string[] };
+    return {
+      ok: false as const,
+      paths: r.error.issues.map((i) => i.path.join(".")).sort(),
+      messages: [...new Set(r.error.issues.map((i) => i.message))],
+    };
+  };
+
+  /** An adult with no school: no older trigger fires, so only the pairwise rule can. */
+  const adult = {
+    name: "Ada Volunteer",
+    email: "ada.volunteer@example.test",
+    phone: "555-0100",
+    ageBand: "AGE_18_PLUS",
+    roleId: "vv-role-shape-only",
+  };
+
+  function volFaults(label: string, input: VolInput, expectedPaths: string[]): void {
+    const r = parseVol(input);
+    check(label, r.ok ? "PARSED — no fault raised" : r.paths, expectedPaths.slice().sort());
+  }
+  function volAccepts(label: string, input: VolInput): void {
+    check(label, parseVol(input).paths, []);
+  }
+  function volSays(label: string, input: VolInput, expected: string[]): void {
+    const r = parseVol(input);
+    check(label, r.ok ? "PARSED — no fault raised" : r.messages.sort(), expected.slice().sort());
+  }
+
+  console.log("\n10. The counselor pair is all-or-nothing (four combinations)");
+  volAccepts("neither field: an adult with no school owes us no counselor", adult);
+  volFaults(
+    "name only: faults the missing email — a name alone CANNOT be stored, Counselor.email is the dedupe key",
+    { ...adult, counselorName: "Ms. Reyes" },
+    ["counselorEmail"],
+  );
+  volFaults(
+    "email only: faults the missing name",
+    { ...adult, counselorEmail: "reyes@school.test" },
+    ["counselorName"],
+  );
+  volAccepts("both fields: accepted", {
+    ...adult,
+    counselorName: "Ms. Reyes",
+    counselorEmail: "reyes@school.test",
+  });
+  volFaults(
+    "a name of three spaces is not a name — faults counselorName",
+    { ...adult, counselorName: "   ", counselorEmail: "reyes@school.test" },
+    ["counselorName"],
+  );
+  volFaults(
+    "an email of a single tab is not an email — faults counselorEmail",
+    { ...adult, counselorName: "Ms. Reyes", counselorEmail: "\t" },
+    ["counselorEmail"],
+  );
+  volAccepts("both fields whitespace-only is the same as neither — accepted", {
+    ...adult,
+    counselorName: "  ",
+    counselorEmail: "   ",
+  });
+  volFaults(
+    "a malformed counselor email is refused even with a name present",
+    { ...adult, counselorName: "Ms. Reyes", counselorEmail: "reyes@school" },
+    ["counselorEmail"],
+  );
+  volAccepts("a counselor email with stray spaces is trimmed, not refused", {
+    ...adult,
+    counselorName: "Ms. Reyes",
+    counselorEmail: "  reyes@school.test  ",
+  });
+  volSays(
+    "the pairwise copy names the half that is missing",
+    { ...adult, counselorEmail: "reyes@school.test" },
+    ["Add the counselor / advisor name too — we can't record an approver from an email alone."],
+  );
+
+  console.log("\n11. The older school / minor trigger still fires (it is the stricter one)");
+  volFaults(
+    "a school with no counselor faults BOTH fields, though the volunteer typed neither",
+    { ...adult, school: "Edison High" },
+    ["counselorName", "counselorEmail"],
+  );
+  volSays(
+    "the student-trigger copy is unchanged",
+    { ...adult, school: "Edison High", counselorEmail: "reyes@school.test" },
+    ["Counselor / advisor name is required for students."],
+  );
+  volFaults(
+    "a minor with no school still owes a counselor AND guardian consent",
+    { ...adult, ageBand: "AGE_16_17" },
+    ["counselorName", "counselorEmail", "guardianName"],
+  );
+  volAccepts("a school of three spaces is not a school — the student trigger must not fire on it", {
+    ...adult,
+    school: "   ",
+  });
+
+  console.log("\n12. The school's hours-approval link: optional, https-only, capped");
+  volAccepts("no link at all is accepted — the field is optional", adult);
+  volAccepts("a whitespace-only link is accepted as absent", {
+    ...adult,
+    hoursApprovalUrl: "   ",
+  });
+  volAccepts("an https link is accepted", {
+    ...adult,
+    hoursApprovalUrl: "https://www.x2vol.test/index.cfm/approve?token=abc123",
+  });
+  volAccepts("an https link with stray spaces is trimmed, not refused", {
+    ...adult,
+    hoursApprovalUrl: "  https://www.x2vol.test/approve  ",
+  });
+  volFaults(
+    "plain http is refused — an approval token must not travel in the clear",
+    { ...adult, hoursApprovalUrl: "http://www.x2vol.test/approve" },
+    ["hoursApprovalUrl"],
+  );
+  volFaults(
+    "javascript: is refused — it would execute in the coordinator's session",
+    { ...adult, hoursApprovalUrl: "javascript:alert(1)" },
+    ["hoursApprovalUrl"],
+  );
+  volFaults(
+    "data: is refused for the same reason",
+    { ...adult, hoursApprovalUrl: "data:text/html,alert" },
+    ["hoursApprovalUrl"],
+  );
+  volFaults(
+    "a string that is not a URL at all is refused",
+    { ...adult, hoursApprovalUrl: "not a url" },
+    ["hoursApprovalUrl"],
+  );
+  volFaults(
+    "a protocol-relative //host is refused — it is not an absolute https URL",
+    { ...adult, hoursApprovalUrl: "//www.x2vol.test/approve" },
+    ["hoursApprovalUrl"],
+  );
+  volFaults(
+    "a link past the length cap is refused",
+    { ...adult, hoursApprovalUrl: "https://x2vol.test/" + "a".repeat(HOURS_APPROVAL_URL_MAX) },
+    ["hoursApprovalUrl"],
+  );
+
+  console.log("\n13. The client is never stricter than the server");
+  // THE load-bearing invariant on this codebase: a browser-side rule that
+  // rejects what volunteerSignupSchema would accept turns a real volunteer away
+  // with no recovery path. The counselor requirement and the link rule are not
+  // re-implemented in the form — it calls counselorPairRequired and
+  // hoursApprovalUrlIssue, the same functions the schema calls, so they are
+  // identical by construction. Asserted here: the one remaining seam (the email
+  // format, where the client is deliberately LOOSER) and the whole-input
+  // property over a sample table.
+
+  /** Exactly what VolunteerSignupForm.submit() evaluates before it will POST. */
+  const clientBlocks = (i: VolInput): boolean => {
+    const { required } = counselorPairRequired({
+      school: i.school as string | undefined,
+      ageBand: (i.ageBand as never) ?? null,
+      counselorName: i.counselorName as string | undefined,
+      counselorEmail: i.counselorEmail as string | undefined,
+    });
+    const name = (i.counselorName as string) ?? "";
+    const email = (i.counselorEmail as string) ?? "";
+    if (required && !hasContent(name)) return true;
+    if (required && (!hasContent(email) || validateEmail(email) !== null)) return true;
+    return hoursApprovalUrlIssue(i.hoursApprovalUrl as string | undefined) !== null;
+  };
+
+  const table: VolInput[] = [
+    adult,
+    { ...adult, counselorName: "Ms. Reyes", counselorEmail: "reyes@school.test" },
+    { ...adult, counselorName: "  ", counselorEmail: "  " },
+    { ...adult, counselorName: "Ms. Reyes", counselorEmail: "  reyes@school.test  " },
+    { ...adult, school: "Edison High", counselorName: "R", counselorEmail: "r@s.test" },
+    {
+      ...adult,
+      ageBand: "AGE_16_17",
+      counselorName: "R",
+      counselorEmail: "r@s.test",
+      guardianName: "P",
+    },
+    { ...adult, hoursApprovalUrl: "" },
+    { ...adult, hoursApprovalUrl: "   " },
+    { ...adult, hoursApprovalUrl: "https://x2vol.test/a?t=1" },
+    { ...adult, hoursApprovalUrl: "HTTPS://X2VOL.TEST/A" },
+    { ...adult, hoursApprovalUrl: "https://x2vol.test/" + "a".repeat(HOURS_APPROVAL_URL_MAX - 40) },
+    { ...adult, counselorEmail: "reyes@school.test" },
+    { ...adult, counselorName: "Ms. Reyes" },
+    { ...adult, hoursApprovalUrl: "http://x2vol.test" },
+    { ...adult, hoursApprovalUrl: "javascript:alert(1)" },
+  ];
+  const overreach = table
+    .filter((i) => parseVol(i).ok && clientBlocks(i))
+    .map((i) => JSON.stringify(i));
+  check(
+    "no input the schema ACCEPTS is blocked by the form (" + table.length + " samples)",
+    overreach,
+    [],
+  );
+
+  const addresses = [
+    "a@b.co",
+    "ada+tag@example.co.uk",
+    "x.y@sub.domain.example.museum",
+    "ADA@EXAMPLE.TEST",
+    "a@b.c",
+    "no-at-sign",
+    "a@b",
+    "a b@c.com",
+    "",
+  ];
+  const schemaTakesEmail = (s: string) =>
+    parseVol({ ...adult, counselorName: "Ms. Reyes", counselorEmail: s }).ok;
+  const tighter = addresses.filter((a) => schemaTakesEmail(a) && validateEmail(a) !== null);
+  check(
+    "validateEmail accepts every counselor address the schema accepts (" +
+      addresses.length +
+      " samples)",
+    tighter,
+    [],
+  );
+
+  // The link rule asserted as EQUIVALENCE, not one-way: it is the same function
+  // on both sides, so any disagreement means someone forked it.
+  const links = [
+    "",
+    "   ",
+    "https://x2vol.test/approve",
+    "HTTPS://X2VOL.TEST/APPROVE",
+    "  https://x2vol.test/approve  ",
+    "http://x2vol.test/approve",
+    "javascript:alert(1)",
+    "data:text/html,alert",
+    "not a url",
+    "//x2vol.test/approve",
+    "https://x2vol.test/" + "a".repeat(HOURS_APPROVAL_URL_MAX),
+  ];
+  const forked = links.filter(
+    (l) => parseVol({ ...adult, hoursApprovalUrl: l }).ok !== (hoursApprovalUrlIssue(l) === null),
+  );
+  check(
+    "the form and the schema agree on every link (" +
+      links.length +
+      " samples — same function, so any gap is a fork)",
+    forked,
+    [],
+  );
 }
 
 /**

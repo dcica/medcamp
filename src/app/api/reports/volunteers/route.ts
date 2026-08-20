@@ -33,6 +33,7 @@ export async function GET(req: Request) {
     "school",
     "counselor_name",
     "counselor_email",
+    "hours_approval_url",
     "source",
     "hours_served",
   ];
@@ -52,6 +53,7 @@ export async function GET(req: Request) {
         r.school,
         r.counselorName,
         r.counselorEmail,
+        r.hoursApprovalUrl,
         r.source,
         String(r.hoursServed),
       ]

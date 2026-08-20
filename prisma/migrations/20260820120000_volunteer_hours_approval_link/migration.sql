@@ -1,0 +1,18 @@
+-- The school's hours-approval link on a volunteer signup.
+--
+-- Most students' schools approve service hours through their own online system
+-- (x2VOL, Naviance, a district form). The volunteer used to send that link over
+-- WhatsApp or email and it got lost, so the coordinator had nowhere to submit
+-- from. This gives it a home on the signup and on the coordinator's roster.
+--
+-- Additive and nullable, no backfill: NULL means "this volunteer's school has no
+-- online approval link" for every existing row, which is exactly how every row
+-- behaved before this migration. No PHI — a URL the volunteer chose to give us.
+--
+-- Validation is application-side (src/lib/volunteerRoles.ts
+-- hoursApprovalUrlIssue, called by BOTH the form and volunteerSignupSchema):
+-- absolute https: only, length-capped. Deliberately not a CHECK constraint —
+-- the rule is buyer-facing copy that has to explain itself, and a constraint
+-- violation surfaces as an unreadable Postgres error. Nothing server-side ever
+-- FETCHES this URL (that would be SSRF); it is text a human clicks.
+ALTER TABLE "volunteer_signups" ADD COLUMN     "hoursApprovalUrl" TEXT;

@@ -180,6 +180,22 @@ export function RosterView({
                     {sourceLabel(row.sourceTag)}
                     {row.code && ` · ${row.code}`}
                   </p>
+                  {row.hoursApprovalUrl && (
+                    // The school's own approval link, so the coordinator can
+                    // submit the hours from here instead of hunting a WhatsApp
+                    // message. rel="noopener noreferrer" is mandatory: this is a
+                    // URL a stranger typed into a public form, and it must not
+                    // reach window.opener or leak the roster URL as a referrer.
+                    // The schema guarantees https:; nothing ever fetches it.
+                    <a
+                      href={row.hoursApprovalUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-1 inline-flex min-h-tap items-center text-xs text-brand underline"
+                    >
+                      School hours-approval link ↗
+                    </a>
+                  )}
                 </div>
                 <span
                   className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${STATUS_STYLE[row.status]}`}

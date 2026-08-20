@@ -33,6 +33,7 @@ export function ValidatedInput({
   value,
   onChange,
   validate,
+  issue = null,
   className,
   placeholder,
   type = "text",
@@ -44,6 +45,16 @@ export function ValidatedInput({
   onChange: (next: string) => void;
   /** Returns a human message when invalid, or null when acceptable. */
   validate: (value: string) => string | null;
+  /**
+   * A message the PARENT knows and this field cannot: a CROSS-FIELD rule, where
+   * whether this value is acceptable depends on another field. `validate` runs
+   * on this field's own blur and deliberately stays quiet on an empty field
+   * nobody has engaged with — correct for "required", wrong for "you filled in
+   * the counselor's name, so now you owe me their email". Pass that case here
+   * and it renders in the same place, with the same a11y wiring. Parent-owned:
+   * pass null when there is nothing to say.
+   */
+  issue?: string | null;
   className?: string;
   placeholder?: string;
   type?: "text" | "email" | "tel";
@@ -74,6 +85,11 @@ export function ValidatedInput({
     setError(validate(value));
   }
 
+  // The parent's cross-field message wins: it knows something this field cannot
+  // see, and it is the reason a name typed with the email left blank now says so
+  // instead of failing silently on the server.
+  const shown = issue ?? error;
+
   return (
     <div>
       <input
@@ -83,16 +99,16 @@ export function ValidatedInput({
         inputMode={inputMode}
         autoComplete={autoComplete}
         aria-label={ariaLabel}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? errorId : undefined}
+        aria-invalid={shown ? true : undefined}
+        aria-describedby={shown ? errorId : undefined}
         value={value}
         onChange={(e) => handleChange(e.target.value)}
         onBlur={handleBlur}
       />
 
-      {error && (
+      {shown && (
         <p id={errorId} role="alert" className="mt-1 text-xs text-red-700">
-          {error}
+          {shown}
         </p>
       )}
     </div>

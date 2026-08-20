@@ -12,6 +12,9 @@ import { getActiveOrg } from "@/lib/tenant";
 import { newVolCode, normalizeVolCode } from "@/lib/volunteerId";
 import {
   bandMeetsMinAge,
+  counselorPairRequired,
+  hasContent,
+  hoursApprovalUrlIssue,
   isMinorBand,
   normalizeSourceTag,
   sourceLabel,
@@ -337,32 +340,62 @@ export const volunteerSignupSchema = z
     emergencyName: z.string().optional(),
     emergencyPhone: z.string().optional(),
     roleId: z.string().min(1, "Pick a role"),
-    // Counselor (required when a school is given or the volunteer is a minor).
+    // Counselor. Required when a school is given or the volunteer is a minor —
+    // and, since G9, whenever EITHER field is filled in (see
+    // counselorPairRequired: a name without an email cannot be stored at all).
     counselorName: z.string().optional(),
     counselorEmail: z.string().optional(),
     counselorTitle: z.string().optional(),
+    /// The school's hours-approval link. Optional; https-only when given.
+    hoursApprovalUrl: z.string().optional(),
     // Minor consent.
     guardianName: z.string().optional(),
     sourceTag: z.string().optional(),
   })
   .superRefine((v, ctx) => {
-    const hasSchool = Boolean(v.school && v.school.trim());
     const minor = isMinorBand(v.ageBand);
-    if (hasSchool || minor) {
-      if (!v.counselorName?.trim()) {
+    // Two triggers, evaluated in one place shared with the form so the client
+    // can never be stricter than this schema. "student" is the older, stricter
+    // rule (school or minor ⇒ both fields, even if empty); "pairwise" only
+    // fires once the volunteer has typed into one of them.
+    const { required, reason } = counselorPairRequired({
+      school: v.school,
+      ageBand: v.ageBand,
+      counselorName: v.counselorName,
+      counselorEmail: v.counselorEmail,
+    });
+    if (required) {
+      const student = reason === "student";
+      if (!hasContent(v.counselorName)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["counselorName"],
-          message: "Counselor / advisor name is required for students.",
+          message: student
+            ? "Counselor / advisor name is required for students."
+            : "Add the counselor / advisor name too — we can't record an approver from an email alone.",
         });
       }
-      if (!v.counselorEmail?.trim() || !z.string().email().safeParse(v.counselorEmail).success) {
+      if (
+        !hasContent(v.counselorEmail) ||
+        !z.string().email().safeParse(v.counselorEmail?.trim()).success
+      ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["counselorEmail"],
-          message: "A valid counselor / advisor email is required for students.",
+          message: student
+            ? "A valid counselor / advisor email is required for students."
+            : "Add a valid counselor / advisor email — a name on its own can't be saved.",
         });
       }
+    }
+    // Same rule the form runs, called here so a hand-rolled POST meets it too.
+    const urlIssue = hoursApprovalUrlIssue(v.hoursApprovalUrl);
+    if (urlIssue) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["hoursApprovalUrl"],
+        message: urlIssue,
+      });
     }
     if (minor && !v.guardianName?.trim()) {
       ctx.addIssue({
@@ -445,26 +478,41 @@ export async function createVolunteerSignup(
   }
 
   // Persistent counselor (the recruitment asset), deduped per org by email.
+  //
+  // WHY the pair is all-or-nothing: Counselor.email is non-null and is the
+  // per-org dedupe key (@@unique([orgId, email])), so a name with no email
+  // cannot be stored at all. This branch used to be `if (name && email)` with no
+  // else, so a name typed on its own by an adult with no school passed
+  // validation and was then dropped here in silence. The schema's pairwise rule
+  // now makes the half-filled case unreachable, and the else-path below throws
+  // rather than no-oping so that a future edit which re-opens the hole fails
+  // loudly instead of quietly losing the volunteer's answer again.
+  const counselorName = data.counselorName?.trim() ?? "";
+  const counselorEmail = data.counselorEmail?.trim() ?? "";
   let counselorId: string | null = null;
-  if (data.counselorName?.trim() && data.counselorEmail?.trim()) {
+  if (counselorName && counselorEmail) {
     const counselor = await db.counselor.upsert({
       where: {
-        orgId_email: { orgId: org.id, email: data.counselorEmail.toLowerCase() },
+        orgId_email: { orgId: org.id, email: counselorEmail.toLowerCase() },
       },
       update: {
-        name: data.counselorName.trim(),
+        name: counselorName,
         title: data.counselorTitle?.trim() || undefined,
         school: data.school?.trim() || undefined,
       },
       create: {
         orgId: org.id,
-        name: data.counselorName.trim(),
-        email: data.counselorEmail.toLowerCase(),
+        name: counselorName,
+        email: counselorEmail.toLowerCase(),
         title: data.counselorTitle?.trim() || null,
         school: data.school?.trim() || null,
       },
     });
     counselorId = counselor.id;
+  } else if (counselorName || counselorEmail) {
+    throw new Error(
+      "Counselor / advisor name and email must be given together — we can't record an approver without both.",
+    );
   }
 
   // Capacity → waitlist if full.
@@ -505,6 +553,8 @@ export async function createVolunteerSignup(
       status,
       shift: role.shift,
       sourceTag: normalizeSourceTag(data.sourceTag),
+      // Stored as trimmed text. Validated https-only above and never fetched.
+      hoursApprovalUrl: data.hoursApprovalUrl?.trim() || null,
       guardianName: data.guardianName?.trim() || null,
       guardianSignedAt: data.guardianName?.trim() ? new Date() : null,
     };
@@ -740,6 +790,10 @@ export type RosterRow = {
   shift: string | null;
   school: string | null;
   counselorName: string | null;
+  /// School's hours-approval link, surfaced so the coordinator can actually use
+  /// it. A field she cannot read would be write-only — the defect this branch
+  /// already shipped once with updateCamp.
+  hoursApprovalUrl: string | null;
   sourceTag: string | null;
   checkedInAt: Date | null;
   checkedOutAt: Date | null;
@@ -828,6 +882,7 @@ export async function getVolunteerRoster(
       shift: s.shift ?? s.role.shift,
       school: s.volunteer.school,
       counselorName: s.counselor?.name ?? null,
+      hoursApprovalUrl: s.hoursApprovalUrl,
       sourceTag: s.sourceTag,
       checkedInAt: s.checkedInAt,
       checkedOutAt: s.checkedOutAt,
@@ -962,6 +1017,7 @@ export async function getVolunteerReportRows(eventId?: string) {
       school: s.volunteer.school ?? "",
       counselorName: s.counselor?.name ?? "",
       counselorEmail: s.counselor?.email ?? "",
+      hoursApprovalUrl: s.hoursApprovalUrl ?? "",
       source: sourceLabel(s.sourceTag),
       hoursServed: s.hoursServed ?? "",
     })),
