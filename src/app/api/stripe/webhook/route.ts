@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { stripe } from "@/lib/stripe";
 import { env } from "@/lib/env";
-import { confirmOrderPaid, OverCapacityError } from "@/server/payments";
+import {
+  confirmOrderPaid,
+  MissingCapError,
+  OverCapacityError,
+} from "@/server/payments";
 import { log } from "@/lib/logger";
 
 /**
@@ -52,15 +56,42 @@ export async function POST(req: NextRequest) {
         idempotencyKey: event.id,
       });
     } catch (err) {
+      // Why a full cap is a 200 and everything else is a 5xx:
+      //
+      // 200 tells Stripe "handled, stop retrying". That is right for a
+      // genuinely full cap — the buyer paid, the seat does not exist, and no
+      // number of retries changes that; staff issues the refund (there is no
+      // self-serve refund flow). Retrying would just re-log the same warning
+      // forever.
+      //
+      // For anything else — a missing cap row, a DB blip, a bug — 200 is a lie
+      // that costs money: Stripe records the delivery as successful, never
+      // retries, and the paid order stays PENDING with no campId, no QR and no
+      // email, invisible until a human notices. A 5xx makes Stripe retry with
+      // backoff (confirmOrderPaid is idempotent, so a retry is safe) and lights
+      // up the endpoint's failure rate in the Stripe dashboard.
       if (err instanceof OverCapacityError) {
-        // Paid but over cap — staff handles refund (no self-serve refund).
         log.warn("stripe webhook: order over capacity", {
           orderId,
           serviceKey: err.serviceKey,
         });
         return NextResponse.json({ received: true, overCapacity: true });
       }
-      throw err;
+      if (err instanceof MissingCapError) {
+        log.error("stripe webhook: service cap row missing (misconfigured event)", {
+          orderId,
+          serviceKey: err.serviceKey,
+        });
+        return NextResponse.json(
+          { error: "Service capacity is not configured for this event" },
+          { status: 500 },
+        );
+      }
+      log.error("stripe webhook: confirmation failed", { orderId, err });
+      return NextResponse.json(
+        { error: "Order confirmation failed" },
+        { status: 500 },
+      );
     }
   }
 

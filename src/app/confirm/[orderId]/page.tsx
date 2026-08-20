@@ -2,7 +2,11 @@ import QRCode from "qrcode";
 import { db } from "@/lib/db";
 import { stripe } from "@/lib/stripe";
 import { log } from "@/lib/logger";
-import { confirmOrderPaid, OverCapacityError } from "@/server/payments";
+import {
+  confirmOrderPaid,
+  MissingCapError,
+  OverCapacityError,
+} from "@/server/payments";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { SimulatePayButton } from "./SimulatePayButton";
 
@@ -70,9 +74,19 @@ export default async function ConfirmPage({
         });
       }
     } catch (err) {
-      // Paid-but-over-capacity is staff-handled; any other error leaves the
-      // page in its pending state. Either way the webhook remains the backstop.
-      if (!(err instanceof OverCapacityError)) {
+      // A genuinely-full cap stays quiet by design: the buyer paid, staff
+      // handles the refund, and this page just falls through to its pending
+      // state. A MISSING cap row is a different animal — a misconfigured event,
+      // where every purchase of that service fails — so it is logged at error
+      // rather than swallowed with the sold-out case. Any other failure is
+      // logged too. Either way the webhook remains the backstop (and now
+      // returns a 5xx for both of these, so Stripe retries).
+      if (err instanceof MissingCapError) {
+        log.error("confirm: service cap row missing (misconfigured event)", {
+          orderId,
+          serviceKey: err.serviceKey,
+        });
+      } else if (!(err instanceof OverCapacityError)) {
         log.error("confirm: stripe session verify failed", { orderId, err });
       }
     }
