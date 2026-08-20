@@ -83,14 +83,15 @@ export default async function Home() {
     : [];
 
   const [featured, ...rest] = events;
-  const orgName = org?.name ?? "dcica platform";
+  const orgName = org?.name ?? "DCICA platform";
 
   return (
     <main className="mx-auto max-w-screen-md px-4 py-8">
       <header>
         <h1 className="text-2xl font-bold text-brand">{orgName}</h1>
         <p className="mt-1 text-sm text-gray-600">
-          Register for an event, buy tickets, or sign up to volunteer or vend.
+          Register for an event, buy tickets, or sign up to volunteer or set up
+          to be a vendor.
         </p>
       </header>
 

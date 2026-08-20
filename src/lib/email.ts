@@ -202,9 +202,9 @@ export async function sendTestEmail(
 ): Promise<{ delivered: boolean }> {
   return send(
     to,
-    "Test email — dcica platform",
+    "Test email — DCICA",
     [
-      "This is a test email from the dcica platform admin console.",
+      "This is a test email from the DCICA admin console.",
       "If you received this, your email provider is configured correctly.",
       `Provider: ${env.EMAIL_PROVIDER}`,
       `From: ${env.EMAIL_FROM}`,

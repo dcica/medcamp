@@ -17,17 +17,24 @@ import { CONTACT_EMAIL } from "@/lib/contact";
  * about a system nobody has built — and phone-number consent is a larger
  * obligation than email, not a smaller one. What exists is a mailbox a person
  * reads, so that is what the page offers and what it says out loud.
+ *
+ * The primary action is "Contact us" rather than "Email us to hear about the
+ * next one" on purpose. The narrower label only invited one kind of message,
+ * and the committee would rather a visitor write in for any reason — asking
+ * about a venue, a vendor stall, a class — because every one of those arrives
+ * with a return address the committee can keep. A general invitation collects
+ * more of them than a mailing-list ask.
  */
 
 // Literally the same mailbox as SiteFooter's Contact link, now from the same
 // constant rather than a matching literal. There is no /contact route, and no
 // public membership route either (only /admin/membership, behind staff auth), so
 // the membership ask goes to a human here instead of a 404.
-const NOTIFY_HREF = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(
-  "Let me know when registration opens",
+const CONTACT_HREF = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(
+  "Contact DCICA",
 )}`;
 const MEMBERSHIP_HREF = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(
-  "Becoming a dcica member",
+  "Becoming a DCICA member",
 )}`;
 
 /**
@@ -54,14 +61,15 @@ export function EmptyEventsState({
       </p>
 
       <a
-        href={NOTIFY_HREF}
+        href={CONTACT_HREF}
         className="mt-4 flex min-h-tap items-center justify-center rounded-lg bg-brand px-4 text-center text-sm font-semibold text-brand-fg"
       >
-        Email us to hear about the next one
+        Contact us
       </a>
       <p className="mt-2 text-xs leading-relaxed text-gray-500">
         This opens an email to the committee — a volunteer reads it and writes
-        back. We do not send automatic alerts.
+        back. There are no automatic alerts, so tell us what you are interested
+        in and someone can let you know once it is scheduled.
       </p>
 
       {pastEventsHref && (

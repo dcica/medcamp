@@ -99,6 +99,7 @@ export default async function CampServicesPage({
           hasLab: s.hasLab,
           fulfillable: s.fulfillable,
           admits: s.admits,
+          admitsCount: s.admitsCount,
           onsitePriceDollars:
             s.caps[0]?.onsitePriceCents == null
               ? null

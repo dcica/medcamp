@@ -12,6 +12,7 @@ export type ServiceRow = {
   fulfillable: boolean;
   /** Issues a scannable ticket. Off for a pure fee. */
   admits: boolean;
+  admitsCount: number;
   /** Door price, or null when the door charges the online price. */
   onsitePriceDollars: number | null;
   active: boolean;
@@ -80,6 +81,7 @@ function ServiceCard({
   const [hasLab, setHasLab] = useState(row.hasLab);
   const [fulfillable, setFulfillable] = useState(row.fulfillable);
   const [admits, setAdmits] = useState(row.admits);
+  const [admitsCount, setAdmitsCount] = useState(String(row.admitsCount ?? 1));
   const [onsitePrice, setOnsitePrice] = useState(
     row.onsitePriceDollars === null ? "" : String(row.onsitePriceDollars),
   );
@@ -207,6 +209,20 @@ function ServiceCard({
           />
           Issues a ticket
         </label>
+        {admits && (
+          <label className="flex min-h-tap items-center gap-2 text-sm">
+            Admits
+            <input
+              type="number"
+              min={1}
+              inputMode="numeric"
+              className="w-16 rounded border border-gray-300 px-2 py-2 text-base"
+              value={admitsCount}
+              onChange={(e) => setAdmitsCount(e.target.value)}
+            />
+            <span className="text-gray-500">people per ticket</span>
+          </label>
+        )}
         <label className="flex min-h-tap items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -230,6 +246,7 @@ function ServiceCard({
               hasLab,
               fulfillable,
               admits,
+              admitsCount: Number(admitsCount) || 1,
               onsitePriceDollars: onsitePrice.trim() === "" ? null : Number(onsitePrice) || 0,
               active,
               offered,
@@ -263,6 +280,7 @@ function NewService({
   const [hasLab, setHasLab] = useState(false);
   const [fulfillable, setFulfillable] = useState(false);
   const [admits, setAdmits] = useState(true);
+  const [admitsCount, setAdmitsCount] = useState("1");
   const [onsitePrice, setOnsitePrice] = useState("");
   const [capacity, setCapacity] = useState("200");
   const [earlyBirdPrice, setEarlyBirdPrice] = useState("");
@@ -372,6 +390,25 @@ function NewService({
           (off for a fee, e.g. competition entry)
         </span>
       </label>
+      {/* Only meaningful for an admission. A head count on merch or on a fee
+          would describe nothing, so it is not offered there. */}
+      {admits && (
+        <label className="flex min-h-tap items-center gap-2 text-sm">
+          Admits
+          <input
+            type="number"
+            min={1}
+            inputMode="numeric"
+            className="w-16 rounded border border-gray-300 px-2 py-2 text-base"
+            value={admitsCount}
+            onChange={(e) => setAdmitsCount(e.target.value)}
+          />
+          <span className="text-gray-500">people per ticket</span>
+          <span className="text-xs font-normal text-gray-400">
+            (above 1 for a bundle, e.g. family of 4)
+          </span>
+        </label>
+      )}
       <div className="flex gap-2">
         <button
           type="button"
@@ -385,6 +422,7 @@ function NewService({
                 hasLab,
                 fulfillable,
                 admits,
+              admitsCount: Number(admitsCount) || 1,
                 onsitePriceDollars: onsitePrice.trim() === "" ? null : Number(onsitePrice) || 0,
                 capacity: Number(capacity) || 0,
                 earlyBirdPriceDollars: earlyBirdPrice.trim() === "" ? null : Number(earlyBirdPrice) || 0,

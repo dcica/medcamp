@@ -367,8 +367,16 @@ async function createQuantityOrder(
   const priced = picked.flatMap((q) => {
     const offering = byKey.get(q.serviceKey)!;
     const isAdmission = offering.serviceType.admits;
-    const compQty = isAdmission ? Math.min(compRemaining, q.quantity) : 0;
-    compRemaining -= compQty;
+    // Heads per purchased unit — 1 for a plain ticket, 4 for a "family of 4".
+    const heads = isAdmission ? Math.max(1, offering.serviceType.admitsCount) : 0;
+    // Comps are whole units. A membership with 4 comp units meeting a family-of-4
+    // bundle comps the one bundle; meeting a family-of-6 bundle comps nothing,
+    // because a bundle cannot be half free — a LineItem carries one unit price
+    // for its quantity, and there is no way to admit 4 of the 6 people it mints.
+    const compQty = isAdmission
+      ? Math.min(Math.floor(compRemaining / heads), q.quantity)
+      : 0;
+    compRemaining -= compQty * heads;
     const paidQty = q.quantity - compQty;
     const resolved = resolvePrice(offering, "online", now);
 
@@ -400,9 +408,17 @@ async function createQuantityOrder(
   // Only admission units mint a scannable ticket. A fee (competition entry —
   // neither admission nor merch) mints none: 3 groups entering the competition
   // is one line, not 3 tickets, and grants nobody floor access.
+  //
+  // Multiplied by admitsCount, so a gate bundle mints a code PER PERSON rather
+  // than per purchase: one "family of 4" is one line and four scannable codes,
+  // because four people walk through the door and each needs something to show.
   const admissionUnits = picked
     .filter((q) => byKey.get(q.serviceKey)!.serviceType.admits)
-    .reduce((s, q) => s + q.quantity, 0);
+    .reduce(
+      (s, q) =>
+        s + q.quantity * Math.max(1, byKey.get(q.serviceKey)!.serviceType.admitsCount),
+      0,
+    );
   // Merch- or fee-only orders still get ONE code so the buyer has something to
   // scan at the desk — a receipt, not an admission.
   const ticketCount = admissionUnits > 0 ? admissionUnits : 1;

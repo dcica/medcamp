@@ -82,6 +82,8 @@ type Seed = {
     earlyBirdPriceCents?: number;
     earlyBirdUntil?: string;
     admits: boolean;
+    /** Heads admitted per purchased unit. Gate bundles only (family of 4 = 4). */
+    admitsCount?: number;
     fulfillable: boolean;
     capacity: number;
   }[];
@@ -114,51 +116,7 @@ const COMMUNITY_VOL_ROLES: RoleSeed[] = [
   { key: "cleanup", name: "Cleanup Crew", ageGroup: "Any", minAge: 0, capacity: 6, description: "Keep the venue tidy during the event and clear up afterward." },
 ];
 
-const CAMP_VOL_ROLES: RoleSeed[] = [
-  { key: "reg", name: "Registration Helper", ageGroup: "16+", minAge: 16, capacity: 8, description: "Help patients register and print badges at the front desk." },
-  { key: "greet", name: "Greeter / Wayfinding", ageGroup: "Any", minAge: 0, capacity: 6, description: "Welcome patients and guide them between stations." },
-  { key: "translate", name: "Translator", ageGroup: "18+", minAge: 18, capacity: 4, description: "Interpret for patients and clinical volunteers." },
-  { key: "setup", name: "Setup / Teardown", ageGroup: "16+", minAge: 16, capacity: 10, description: "Set up and pack down stations, tents, and signage." },
-  { key: "runner", name: "Runner", ageGroup: "Any", minAge: 0, capacity: 5, description: "Move supplies and messages between stations as needed." },
-];
-
 const EVENTS: Seed[] = [
-  {
-    code: "JUL4-2026",
-    type: "GENERAL",
-    name: "4th of July",
-    startsAt: "2026-07-04T14:00:00Z",
-    endsAt: "2026-07-04T18:00:00Z",
-    imageUrl: null,
-    // Not our event — dcica runs a community booth at the town's celebration, so
-    // there is nothing to sell or register and no vendor play; volunteers only.
-    offersRegistration: false,
-    offersVendors: false,
-    offersVolunteers: true,
-    externallyHosted: true,
-    hostedByName: "Town of Westborough",
-    location: "Town Common, Main St, Westborough MA",
-    description:
-      "dcica is hosting a community booth at the town's 4th of July celebration. Come volunteer with us — greet visitors, hand out flyers, and help run kids' activities.",
-    volunteerRoles: [
-      { key: "booth-host", name: "Booth Host", ageGroup: "Any", minAge: 0, capacity: 6, shift: "2:00–6:00 PM", description: "Welcome visitors, share what dcica does, and hand out flyers." },
-      { key: "booth-kids", name: "Kids' Activity Helper", ageGroup: "16+", minAge: 16, capacity: 4, shift: "2:00–6:00 PM", description: "Run face painting / crafts for kids at the booth." },
-      { key: "booth-setup", name: "Setup / Teardown", ageGroup: "16+", minAge: 16, capacity: 4, shift: "1:00–2:30 & 5:30–7:00 PM", description: "Help put up and pack down the booth, tent, and signage." },
-    ],
-  },
-  {
-    code: "IND-2026",
-    type: "GENERAL",
-    name: "India Independence Day",
-    startsAt: "2026-08-15T15:00:00Z",
-    endsAt: "2026-08-15T19:00:00Z",
-    imageUrl: "/events/independence-day.png",
-    // Community event — vendors + volunteers, no ticketing.
-    offersRegistration: false,
-    offersVendors: true,
-    offersVolunteers: true,
-    volunteerRoles: COMMUNITY_VOL_ROLES,
-  },
   {
     // Real Sept 19 afternoon, from the printed flyer — a live ticketed sale,
     // not a fixture. Flyer says 3:00–5:30 PM local at a Flower Mound TX venue.
@@ -167,15 +125,18 @@ const EVENTS: Seed[] = [
     code: "GARBA-2026",
     type: "GENERAL",
     name: "DCICA-Shakti Garba Dance Class",
+    // Sept 19 2026 is inside US DST, so CDT = UTC-5: 3:00 PM -> 20:00Z,
+    // 5:30 PM -> 22:30Z. Matches the flyer.
     startsAt: "2026-09-19T20:00:00Z",
     endsAt: "2026-09-19T22:30:00Z",
-    imageUrl: null,
+    imageUrl: "/events/Garba-DanceClasses_2026.jpeg",
+    description:
+      "Learn Garba from traditional experts — all levels welcome. Celebrate, dance, connect. $5 per person, and spots are limited.",
     // What these three flags say: this event takes REGISTRATIONS, has no
     // vendor booths, and advertises no volunteer call on the flyer — so no
     // volunteerRoles are set below either. They say nothing about the channel:
     // this class also sells at the door (onsitePriceCents below, reached once a
-    // coordinator flips it ACTIVE), so do NOT read this as "online sales only"
-    // and do not cite it to argue the cheaper door price is a mistake.
+    // coordinator flips it ACTIVE), so do NOT read this as "online sales only".
     offersRegistration: true,
     offersVendors: false,
     offersVolunteers: false,
@@ -201,15 +162,17 @@ const EVENTS: Seed[] = [
         key: "garba-class-entry",
         name: "Class Entry",
         colorHex: "#db2777",
-        // THE DOOR IS CHEAPER HERE, ON PURPOSE — this is not a transposition
-        // typo, and it inverts the platform's usual convention (RON-2026 is
-        // $15 online / $20 door). The flyer's entry fee is $5. The client
-        // wants the card processing fee passed to the online buyer instead of
-        // absorbed by the org: at the non-profit rate $5.50 online nets
-        // ~$5.08. Cash at the door carries no processor fee, so it stays
-        // exactly $5.00. resolvePrice needs no special case — the door reads
-        // onsitePriceCents (500) and online reads priceCents (550).
-        priceCents: 550,
+        // $5 everywhere. The committee's pricing sheet prices this class at $5
+        // early bird, $5 online and $5 at the door — one number in all three
+        // columns, the only row on the sheet that does not vary.
+        //
+        // This previously charged $5.50 online to pass the card fee to the
+        // buyer. That was a deliberate choice, but the pricing sheet is the
+        // committee's own later word on it, so the org now absorbs the ~$0.42
+        // instead. onsitePriceCents is kept and set equal rather than dropped,
+        // so the door price stays explicit rather than inherited — if someone
+        // changes the online price later, the door does not silently follow.
+        priceCents: 500,
         onsitePriceCents: 500,
         admits: true,
         fulfillable: false,
@@ -227,9 +190,17 @@ const EVENTS: Seed[] = [
     code: "RON-2026",
     type: "GENERAL",
     name: "Rhythm of Navratri",
-    startsAt: "2026-10-10T21:30:00Z",
+    // Oct 10 2026 is inside US DST (2026: Mar 8 -> Nov 1), so Flower Mound is
+    // CDT = UTC-5. The flyer states two times and they are not the same thing:
+    // the competition starts at 5:00 PM (22:00Z) and the registration desk
+    // opens at 4:30 PM. startsAt is the EVENT, so it is 22:00Z — it previously
+    // read 21:30Z, which put the desk time on the public card and advertised a
+    // start half an hour before the real one. Ends 11:00 PM CDT = 04:00Z+1.
+    startsAt: "2026-10-10T22:00:00Z",
     endsAt: "2026-10-11T04:00:00Z",
-    imageUrl: null,
+    imageUrl: "/events/RoN-2026.jpeg",
+    description:
+      "DCICA-Shakti presents a Navratri dance competition. Cash prizes: $150 first, $100 second, $50 third. Entry is $30 per group and the registration desk opens at 4:30 PM.",
     offersRegistration: true,
     offersVendors: true,
     offersVolunteers: true,
@@ -239,7 +210,12 @@ const EVENTS: Seed[] = [
     // coordinator flips it to ACTIVE on the night — not seeded ACTIVE.
     status: "OPEN",
     collectsAttendeeDetails: false, // quantity-only checkout — tickets + merch, no per-person profile
-    honorsMembership: true, // a current family membership admits the party free
+    // No membership comp here, unlike a floor-admission night. The comp works
+    // by admitting a household's party free, and this event sells nothing a
+    // person is admitted on — the only line is a per-group competition fee.
+    // Leaving it true would comp a team's entry fee on one member's household
+    // plan, which is not what the allowance is for.
+    honorsMembership: false,
     acceptsDonations: true,
     allowsRefunds: false,
     // Prices below are a starting point for the committee, not a constant —
@@ -251,11 +227,90 @@ const EVENTS: Seed[] = [
     // that's a committee call this seed doesn't make.
     services: [
       {
+        key: "competition-entry",
+        name: "Competition Entry",
+        colorHex: "#dc2626",
+        // $30 per GROUP, not per dancer — the unit here is a troupe. Quantity
+        // on the checkout line is a count of groups entering, so a five-person
+        // team buys one. admits:false because the entry fee buys a slot in the
+        // competition, not admission for spectators; there is no floor sale at
+        // this event at all.
+        // Committee pricing sheet: $25 early bird through Aug 31 2026, $30
+        // online after that, $35 at the door. Three prices for one line, and
+        // the door is the dearest — the usual direction, and the opposite of
+        // the Garba class below, which is cheap at the door on purpose.
+        priceCents: 3000,
+        onsitePriceCents: 3500,
+        earlyBirdPriceCents: 2500,
+        // End of day Aug 31 CDT (UTC-5), not midnight UTC — a deadline written
+        // as 00:00Z would expire the early bird at 7pm on Aug 30 local, cutting
+        // a day off the offer the sheet advertises.
+        earlyBirdUntil: "2026-09-01T04:59:59Z",
+        admits: false,
+        fulfillable: false,
+        // 40 groups. Provisional, like the class capacity — the flyer says
+        // "limited spots" without a number, so a coordinator sets the real
+        // figure in the admin UI once the venue confirms.
+        capacity: 40,
+      },
+    ],
+  },
+  {
+    code: "DANDIYA-2026",
+    type: "GENERAL",
+    name: "Dandiya Night",
+    // The SAME NIGHT and the same venue as RON-2026, deliberately two events
+    // rather than one. They are different things sold to different people: the
+    // competition is a $30 per-group fee that admits nobody to the floor, and
+    // this is per-person floor admission. One event could not carry both a
+    // membership comp and a competition fee sensibly, which is exactly the
+    // mess RON-2026 was in before it was split.
+    //
+    // PROVISIONAL TIMES. The competition runs 5:00–11:00 PM; the open floor is
+    // seeded 7:00 PM–midnight CDT (UTC-5) so the two read as one evening. No
+    // flyer states these — a coordinator sets the real ones in the admin UI.
+    startsAt: "2026-10-11T00:00:00Z",
+    endsAt: "2026-10-11T05:00:00Z",
+    // NO POSTER, deliberately. Borrowing RON-2026's artwork put a flyer reading
+    // "Dance Competition — Entry Fee: $30 Per Group" directly above a card that
+    // says entry is $10–$15 per person, and printed the same image twice in a
+    // row on the events page. A wrong poster is worse than none: people read the
+    // picture before the text. Drop a dandiya flyer in /public/events and set it
+    // here.
+    imageUrl: null,
+    location: "McKamy Middle School, Flower Mound, TX",
+    description:
+      "The dandiya floor on Navratri night. Entry is $10 early bird through Sep 15, $12 online after that, and $15 at the door. Family and group packages available.",
+    offersRegistration: true,
+    offersVendors: true,
+    offersVolunteers: true,
+    volunteerRoles: COMMUNITY_VOL_ROLES,
+    status: "OPEN",
+    collectsAttendeeDetails: false,
+    // TRUE here and false on the competition, and the difference is the point:
+    // the comp admits a household's party, so it only means something at an
+    // event that admits people. This is that event.
+    honorsMembership: true,
+    acceptsDonations: true,
+    allowsRefunds: false,
+    // NOTE ON CAPACITY: every figure below is per-SERVICE, and the bundles each
+    // admit several people, so these caps do not add up to a hall limit and are
+    // not enforced as one. 500 singles + 50 families + 20 ten-packs is 900
+    // heads if everything sells. Provisional until the venue confirms.
+    services: [
+      {
+        // Reuses the existing catalogue key rather than minting a new one, so
+        // the service keeps its history. Caps are per-event, so this is a
+        // separate cap from the stale one still sitting on RON-2026 in test.
         key: "floor-admission",
-        name: "Floor Admission",
+        name: "Dandiya Entry",
         colorHex: "#9333ea",
-        priceCents: 1500,
-        onsitePriceCents: 2000,
+        // Sheet: $10 early bird through Sep 15 2026, $12 online, $15 door.
+        priceCents: 1200,
+        onsitePriceCents: 1500,
+        earlyBirdPriceCents: 1000,
+        // End of day Sep 15 CENTRAL (CDT, UTC-5) — same reasoning as RON's.
+        earlyBirdUntil: "2026-09-16T04:59:59Z",
         admits: true,
         fulfillable: false,
         capacity: 500,
@@ -264,58 +319,74 @@ const EVENTS: Seed[] = [
         key: "dandiya-sticks",
         name: "Dandiya Sticks",
         colorHex: "#f59e0b",
+        // Not on the pricing sheet, which covers entry only. Carried across at
+        // the catalogue's existing $5 so the merch line exists; a coordinator
+        // can reprice it.
         priceCents: 500,
         admits: false,
         fulfillable: true,
         capacity: 500,
       },
       {
-        key: "competition-entry",
-        name: "Competition Entry",
-        colorHex: "#dc2626",
-        priceCents: 3000,
-        admits: false,
+        key: "dandiya-family-4",
+        name: "Family of 4",
+        colorHex: "#0ea5e9",
+        // The sheet marks the packages "(gate)". They are sold online at the
+        // same price as well — a family pre-paying and walking in is strictly
+        // better than making them queue, and the platform has no door-only
+        // concept to express the restriction anyway.
+        //
+        // $50 for 4 against $12 each is a real discount, which is the offer.
+        priceCents: 5000,
+        onsitePriceCents: 5000,
+        admits: true,
+        // The reason ServiceType.admitsCount exists: ONE purchased unit, FOUR
+        // people through the door and four scannable codes.
+        admitsCount: 4,
         fulfillable: false,
-        capacity: 40,
+        capacity: 50,
+      },
+      {
+        key: "dandiya-10-pack",
+        name: "Package of 10 tickets",
+        colorHex: "#14b8a6",
+        priceCents: 10000,
+        onsitePriceCents: 10000,
+        admits: true,
+        admitsCount: 10,
+        fulfillable: false,
+        capacity: 20,
       },
     ],
   },
   {
     code: "DIW-2026",
     type: "GENERAL",
-    name: "Diwali Dhamaka",
-    startsAt: "2026-11-01T22:00:00Z",
-    endsAt: "2026-11-02T03:00:00Z",
-    imageUrl: null,
-    offersRegistration: true,
+    name: "DCICA Festival of Lights",
+    // Oct 24 2026, "4PM Onwards", still inside US DST so Flower Mound is
+    // CDT = UTC-5: 4:00 PM -> 21:00Z. This was seeded Nov 1 before the flyer
+    // existed; the flyer is the authority.
+    //
+    // The poster gives no end time. 10:00 PM (03:00Z next day) is an ESTIMATE
+    // that exists so the card can render a range and so the event sorts out of
+    // "upcoming" on the right day — it is not off a flyer. A coordinator should
+    // set the real one in the admin UI.
+    startsAt: "2026-10-24T21:00:00Z",
+    endsAt: "2026-10-25T03:00:00Z",
+    imageUrl: "/events/Diwali_2026.jpeg",
+    location: "Gerault Park, Flower Mound, TX",
+    description:
+      "Free entry and free parking. High-rise fireworks, live entertainment, food and vendor booths. Presented with the Town of Flower Mound and D-SAW.",
+    // FREE ENTRY, in the flyer's own words — so this event sells nothing and
+    // takes no registration. That is why no `services` are declared: the org
+    // catalogue still holds floor-admission and dandiya-sticks from an earlier
+    // plan to ticket this night, and attaching them here would put a paid door
+    // on a free community festival. Vendors and volunteers are the two things
+    // this event does take.
+    offersRegistration: false,
     offersVendors: true,
     offersVolunteers: true,
     volunteerRoles: COMMUNITY_VOL_ROLES,
-  },
-  {
-    code: "HOLI-2027",
-    type: "GENERAL",
-    name: "Holi",
-    startsAt: "2027-03-21T16:00:00Z",
-    endsAt: "2027-03-21T20:00:00Z",
-    imageUrl: null,
-    offersRegistration: true,
-    offersVendors: true,
-    offersVolunteers: true,
-    volunteerRoles: COMMUNITY_VOL_ROLES,
-  },
-  {
-    code: "MC-2027",
-    type: "CAMP",
-    name: "Free Medical Camp",
-    startsAt: "2027-06-06T13:00:00Z",
-    endsAt: "2027-06-06T19:00:00Z",
-    imageUrl: "/events/medical-camp.jpg",
-    // The camp itself: registrations + volunteers (no vendor booths).
-    offersRegistration: true,
-    offersVendors: false,
-    offersVolunteers: true,
-    volunteerRoles: CAMP_VOL_ROLES,
   },
 ];
 
@@ -325,7 +396,7 @@ async function main() {
     update: {},
     create: {
       slug: "dcica",
-      name: "dcica",
+      name: "DCICA",
       settings: { brand: "#0d6e6e", locale: "en" },
     },
   });
@@ -479,6 +550,7 @@ async function main() {
               colorHex: s.colorHex,
               priceCents: s.priceCents,
               admits: s.admits,
+              admitsCount: s.admitsCount ?? 1,
               fulfillable: s.fulfillable,
             }
           : {},
@@ -489,6 +561,7 @@ async function main() {
           colorHex: s.colorHex,
           priceCents: s.priceCents,
           admits: s.admits,
+          admitsCount: s.admitsCount ?? 1,
           fulfillable: s.fulfillable,
         },
       });

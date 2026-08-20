@@ -10,8 +10,8 @@ import { StaffMenu } from "./StaffMenu";
  * else it shows a sign-in link. Hidden on print so badge labels render clean
  * (see .no-print).
  *
- * The wordmark is the short brand mark ("dcica") so it doesn't duplicate the
- * home page's "dcica platform" h1.
+ * The wordmark is the short brand mark ("DCICA") so it doesn't duplicate the
+ * home page's org-name h1.
  */
 export async function SiteHeader() {
   const member = await getCurrentMember();
@@ -31,7 +31,7 @@ export async function SiteHeader() {
             height={28}
             className="rounded-full"
           />
-          dcica
+          DCICA
         </Link>
         <nav className="flex items-center gap-4">
           <Link

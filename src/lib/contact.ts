@@ -13,8 +13,8 @@
  * own contact address. That is a separate task; a settings read here today would
  * be a half-built one. Deduplicating the literal is the fix that fits now.
  *
- * The address itself is deliberately unchanged. Swapping a personal address for
- * a committee alias is an organisational decision on the pre-launch list, not a
- * code change.
+ * The pre-launch swap is done: this was a personal address (sachin@buzzclan.com)
+ * reached from every page footer and the empty calendar's primary CTA. It is now
+ * the committee alias, so a visitor writes to the org rather than to a person.
  */
-export const CONTACT_EMAIL = "sachin@buzzclan.com";
+export const CONTACT_EMAIL = "events@dcica.org";

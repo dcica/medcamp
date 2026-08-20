@@ -3,7 +3,9 @@
 import {
   createVolunteerSignup,
   cancelSignup,
+  registerGeneralVolunteer,
   type VolunteerSignupInput,
+  type GeneralVolunteerInput,
 } from "@/server/volunteers";
 
 export type SignupResult =
@@ -41,6 +43,30 @@ export async function cancelVolunteerSignup(
     return {
       ok: false,
       error: err instanceof Error ? err.message : "Cancel failed.",
+    };
+  }
+}
+
+export type GeneralInterestResult =
+  | { ok: true; alreadyKnown: boolean }
+  | { ok: false; error: string };
+
+/**
+ * Register general volunteer interest — no event, no login, no QR code, because
+ * there is no shift to check into yet. Returns whether we already had this
+ * person so the page can say "we've updated your details" rather than implying
+ * a second record was created.
+ */
+export async function submitGeneralInterest(
+  input: GeneralVolunteerInput,
+): Promise<GeneralInterestResult> {
+  try {
+    const res = await registerGeneralVolunteer(input);
+    return { ok: true, alreadyKnown: res.alreadyKnown };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Could not register interest.",
     };
   }
 }

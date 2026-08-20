@@ -5,13 +5,13 @@ import { config } from "dotenv";
 config({ path: process.env.ENV_FILE ?? ".env", override: true });
 
 import { PrismaClient } from "@prisma/client";
-import { autoStationColor } from "../src/lib/stationColors";
 
 const db = new PrismaClient();
 
 /**
- * Seeds the dcica reference tenant: one org, a sample winter camp, the service
- * menu, capacity caps, and the default Care Spine stations. Everything here is
+ * Seeds the DCICA reference tenant: the organisation row and its service menu.
+ * Nothing time-bound — no events, and therefore no capacity caps, stations or
+ * volunteer roles, all of which hang off an event. Everything here is
  * config-over-code — a second tenant would seed its own rows, not fork code.
  */
 async function main() {
@@ -20,7 +20,7 @@ async function main() {
     update: {},
     create: {
       slug: "dcica",
-      name: "dcica",
+      name: "DCICA",
       settings: { brand: "#0d6e6e", locale: "en" },
     },
   });
@@ -41,88 +41,46 @@ async function main() {
     });
   }
 
-  // ── Sample camp ──
-  const event = await db.event.upsert({
-    where: { orgId_code: { orgId: org.id, code: "MC-2026W" } },
-    update: {},
-    create: {
-      orgId: org.id,
-      type: "CAMP",
-      status: "OPEN",
-      code: "MC-2026W",
-      name: "Winter Medical Camp 2026",
-      // UTC instants, converted from venue wall-clock — an 8:00 AM–2:00 PM
-      // half-day camp at the Flower Mound TX venue (America/Chicago). Dec 5
-      // 2026 is outside US DST (2026: Mar 8 → Nov 1), so the offset is CST =
-      // UTC-6: 8:00 AM → 14:00Z, 2:00 PM → 20:00Z. These used to be 08:00Z →
-      // 14:00Z, i.e. local wall-clock written straight into a UTC field, which
-      // the venue-timezone display then rendered as a 2:00 AM camp. Never
-      // reuse one offset across seasons — the summer camp in seed-test.ts is
-      // CDT (UTC-5), not CST. Check the date's own offset every time.
-      startsAt: new Date("2026-12-05T14:00:00Z"),
-      endsAt: new Date("2026-12-05T20:00:00Z"),
-      venueConfig: { layout: "clinic", rooms: 7, tents: 2 },
-    },
-  });
-
-  // ── Capacity caps (enforced at DB on the payment webhook) ──
-  const allServices = await db.serviceType.findMany({ where: { orgId: org.id } });
-  for (const s of allServices) {
-    await db.serviceCap.upsert({
-      where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: s.id } },
-      update: {},
-      create: { eventId: event.id, serviceTypeId: s.id, priceCents: s.priceCents, capacity: 200 },
-    });
-  }
-
-  // ── Default Care Spine stations ──
-  const stations = [
-    { key: "checkin", name: "Check-In", sequence: 0 },
-    { key: "vitals", name: "Vitals", sequence: 1 },
-    { key: "consult", name: "Doctor Consult", sequence: 2 },
-    { key: "labs", name: "Labs / Imaging", sequence: 3 },
+  // ── Family membership plans (catalogue) ──
+  // Tenant configuration, not fixtures: these are the products the org sells,
+  // exactly like the service menu above. They lived in seed-test.ts, which
+  // never runs in production — so a prod database had no plans at all, and an
+  // event with honorsMembership=true had nothing to comp against and no upsell
+  // to show at registration. Member INSTANCES stay in seed-test; only the
+  // catalogue belongs here.
+  //
+  // The odd prices are deliberate (51 / 101 / 251, not 50 / 100 / 250) — the
+  // card fee is passed to the buyer. partySize 5 is what the comp admits free
+  // at an honoring event, and compUnits reads it exactly, not approximately.
+  const membershipPlans = [
+    { key: "family-1yr", name: "Family Membership — 1 Year", termYears: 1, priceCents: 5100, partySize: 5 },
+    { key: "family-2yr", name: "Family Membership — 2 Year", termYears: 2, priceCents: 10100, partySize: 5 },
+    { key: "family-5yr", name: "Family Membership — 5 Year", termYears: 5, priceCents: 25100, partySize: 5 },
   ];
-  for (const st of stations) {
-    await db.station.upsert({
-      where: { eventId_key: { eventId: event.id, key: st.key } },
-      update: { colorHex: autoStationColor(st.key, st.sequence) },
-      create: {
-        orgId: org.id,
-        eventId: event.id,
-        ...st,
-        colorHex: autoStationColor(st.key, st.sequence),
-      },
+  for (const p of membershipPlans) {
+    await db.membershipPlan.upsert({
+      where: { orgId_key: { orgId: org.id, key: p.key } },
+      update: { name: p.name, termYears: p.termYears, priceCents: p.priceCents, partySize: p.partySize },
+      create: { orgId: org.id, ...p },
     });
   }
 
-  // ── Default volunteer roles (config-over-code; per-event) ──
-  const volunteerRoles = [
-    { key: "registration", name: "Registration desk support", minAge: 16, capacity: 8, shift: "8:00–12:00", description: "Help registrants check in." },
-    { key: "greeter", name: "Greeter / wayfinding", minAge: 0, capacity: 6, shift: "7:30–11:30", description: "Welcome and direct people." },
-    { key: "runner", name: "Runner", minAge: 0, capacity: 5, shift: "8:00–14:00", description: "Move supplies between stations." },
-    { key: "translator", name: "Translator", minAge: 18, capacity: 4, shift: "9:00–13:00", description: "Interpret for patients.", requiresClearance: true },
-    { key: "setup", name: "Setup / teardown", minAge: 16, capacity: 10, shift: "6:30–8:30", description: "Set up and break down the venue." },
-  ];
-  for (const r of volunteerRoles) {
-    await db.volunteerRole.upsert({
-      where: { eventId_key: { eventId: event.id, key: r.key } },
-      update: {},
-      create: {
-        orgId: org.id,
-        eventId: event.id,
-        key: r.key,
-        name: r.name,
-        description: r.description,
-        minAge: r.minAge,
-        capacity: r.capacity,
-        shift: r.shift,
-        instructions: `Report to the ${r.name} lead at check-in. Comfortable shoes recommended.`,
-        requiresClearance: Boolean(r.requiresClearance),
-      },
-    });
-  }
+  // No event is seeded here on purpose. This file provisions the TENANT —
+  // the org and its service catalogue — and nothing that is a specific thing
+  // happening on a specific day. Events come from seed-events.ts (the real
+  // published lineup) and seed-test.ts (throwaway QA fixtures), so a fresh
+  // production database comes up with a tenant and no invented calendar.
+  //
+  // This used to create a sample camp MC-2026W plus its capacity caps, Care
+  // Spine stations and volunteer roles. Because CI runs db:seed on every push,
+  // that sample kept reappearing in production as a real-looking event. When a
+  // genuine medical camp is scheduled, add it to seed-events.ts or create it in
+  // the admin UI; the per-event stations and roles are seeded from there.
 
-  console.log(`Seeded org ${org.slug} with camp ${event.code}.`);
+  console.log(
+    `Seeded org ${org.slug} (${services.length} service types, ` +
+      `${membershipPlans.length} membership plans, no events).`,
+  );
 }
 
 main()

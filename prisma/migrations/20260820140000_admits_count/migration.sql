@@ -1,0 +1,16 @@
+-- How many people one unit of a service admits.
+--
+-- `admits` answered whether a service lets someone in; it could not say how
+-- many. That was fine while every admission was one person, and stops being
+-- fine the moment the gate sells bundles: a "family of 4" ticket at $50 and a
+-- "package of 10" at $100 are ONE purchased unit each but four and ten people
+-- through the door.
+--
+-- Without this column those bundles would mint a single QR code and count a
+-- single head — the gate would admit one of the four, and the capacity figure
+-- would understate the hall fourfold. `admits` stays the KIND flag (admission
+-- vs merch vs fee); this is the multiplier that applies when it is true.
+--
+-- DEFAULT 1 and NOT NULL: every existing row keeps its current behaviour
+-- exactly, so this migration changes no prices, no tickets and no headcounts.
+ALTER TABLE "service_types" ADD COLUMN "admitsCount" INTEGER NOT NULL DEFAULT 1;

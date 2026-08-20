@@ -196,6 +196,132 @@ export async function getVolunteerSignupView(
   };
 }
 
+// ── General interest (no event) ───────────────────────────────────────────────
+
+/**
+ * Register interest with no event attached.
+ *
+ * This needs no new table. `Volunteer` is org-scoped and already independent of
+ * any event — only `VolunteerSignup` carries an eventId — so "a general
+ * volunteer" is simply a Volunteer row with no signups yet. That is the same
+ * record an event signup would have created, which is the point: someone who
+ * registers interest in August and signs up for Diwali in October stays ONE
+ * person with one history, because both paths upsert on (orgId, email).
+ *
+ * Deliberately fewer fields than the event form. Counselor capture and guardian
+ * consent are tied to a specific commitment — hours submitted to a named
+ * advisor, a minor attending a particular event on a particular day — so asking
+ * for them here would collect consent for something nobody has agreed to yet.
+ * They are asked at event signup, where they mean something. Emergency contact
+ * and t-shirt size are day-of logistics and belong there too.
+ */
+export const generalVolunteerSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  email: z.string().email("Valid email required"),
+  phone: z.string().min(7, "Phone is required"),
+  ageBand: z.enum(["UNDER_16", "AGE_16_17", "AGE_18_PLUS"]),
+  school: z.string().optional(),
+  skills: z.string().optional(),
+  languages: z.string().optional(),
+  sourceTag: z.string().optional(),
+});
+
+export type GeneralVolunteerInput = z.infer<typeof generalVolunteerSchema>;
+
+export async function registerGeneralVolunteer(
+  input: GeneralVolunteerInput,
+): Promise<{ volunteerId: string; alreadyKnown: boolean }> {
+  const data = generalVolunteerSchema.parse(input);
+  const org = await getActiveOrg();
+  if (!org) throw new Error("Volunteering is not available right now.");
+
+  const email = data.email.toLowerCase();
+  const prior = await db.volunteer.findUnique({
+    where: { orgId_email: { orgId: org.id, email } },
+    select: { id: true },
+  });
+
+  // Update-on-conflict, not create-only: someone re-submitting has almost
+  // certainly changed a phone number or added a skill, and the newer answer is
+  // the better one. Blank optional fields are stored as null rather than "" so
+  // the roster can distinguish "not given" from "given as empty".
+  const fields = {
+    name: data.name.trim(),
+    phone: data.phone.trim(),
+    ageBand: data.ageBand as VolunteerAgeBand,
+    school: data.school?.trim() || null,
+    skills: data.skills?.trim() || null,
+    languages: data.languages?.trim() || null,
+  };
+
+  const volunteer = await db.volunteer.upsert({
+    where: { orgId_email: { orgId: org.id, email } },
+    update: fields,
+    create: { orgId: org.id, email, ...fields },
+  });
+
+  log.info("volunteer.general_interest", {
+    volunteerId: volunteer.id,
+    returning: Boolean(prior),
+    source: normalizeSourceTag(data.sourceTag) ?? undefined,
+  });
+
+  return { volunteerId: volunteer.id, alreadyKnown: Boolean(prior) };
+}
+
+export type GeneralInterestRow = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  ageBand: VolunteerAgeBand | null;
+  school: string | null;
+  skills: string | null;
+  languages: string | null;
+  registeredAt: Date;
+};
+
+/**
+ * Volunteers who have never signed up for an event — the general-interest pool.
+ *
+ * Without this the feature would be a trap: the public form would happily write
+ * rows that no screen in the app ever reads, which looks like it worked and
+ * isn't. The event roster is scoped to one event by design, so these people can
+ * only surface in a list that is scoped to none.
+ */
+export async function getGeneralInterestVolunteers(): Promise<GeneralInterestRow[]> {
+  const org = await getActiveOrg();
+  if (!org) return [];
+
+  const rows = await db.volunteer.findMany({
+    where: { orgId: org.id, signups: { none: {} } },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+      ageBand: true,
+      school: true,
+      skills: true,
+      languages: true,
+      createdAt: true,
+    },
+  });
+
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    email: r.email,
+    phone: r.phone,
+    ageBand: r.ageBand,
+    school: r.school,
+    skills: r.skills,
+    languages: r.languages,
+    registeredAt: r.createdAt,
+  }));
+}
+
 // ── Create signup ────────────────────────────────────────────────────────────
 
 export const volunteerSignupSchema = z
