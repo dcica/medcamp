@@ -127,7 +127,7 @@ const EVENTS: Seed[] = [
     // 5:30 PM -> 22:30Z. Matches the flyer.
     startsAt: "2026-09-19T20:00:00Z",
     endsAt: "2026-09-19T22:30:00Z",
-    imageUrl: null,
+    imageUrl: "/events/Garba-DanceClasses_2026.jpeg",
     description:
       "Learn Garba from traditional experts — all levels welcome. Celebrate, dance, connect. $5 per person, and spots are limited.",
     // What these three flags say: this event takes REGISTRATIONS, has no
@@ -195,7 +195,7 @@ const EVENTS: Seed[] = [
     // start half an hour before the real one. Ends 11:00 PM CDT = 04:00Z+1.
     startsAt: "2026-10-10T22:00:00Z",
     endsAt: "2026-10-11T04:00:00Z",
-    imageUrl: null,
+    imageUrl: "/events/RoN-2026.jpeg",
     description:
       "DCICA-Shakti presents a Navratri dance competition. Cash prizes: $150 first, $100 second, $50 third. Entry is $30 per group and the registration desk opens at 4:30 PM.",
     offersRegistration: true,
@@ -245,11 +245,28 @@ const EVENTS: Seed[] = [
   {
     code: "DIW-2026",
     type: "GENERAL",
-    name: "Diwali Dhamaka",
-    startsAt: "2026-11-01T22:00:00Z",
-    endsAt: "2026-11-02T03:00:00Z",
-    imageUrl: null,
-    offersRegistration: true,
+    name: "DCICA Festival of Lights",
+    // Oct 24 2026, "4PM Onwards", still inside US DST so Flower Mound is
+    // CDT = UTC-5: 4:00 PM -> 21:00Z. This was seeded Nov 1 before the flyer
+    // existed; the flyer is the authority.
+    //
+    // The poster gives no end time. 10:00 PM (03:00Z next day) is an ESTIMATE
+    // that exists so the card can render a range and so the event sorts out of
+    // "upcoming" on the right day — it is not off a flyer. A coordinator should
+    // set the real one in the admin UI.
+    startsAt: "2026-10-24T21:00:00Z",
+    endsAt: "2026-10-25T03:00:00Z",
+    imageUrl: "/events/Diwali_2026.jpeg",
+    location: "Gerault Park, Flower Mound, TX",
+    description:
+      "Free entry and free parking. High-rise fireworks, live entertainment, food and vendor booths. Presented with the Town of Flower Mound and D-SAW.",
+    // FREE ENTRY, in the flyer's own words — so this event sells nothing and
+    // takes no registration. That is why no `services` are declared: the org
+    // catalogue still holds floor-admission and dandiya-sticks from an earlier
+    // plan to ticket this night, and attaching them here would put a paid door
+    // on a free community festival. Vendors and volunteers are the two things
+    // this event does take.
+    offersRegistration: false,
     offersVendors: true,
     offersVolunteers: true,
     volunteerRoles: COMMUNITY_VOL_ROLES,
