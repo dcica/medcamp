@@ -200,7 +200,7 @@ const EVENTS: Seed[] = [
     endsAt: "2026-10-11T04:00:00Z",
     imageUrl: "/events/RoN-2026.jpeg",
     description:
-      "DCICA-Shakti presents a Navratri dance competition. Cash prizes: $150 first, $100 second, $50 third. Entry is $30 per group and the registration desk opens at 4:30 PM.",
+      "DCICA-Shakti presents a Navratri dance competition. Cash prizes: $150 first, $100 second, $50 third. Entry is $25 per group early bird through Sep 1, $30 online after that, and $35 at the door. The registration desk opens at 4:30 PM.",
     offersRegistration: true,
     offersVendors: true,
     offersVolunteers: true,
@@ -222,9 +222,14 @@ const EVENTS: Seed[] = [
     // the admin UI (Task A2, ServicesManager/saveServiceRow) lets a
     // coordinator edit any of these before doors. That edit now sticks: this
     // seed only sets these values on first create, and leaves them alone on
-    // every re-run (SEED_FORCE_UPDATE=1 to reassert them deliberately). No
-    // early bird here: the columns exist for a coordinator to set later, but
-    // that's a committee call this seed doesn't make.
+    // every re-run (SEED_FORCE_UPDATE=1 to reassert them deliberately).
+    //
+    // The early bird IS set here, per the committee pricing sheet: $25 per
+    // group through Sep 1, then $30 online and $35 at the door. The
+    // description above names all three, because the blurb previously said a
+    // flat "$30 per group" while the checkout charged $25 — copy and price
+    // disagreeing on the same screen reads as a pricing bug to a visitor even
+    // when the charge is right. Any price edit here needs the same edit there.
     services: [
       {
         key: "competition-entry",
