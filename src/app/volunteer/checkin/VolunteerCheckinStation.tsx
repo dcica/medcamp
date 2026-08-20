@@ -37,7 +37,7 @@ export function VolunteerCheckinStation() {
       >
         <input
           className="w-full min-h-tap rounded-lg border border-gray-300 px-3 py-2 text-base uppercase"
-          placeholder="Volunteer code (e.g. VOL-MC-2026W-0001)"
+          placeholder="Volunteer code (e.g. VOL-MC-2026W-4PW9HB2N)"
           value={code}
           onChange={(e) => setCode(e.target.value)}
           autoCapitalize="characters"

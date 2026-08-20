@@ -371,7 +371,7 @@ function ManualEntry({
     >
       <input
         className="min-h-tap w-full flex-1 rounded-lg border border-gray-300 px-3 py-2 text-base uppercase"
-        placeholder="Or enter ticket ID (e.g. GB-2026W-0001)"
+        placeholder="Or enter ticket ID (e.g. GARBA-2026-K7M2XQ9T)"
         value={code}
         onChange={(e) => setCode(e.target.value)}
         autoCapitalize="characters"

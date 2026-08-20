@@ -9,7 +9,7 @@ import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { log } from "@/lib/logger";
 import { getActiveOrg } from "@/lib/tenant";
-import { formatVolCode, normalizeVolCode } from "@/lib/volunteerId";
+import { newVolCode, normalizeVolCode } from "@/lib/volunteerId";
 import {
   bandMeetsMinAge,
   isMinorBand,
@@ -475,13 +475,27 @@ export async function createVolunteerSignup(
   const status: SignupStatus = waitlisted ? "WAITLISTED" : "SIGNED_UP";
 
   const signup = await db.$transaction(async (tx) => {
-    // Atomically claim a per-event sequence for the QR code.
-    const ev = await tx.event.update({
+    // Random token, not a sequence — the old VOL-<event>-0001 form published
+    // the volunteer headcount on every badge. See src/lib/publicId.ts.
+    // Event.nextVolSeq is intentionally no longer incremented.
+    //
+    // Redraw on a clash with an id already stored. A clash with a concurrent
+    // signup aborts this transaction on the unique constraint; the volunteer
+    // sees the submit fail and retries, which is acceptable for a form a person
+    // is sitting in front of (unlike a paid order, nothing is lost).
+    const ev = await tx.event.findUniqueOrThrow({
       where: { id: event.id },
-      data: { nextVolSeq: { increment: 1 } },
-      select: { nextVolSeq: true, code: true },
+      select: { code: true },
     });
-    const code = formatVolCode(ev.code, ev.nextVolSeq - 1);
+    let code = newVolCode(ev.code);
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const taken = await tx.volunteerSignup.findFirst({
+        where: { code },
+        select: { id: true },
+      });
+      if (!taken) break;
+      code = newVolCode(ev.code);
+    }
 
     const payload = {
       eventId: event.id,
@@ -628,7 +642,7 @@ export type CheckinView = {
 export async function getVolunteerByCode(
   rawCode: string,
 ): Promise<CheckinView | null> {
-  const code = normalizeVolCode(rawCode) ?? rawCode.trim().toUpperCase();
+  const code = normalizeVolCode(rawCode);
   const org = await getActiveOrg();
   if (!org) return null;
   const s = await db.volunteerSignup.findFirst({
@@ -651,7 +665,7 @@ export async function getVolunteerByCode(
 }
 
 async function findSignupByCodeOrThrow(rawCode: string) {
-  const code = normalizeVolCode(rawCode) ?? rawCode.trim().toUpperCase();
+  const code = normalizeVolCode(rawCode);
   const org = await getActiveOrg();
   if (!org) throw new Error("No active org.");
   const s = await db.volunteerSignup.findFirst({
