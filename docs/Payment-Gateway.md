@@ -15,12 +15,12 @@ Three options were evaluated. Square is the current working platform, but Stripe
 |---|---|---|---|
 | **Online rate (standard)** | 2.9% + $0.30 | 2.99% + $0.49 | 2.9% + $0.30 |
 | **In-person rate (standard)** | 2.6% + $0.10 | 2.29% + $0.09 | 2.7% + $0.05 |
-| **Non-profit rate** | No dedicated tier | 1.99% + $0.49 (501(c)(3) verified) | 2.2% + $0.30 (501(c)(3) verified) |
+| **Non-profit rate** | No dedicated tier | 1.99% + $0.49 (donations only) | 2.2% + $0.30 — **dcica ineligible**, see below |
 | **In-person method** | Tap to Pay on phone (NFC) | Tap to Pay on phone (NFC) | Tap to Pay on phone (NFC) |
 | **Hardware required** | None — phone only | None — phone only | None — phone only |
 | **Already in use** | Yes | No | No |
 | **Developer SDK quality** | Good | Dated | Excellent |
-| **Non-profit application** | N/A | paypal.com/us/webapps/mpp/givingfund | stripe.com/docs/tax-exempt |
+| **Non-profit application** | N/A | paypal.com/us/webapps/mpp/givingfund | Support contact form — requires >80% donation volume |
 
 ### Savings at Camp Scale
 
@@ -28,20 +28,51 @@ At 300 patients averaging $25/patient = $7,500 per camp:
 
 | Provider | Rate | Fee per camp |
 |---|---|---|
-| Square (standard) | 2.9% + $0.30 | ~$308 |
-| PayPal non-profit | 1.99% + $0.49 | ~$297 |
-| Stripe non-profit | 2.2% + $0.30 | ~$255 |
+| Square (standard, online) | 2.9% + $0.30 | ~$308 |
+| Stripe (standard, online) | 2.9% + $0.30 | ~$308 |
 | Square in-person only | 2.6% + $0.10 | ~$225 |
+| Stripe in-person only | 2.7% + $0.05 | ~$218 |
+| ~~Stripe non-profit~~ | ~~2.2% + $0.30~~ | **unavailable — see below** |
 
-Difference between Square standard and Stripe non-profit: ~$53/camp. Modest at this volume, but worth capturing if non-profit status is already registered.
+At the actual 80/20 online/walk-in split, Stripe standard blends to **~$290/camp**
+(~$246 across 240 online transactions, ~$44 across 60 in-person). Provider choice
+moves this by tens of dollars per camp; it is not where the money is.
+
+**The non-profit rate is not achievable and must not be planned around.** Stripe
+requires that **at least 80% of payment volume be tax-deductible donations**, and
+explicitly excludes **ticket sales, membership fees, registration fees, tuition,
+and auction payments** from that threshold. dcica's Stripe volume is
+approximately **<10% donations** — camp service fees, event tickets, memberships,
+vendor registration, and merchandise are the business. Donations are an optional
+order-level add-on (`LineItem.isDonation`), not the revenue base.
+
+Verified 2026-08-20 against Stripe's own support documentation, and confirmed
+empirically: a $5.00 live charge settled at a $0.45 fee, i.e. 2.9% + 30c.
+Account configuration is not the cause — `business_type` is already `non_profit`
+and the MCC is already 8398. Revenue mix is the disqualifier, and no application
+or follow-up changes that.
+
+**The real lever is passing the fee to the payer**, not the rate. An optional
+"cover the processing fee" checkbox at checkout applies to 100% of volume rather
+than the <10% that is donations, and recovers roughly **$290/camp** versus the
+~$53/camp the non-profit rate would have saved. Standard practice for non-profit
+checkouts and entirely within our control.
 
 ### Decision
 
-**Stripe — confirmed.** Organization is a registered 501(c)(3). Stripe non-profit rate (2.2% + $0.30) applies. No terminal hardware switching cost since in-person payments use Tap to Pay on a volunteer's phone. Stripe SDK is the best fit for a custom Next.js build.
+**Stripe — confirmed**, but on SDK quality and in-person rates, **not** on the
+non-profit rate. The organization is a registered 501(c)(3), yet that does not
+qualify it for Stripe's discounted rate (see above). Stripe still wins: best
+in-person rate of the three (2.7% + $0.05), no terminal hardware to buy since
+walk-ins use Tap to Pay on a volunteer's phone, and the strongest SDK for a
+custom Next.js build. Budget at **standard rates — 2.9% + $0.30 online.**
 
 **Action items:**
 - [x] 501(c)(3) status — confirmed
-- [ ] Apply for Stripe non-profit rate: stripe.com/docs/tax-exempt (requires EIN and 501(c)(3) determination letter)
+- [x] Stripe non-profit rate — **investigated and closed 2026-08-20: ineligible.**
+      Requires >80% tax-deductible donation volume; dcica is <10%. Do not reopen.
+- [ ] Decide on an optional "cover the processing fee" checkbox at checkout —
+      the actual cost lever (~$290/camp vs. ~$53/camp for the rate)
 - [x] Create Stripe account and obtain API keys (publishable + secret) — keys in hand
 
 ---
@@ -188,7 +219,7 @@ Cash transactions are totalled separately so the volunteer can reconcile the phy
 Before going live, confirm the following on the Stripe account:
 
 - [x] Publishable key (`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`) and secret key (`STRIPE_SECRET_KEY`) obtained — test keys in hand
-- [ ] Apply for Stripe non-profit rate at stripe.com/docs/tax-exempt (EIN + 501(c)(3) determination letter)
+- [x] Stripe non-profit rate — ineligible (<10% donation volume vs. >80% required). Closed 2026-08-20; budget standard rates.
 - [ ] Tap to Pay on phone enabled on the Stripe account (for in-person walk-in and add-on payments)
 - [ ] Webhook endpoint configured in the Stripe Dashboard (for payment confirmation callbacks)
 - [ ] Swap test keys for live keys in Vercel environment variables at deploy time
