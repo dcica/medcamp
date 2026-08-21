@@ -188,7 +188,10 @@ export function PerformanceEntryForm({
             value={groupName}
             onChange={setGroupName}
             validate={validateName}
-            placeholder="Shakti Steps"
+            // Deliberately not a plausible real group name: "DCICA-Shakti"
+            // is the org's own branding on two live events, so an example like
+            // "Shakti Steps" read as a real entrant rather than a hint.
+            placeholder="Your group's name"
             aria-label="Group name"
           />
         </Field>
@@ -236,7 +239,7 @@ export function PerformanceEntryForm({
             value={songTitle}
             onChange={setSongTitle}
             validate={validateName}
-            placeholder="Dholida"
+            placeholder="Song title"
             aria-label="Song name"
           />
         </Field>

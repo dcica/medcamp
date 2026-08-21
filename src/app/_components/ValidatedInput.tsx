@@ -29,6 +29,19 @@ import { useId, useState } from "react";
  *
  * Drop-in for volunteer / vendor / org-onboarding fields with the same defect.
  */
+/**
+ * Default field styling. A BORDER is the load-bearing part: with `className`
+ * left undefined the input rendered as bare native text with no box at all, so
+ * an empty field looked like static page text and its placeholder read as a
+ * value already filled in. Both were reported from the performance entry form,
+ * which passed no className.
+ *
+ * Defaulting it here rather than making callers pass it means the next form
+ * cannot reintroduce the same defect by omission.
+ */
+export const INPUT_CLASS =
+  "w-full min-h-tap rounded-lg border border-gray-300 px-3 py-2 text-base";
+
 export function ValidatedInput({
   value,
   onChange,
@@ -99,7 +112,7 @@ export function ValidatedInput({
   return (
     <div>
       <input
-        className={className}
+        className={className ?? INPUT_CLASS}
         placeholder={placeholder}
         type={type}
         inputMode={inputMode}
