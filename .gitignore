@@ -44,3 +44,6 @@ docs/sketches/
 
 # Agent worktrees (isolated workspaces, never versioned)
 .claude/worktrees/
+
+# Local-disk object storage (dev storage adapter)
+.uploads/

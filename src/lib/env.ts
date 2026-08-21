@@ -23,6 +23,10 @@ const schema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+  // Object storage (song uploads). Private bucket; one per environment, since
+  // test and prod share a Supabase project in places. Unset URL/service key ⇒
+  // uploads are disabled and entrants use the offline delivery option.
+  SUPABASE_STORAGE_BUCKET: z.string().default("event-songs"),
 
   // Auth
   NEXTAUTH_SECRET: z.string().min(1).optional(),

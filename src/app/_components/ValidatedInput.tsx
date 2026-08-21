@@ -59,7 +59,13 @@ export function ValidatedInput({
   placeholder?: string;
   type?: "text" | "email" | "tel";
   autoComplete?: string;
-  inputMode?: "text" | "email" | "tel";
+  /**
+   * Distinct from `type` — this only picks the mobile keyboard. The union was
+   * originally a copy of `type`'s, which left "numeric" unavailable even though
+   * it is the right keypad for a count field (and avoids type="number"'s
+   * spinners and scroll-to-change behaviour).
+   */
+  inputMode?: "text" | "email" | "tel" | "numeric";
   "aria-label"?: string;
 }) {
   const [error, setError] = useState<string | null>(null);

@@ -38,21 +38,22 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships  Membership[]
-  events       Event[]
-  serviceTypes ServiceType[]
-  membershipPlans MembershipPlan[]
-  members      Member[]
-  volunteers   Volunteer[]
-  counselors   Counselor[]
-  payments     Payment[]
-  ledger       LedgerEntry[]
-  orders       Order[]
-  attendees    Attendee[]
-  stations     Station[]
-  lineItems    LineItem[]
-  checklist    ChecklistItem[]
-  invites      Invite[]
+  memberships        Membership[]
+  events             Event[]
+  serviceTypes       ServiceType[]
+  membershipPlans    MembershipPlan[]
+  members            Member[]
+  volunteers         Volunteer[]
+  counselors         Counselor[]
+  payments           Payment[]
+  ledger             LedgerEntry[]
+  orders             Order[]
+  attendees          Attendee[]
+  stations           Station[]
+  lineItems          LineItem[]
+  checklist          ChecklistItem[]
+  invites            Invite[]
+  performanceEntries PerformanceEntry[]
 
   @@map("organizations")
 }
@@ -87,17 +88,17 @@ enum Role {
 /// A user's membership in one org with a tenant-scoped role. A user may belong
 /// to multiple orgs (different rows). `canHoldTill` is assigned by a coordinator.
 model Membership {
-  id          String       @id @default(cuid())
-  orgId       String
-  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  userId      String
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role        Role
-  canHoldTill Boolean      @default(false)
+  id                String       @id @default(cuid())
+  orgId             String
+  org               Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role              Role
+  canHoldTill       Boolean      @default(false)
   /// Waiver override authority (System Overview "override-auth" desk). Capability
   /// flag, not a separate role — mirrors canHoldTill.
-  canOverrideWaiver Boolean @default(false)
-  createdAt   DateTime     @default(now())
+  canOverrideWaiver Boolean      @default(false)
+  createdAt         DateTime     @default(now())
 
   @@unique([orgId, userId])
   @@index([orgId])
@@ -163,77 +164,78 @@ enum EventStatus {
 
 /// A Camp is a specialized Event (type = CAMP). Caps & service menu are config.
 model Event {
-  id        String      @id @default(cuid())
-  orgId     String
-  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  type      EventType   @default(CAMP)
-  status    EventStatus @default(DRAFT)
+  id                      String       @id @default(cuid())
+  orgId                   String
+  org                     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  type                    EventType    @default(CAMP)
+  status                  EventStatus  @default(DRAFT)
   /// Code prefix for attendee camp IDs, e.g. "MC-2026W".
-  code      String
-  name      String
-  startsAt  DateTime
-  endsAt    DateTime
+  code                    String
+  name                    String
+  startsAt                DateTime
+  endsAt                  DateTime
   /// Venue layout selection + config (Clinic vs Open Space), per-event override.
-  venueConfig Json      @default("{}")
+  venueConfig             Json         @default("{}")
   /// Optional hero image for the public events listing (one pic per event).
-  imageUrl    String?
+  imageUrl                String?
   /// Human-facing location line, shown on the public card + volunteer signup.
   /// General-purpose (camps + community events all have a "where"), e.g.
   /// "Town Common, Main St, Westborough MA".
-  location    String?
+  location                String?
   /// Short blurb shown under the title on the public events card.
-  description String?
+  description             String?
   /// We have a presence at an event we do NOT run (e.g. a community booth at the
   /// town's 4th of July). Drives a "Community booth" badge + guest-appropriate
   /// copy. Explicit, rather than inferred from the offers* flag combination.
-  externallyHosted Boolean @default(false)
+  externallyHosted        Boolean      @default(false)
   /// Who runs the host event (shown when externallyHosted), e.g. "Town of Westborough".
-  hostedByName String?
+  hostedByName            String?
   /// Optional link out to the host's official event page.
-  externalUrl  String?
+  externalUrl             String?
   /// Which public actions this event offers (config-over-code). Defaults suit a
   /// ticketed camp; a community event we only attend turns registration off and
   /// keeps just volunteer signup, etc.
-  offersRegistration Boolean @default(true)
-  offersVendors      Boolean @default(true)
-  offersVolunteers   Boolean @default(true)
+  offersRegistration      Boolean      @default(true)
+  offersVendors           Boolean      @default(true)
+  offersVolunteers        Boolean      @default(true)
   /// Registration mode. True (medcamp/CAMP): collect a per-attendee profile
   /// (name, mailing address, per-person services) — the "patient" record. False
   /// (admission/merch events like a dandiya night): quantity-only checkout — N
   /// anonymous scannable tickets + merch, no per-person details.
-  collectsAttendeeDetails Boolean @default(true)
+  collectsAttendeeDetails Boolean      @default(true)
   /// Refund policy. False (default): no refunds, including no-shows. True is a
   /// per-event override (e.g. the org reschedules) that permits refund/reschedule.
-  allowsRefunds      Boolean @default(false)
+  allowsRefunds           Boolean      @default(false)
   /// Whether the registration form offers an optional, purchaser-entered
   /// donation (free-form amount → a variable LineItem flagged isDonation).
-  acceptsDonations   Boolean @default(true)
+  acceptsDonations        Boolean      @default(true)
   /// Whether a current family membership admits the member's party free here
   /// (drives the "add membership" compare/upsell at registration + gate comp).
-  honorsMembership   Boolean @default(false)
+  honorsMembership        Boolean      @default(false)
   /// When walk-in registration opens day-of (coordinator toggle). Null = closed.
-  walkInOpensAt DateTime?
+  walkInOpensAt           DateTime?
   /// Monotonic per-event counter for attendee campId sequence (NNNN). Incremented
   /// atomically at payment confirmation so abandoned carts don't burn IDs.
-  nextCampSeq Int @default(1)
+  nextCampSeq             Int          @default(1)
   /// Monotonic per-event counter for volunteer signup codes (VOL-<code>-NNNN).
-  nextVolSeq  Int @default(1)
+  nextVolSeq              Int          @default(1)
 
   /// Computed when the camp closes; PII is purged but this survives.
-  closedAt    DateTime?
-  purgedAt    DateTime?
+  closedAt DateTime?
+  purgedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  orders           Order[]
-  attendees        Attendee[]
-  stations         Station[]
-  caps             ServiceCap[]
-  supplies         Supply[]
-  checklist        ChecklistItem[]
-  volunteerRoles   VolunteerRole[]
-  volunteerSignups VolunteerSignup[]
+  orders             Order[]
+  attendees          Attendee[]
+  stations           Station[]
+  caps               ServiceCap[]
+  supplies           Supply[]
+  checklist          ChecklistItem[]
+  volunteerRoles     VolunteerRole[]
+  volunteerSignups   VolunteerSignup[]
+  performanceEntries PerformanceEntry[]
 
   @@unique([orgId, code])
   @@index([orgId, status])
@@ -282,8 +284,8 @@ model ServiceType {
   admitsCount Int          @default(1)
   active      Boolean      @default(true)
 
-  caps        ServiceCap[]
-  lineItems   LineItem[]
+  caps      ServiceCap[]
+  lineItems LineItem[]
 
   @@unique([orgId, key])
   @@index([orgId])
@@ -293,27 +295,39 @@ model ServiceType {
 /// Per-event capacity cap for a service. `sold` is decremented atomically on the
 /// payment webhook (decision: caps enforced at DB, not app-layer).
 model ServiceCap {
-  id            String      @id @default(cuid())
-  eventId       String
-  event         Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  serviceTypeId String
-  serviceType   ServiceType @relation(fields: [serviceTypeId], references: [id], onDelete: Cascade)
+  id                  String      @id @default(cuid())
+  eventId             String
+  event               Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  serviceTypeId       String
+  serviceType         ServiceType @relation(fields: [serviceTypeId], references: [id], onDelete: Cascade)
   /// Per-event price (cents) for this service — the authoritative charge. The
   /// same catalogue service can be coded at different prices per event. Seeded
   /// from ServiceType.priceCents when an offering is first created.
-  priceCents    Int         @default(0)
+  priceCents          Int         @default(0)
   /// Price charged at the door, when it differs from the online price (e.g.
   /// $15 online / $20 walk-up). Null = charge the online price both ways.
   /// Read only by the gate POS; online checkout always uses priceCents.
-  onsitePriceCents Int?
+  onsitePriceCents    Int?
   /// Promotional price, charged online until earlyBirdUntil. Null = no early
   /// bird. Resolved by src/lib/pricing.ts; the door ignores this entirely.
   earlyBirdPriceCents Int?
   /// Deadline for earlyBirdPriceCents. Null = no early bird. A price without a
   /// deadline (or vice versa) resolves as if there were no early bird.
   earlyBirdUntil      DateTime?
-  capacity      Int // null-equivalent: very large number for "uncapped"
-  sold          Int         @default(0)
+  /// Competition entry rules, enforced server-side at submit. Per-event, like
+  /// price and capacity: Rhythms of Navratri allows 3–10 participants and 5–6
+  /// minutes; the Diwali showcase allows 3–12. Null = unconstrained.
+  ///
+  /// Typed columns rather than a Json blob because these are validated on every
+  /// submit and shown as field hints — the Google Forms they replace stated the
+  /// same rules in question LABELS and enforced none of them, so a group of 15
+  /// was found out at the venue.
+  minParticipants     Int?
+  maxParticipants     Int?
+  minDurationSeconds  Int?
+  maxDurationSeconds  Int?
+  capacity            Int // null-equivalent: very large number for "uncapped"
+  sold                Int         @default(0)
 
   @@unique([eventId, serviceTypeId])
   @@index([eventId])
@@ -388,31 +402,32 @@ enum PaymentMethod {
 
 /// One per checkout. Registrant is contact only and may not be attending.
 model Order {
-  id        String      @id @default(cuid())
-  orgId     String
-  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  eventId   String
-  event     Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  status    OrderStatus @default(PENDING)
+  id      String       @id @default(cuid())
+  orgId   String
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  eventId String
+  event   Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  status  OrderStatus  @default(PENDING)
 
   // Registrant (contact only)
   registrantName  String
   registrantEmail String
   registrantPhone String
 
-  marketingConsent     Boolean   @default(false)
-  marketingConsentAt   DateTime?
+  marketingConsent   Boolean   @default(false)
+  marketingConsentAt DateTime?
 
-  method        PaymentMethod @default(STRIPE)
+  method         PaymentMethod @default(STRIPE)
   /// Idempotency key for resilient day-of writes (decision #3).
-  idempotencyKey String?      @unique
+  idempotencyKey String?       @unique
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  attendees Attendee[]
-  lineItems LineItem[]
-  payments  Payment[]
+  attendees        Attendee[]
+  lineItems        LineItem[]
+  payments         Payment[]
+  performanceEntry PerformanceEntry?
 
   @@index([orgId, eventId])
   @@index([eventId, status])
@@ -432,7 +447,7 @@ model Attendee {
 
   /// Human-facing confirmation/camp ID (MC-YYYY[S|W]-NNNN). Assigned at payment
   /// confirmation, not at cart creation. Stable; survives purge for reconciliation.
-  campId  String?      @unique
+  campId String? @unique
 
   // ── PII (purged on event PURGED) ──
   name           String?
@@ -504,12 +519,93 @@ model LineItem {
 
   createdAt DateTime @default(now())
 
-  ledgerEntries LedgerEntry[]
+  ledgerEntries    LedgerEntry[]
+  performanceEntry PerformanceEntry?
 
   @@index([orgId])
   @@index([orderId])
   @@index([attendeeId])
   @@map("line_items")
+}
+
+// ── Competition / showcase entries ───────────────────────────────────────────
+
+/// How a competition entry's music reaches the organizers. Explicit rather than
+/// inferred from whether songObjectPath is null: OFFLINE is a state a
+/// coordinator must ACT on (contact the group), not the absence of one.
+enum SongDelivery {
+  UPLOAD // MP3 in object storage
+  OFFLINE // entrant arranges it directly; needs coordinator follow-up
+}
+
+/// One dance group entered into a competition or showcase (Rhythms of Navratri,
+/// the Diwali Dhamaka showcase). Replaces the Google Forms that collected these,
+/// where the fee was self-certified on the honour system and the stated group
+/// size and duration rules were unenforced free text.
+///
+/// NOT a patient record and NOT camp-scoped, so the No-PHI constraint is not
+/// engaged and these rows are NOT purged with attendee PII — the running order
+/// and the results are the event's own record. Song OBJECTS are deleted when the
+/// event reaches PURGED (storage cost, not privacy); this row survives.
+///
+/// ONE ROW PER GROUP, 1:1 with its Order, because an entry-bearing service is
+/// quantity-locked to 1: a choreographer entering three groups has three group
+/// names and three songs, and createQuantityOrder mints only ONE receipt code
+/// for a fee-only order regardless of line quantity — so a qty-3 line would have
+/// nowhere to put two of the three entries. Three checkouts instead. Contact
+/// details are deliberately NOT duplicated here; Order.registrantName/Email/
+/// Phone already hold them.
+///
+/// There is no status column: the ORDER's status is the state. An unpaid entry
+/// is a PENDING order and every downstream reader filters on CONFIRMED, so an
+/// abandoned checkout holds no slot and appears on no roster.
+model PerformanceEntry {
+  id         String       @id @default(cuid())
+  orgId      String
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  eventId    String
+  event      Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  /// 1:1 — see the quantity-lock note above.
+  orderId    String       @unique
+  order      Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  /// The fee line this entry paid for. Nullable and SetNull so a voided or
+  /// refunded line does not delete the entry's record of having been made.
+  lineItemId String?      @unique
+  lineItem   LineItem?    @relation(fields: [lineItemId], references: [id], onDelete: SetNull)
+
+  groupName         String
+  choreographerName String
+  participantCount  Int
+  /// A constrained per-event choice, NOT free text. The form this replaces left
+  /// "Other:" enabled on this question and returned "Mixed", "mixed ages",
+  /// "10 to 40" and "all" for the same band.
+  ageRange          String
+
+  songTitle      String
+  songDelivery   SongDelivery
+  /// Storage object path. Written ONLY after the server has confirmed with the
+  /// provider that the object exists and is within SONG_MAX_BYTES — the browser
+  /// uploads straight to storage, so its "done" call is a claim, not evidence.
+  /// Null for OFFLINE. See src/lib/storage.ts.
+  songObjectPath String?
+  /// A coordinator has a playable, PREPARED cut in hand. This is what gates the
+  /// running order — distinct from songObjectPath being set, because a correct
+  /// MP3 in a bucket is the input to show prep, not the result of it.
+  songReadyAt    DateTime?
+
+  /// Declared performance length — the only check there is on the 5–6 minute
+  /// rule, since duration cannot be derived without decoding the file.
+  durationSeconds Int?
+  usesProps       Boolean?
+  needsStagePrep  Boolean?
+  category        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orgId])
+  @@index([eventId])
+  @@map("performance_entries")
 }
 
 // ── Payments + single ledger (decision #6) ───────────────────────────────────
@@ -564,9 +660,9 @@ enum LedgerDirection {
 
 /// One ledger table for all money movement. Drives reconciliation export.
 model LedgerEntry {
-  id      String       @id @default(cuid())
-  orgId   String
-  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  id    String       @id @default(cuid())
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   paymentId  String?
   payment    Payment?  @relation(fields: [paymentId], references: [id], onDelete: SetNull)
@@ -599,7 +695,7 @@ model Station {
   /// (autoStationColor); admins never pick it. Null falls back to palette at render.
   colorHex String?
   /// Order in the default Care Spine rail.
-  sequence Int    @default(0)
+  sequence Int     @default(0)
   active   Boolean @default(true)
 
   visits StationVisit[]
@@ -618,11 +714,11 @@ enum VisitStatus {
 /// One row per (attendee, station) — the stored route. The printed Care Spine
 /// rail and the digital queue both derive from these.
 model StationVisit {
-  id         String      @id @default(cuid())
+  id         String   @id @default(cuid())
   attendeeId String
-  attendee   Attendee    @relation(fields: [attendeeId], references: [id], onDelete: Cascade)
+  attendee   Attendee @relation(fields: [attendeeId], references: [id], onDelete: Cascade)
   stationId  String
-  station    Station     @relation(fields: [stationId], references: [id], onDelete: Cascade)
+  station    Station  @relation(fields: [stationId], references: [id], onDelete: Cascade)
 
   sequence  Int // position in this attendee's route
   status    VisitStatus @default(QUEUED)
@@ -663,10 +759,10 @@ model LabStatus {
 // ── Supplies (pre-camp estimates only) ───────────────────────────────────────
 
 model Supply {
-  id        String   @id @default(cuid())
-  eventId   String
-  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  name      String
+  id         String  @id @default(cuid())
+  eventId    String
+  event      Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name       String
   /// ServiceType.key this supply is keyed to (for the calculator).
   serviceKey String?
   unit       String  @default("each")
@@ -741,25 +837,25 @@ model Counselor {
 
 /// Per-event volunteer role configuration (config-over-code, like Station).
 model VolunteerRole {
-  id      String       @id @default(cuid())
-  orgId   String
-  eventId String
-  event   Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  key     String
-  name    String
-  description String?
-  ageGroup String? // human label, e.g. "16+"
+  id                String  @id @default(cuid())
+  orgId             String
+  eventId           String
+  event             Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  key               String
+  name              String
+  description       String?
+  ageGroup          String? // human label, e.g. "16+"
   /// Eligibility gate: minimum age in years (0 = any). Drives age-band matching.
-  minAge   Int     @default(0)
+  minAge            Int     @default(0)
   /// Target headcount (capacity cap). Role shows "Full" once met.
-  capacity Int     @default(0)
-  shift    String? // simple shift label / time window
-  instructions String?
+  capacity          Int     @default(0)
+  shift             String? // simple shift label / time window
+  instructions      String?
   /// Optional Station.key this role supports (camp context).
-  linkedStationKey String?
+  linkedStationKey  String?
   /// Role needs a one-time training / background flag before signup.
   requiresClearance Boolean @default(false)
-  active   Boolean @default(true)
+  active            Boolean @default(true)
 
   signups VolunteerSignup[]
 
@@ -794,9 +890,9 @@ model VolunteerSignup {
   counselor   Counselor? @relation(fields: [counselorId], references: [id], onDelete: SetNull)
 
   /// Human QR code for day-of sign in/out: VOL-<eventCode>-NNNN.
-  code   String? @unique
-  status SignupStatus @default(SIGNED_UP)
-  shift  String?
+  code      String?      @unique
+  status    SignupStatus @default(SIGNED_UP)
+  shift     String?
   /// Outreach attribution from the tagged signup link (school|past|social|org).
   sourceTag String?
 
@@ -864,7 +960,7 @@ model ChecklistItem {
   sequence      Int               @default(0)
 
   // Run state
-  status          VisitStatus @default(QUEUED) // QUEUED = pending, DONE = complete
+  status            VisitStatus @default(QUEUED) // QUEUED = pending, DONE = complete
   completedByUserId String?
   completedAt       DateTime?
 
@@ -878,9 +974,9 @@ model ChecklistItem {
 /// login (auth signIn event) to create their Membership. Mirrors the capability
 /// flags on Membership so an invite fully describes the grant.
 model Invite {
-  id      String       @id @default(cuid())
-  orgId   String
-  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  id    String       @id @default(cuid())
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   email             String
   role              Role
