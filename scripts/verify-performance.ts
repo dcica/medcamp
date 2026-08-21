@@ -304,6 +304,43 @@ async function main() {
     }
   }
 
+  console.log("\n§9 the confirmation email is an entry receipt, not a ticket");
+  const { confirmationSubject, confirmationText } =
+    await import("../src/lib/confirmationEmail");
+  const baseMail = {
+    to: "a@b.c", registrantName: "Asha Rao", eventName: "Performance Verification",
+    confirmUrl: "https://example.test/confirm/x", campIds: [campId],
+    lineItems: [{ description: "Competition Entry", quantity: 1, amountCents: 3000 }],
+    merch: [], totalPaidCents: 3000, venue: null,
+    startsAt: new Date(), endsAt: new Date(), allowsRefunds: false,
+  };
+  // The registration wording must be untouched by the entry branch.
+  check("registration subject unchanged",
+    confirmationSubject(baseMail).endsWith("registration confirmed"),
+    confirmationSubject(baseMail));
+  check("registration body still says QR badge",
+    confirmationText(baseMail).includes("View your QR badge"));
+
+  const entryMail = { ...baseMail, performanceEntry: {
+    groupName: "Shakti Steps", songTitle: "Dholida", songNeeded: true,
+    entryUrl: "https://example.test/perform/" + campId } };
+  check("entry subject says entry, not registration",
+    confirmationSubject(entryMail).endsWith("entry confirmed"),
+    confirmationSubject(entryMail));
+  const entryBody = confirmationText(entryMail);
+  check("entry body states it is NOT a ticket",
+    entryBody.includes("receipt, not a ticket"));
+  check("entry body never claims to admit guests",
+    !entryBody.includes("admits") || entryBody.includes("does not admit"));
+  check("entry body carries the music call to action",
+    entryBody.includes("WE STILL NEED YOUR MUSIC") && entryBody.includes(campId));
+  check("entry body names the group and song",
+    entryBody.includes("Shakti Steps") && entryBody.includes("Dholida"));
+
+  const doneMail = { ...entryMail, performanceEntry: { ...entryMail.performanceEntry, songNeeded: false } };
+  check("music-received variant drops the chase",
+    !confirmationText(doneMail).includes("WE STILL NEED"));
+
   await cleanup(org.id);
 }
 

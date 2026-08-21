@@ -112,8 +112,40 @@ export function PerformanceEntryForm({
     return null;
   }
 
+  /**
+   * Pre-flight before the network hop. Every rule here MIRRORS
+   * performanceEntrySchema / createPerformanceEntry and is never stricter — the
+   * invariant recorded in ValidatedInput.tsx. A client check tighter than the
+   * server turns away an entrant with a perfectly good answer, and on the night
+   * before a deadline there is no recovery path.
+   *
+   * Its only job is to save a round trip: without it, a blank age group meant
+   * submitting, waiting, and being told to go back. The server still decides.
+   */
+  function preflight(): string | null {
+    if (!groupName.trim()) return "Group name is required.";
+    if (!choreographer.trim()) return "Choreographer's name is required.";
+    if (!participants.trim()) return "Enter the number of participants.";
+    const participantIssue = validateParticipants(participants);
+    if (participantIssue) return participantIssue;
+    if (!ageRange) return "Pick an age group.";
+    if (!songTitle.trim()) return "Song name is required.";
+    const dIssue = durationIssue();
+    if (dIssue) return dIssue;
+    if (!name.trim()) return "Your name is required.";
+    // Weaker than the server's z.string().email() on purpose: presence only.
+    if (!email.trim()) return "Email is required — your confirmation goes there.";
+    if (phone.trim().length < 7) return "Phone is required.";
+    return null;
+  }
+
   async function onSubmit() {
     setError(null);
+    const problem = preflight();
+    if (problem) {
+      setError(problem);
+      return;
+    }
     setSubmitting(true);
     const result = await submitPerformanceEntry({
       eventId,

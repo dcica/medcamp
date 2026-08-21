@@ -42,6 +42,20 @@ export type ConfirmationEmail = {
   endsAt: Date;
   /** `Event.allowsRefunds` — decides which approved refund wording applies. */
   allowsRefunds: boolean;
+  /**
+   * Present only for a competition/showcase entry. When set, this email is NOT
+   * a ticket: a fee-kind service is admits:false, so the code identifies a group
+   * and admits nobody. The registration wording ("this email admits N guests",
+   * "Your ticket") would promise floor access the entrant did not buy.
+   */
+  performanceEntry?: {
+    groupName: string;
+    songTitle: string;
+    /** No playable track received yet — drives the call to action. */
+    songNeeded: boolean;
+    /** The capability URL for managing the entry and sending the track. */
+    entryUrl: string;
+  } | null;
 };
 
 // ── Design tokens. The email copies them rather than importing the Tailwind
@@ -87,6 +101,23 @@ function qrCid(campId: string, index: number): string {
  * path logs. Do not "improve" it here.
  */
 export function confirmationText(msg: ConfirmationEmail): string {
+  // An entry gets its OWN text, rather than an edit to the lines below: the
+  // registration wording is deliberately frozen (see the note above), and
+  // "QR badge" / camp ID framing is wrong for a group that bought no admission.
+  const entry = msg.performanceEntry;
+  if (entry) {
+    return [
+      `Hi ${msg.registrantName},`,
+      `Your entry for ${msg.eventName} is confirmed.`,
+      `Group: ${entry.groupName}`,
+      `Song: ${entry.songTitle}`,
+      `Entry code: ${msg.campIds.join(", ")}`,
+      `This code identifies your group. It is a receipt, not a ticket, and does not admit spectators.`,
+      entry.songNeeded
+        ? `WE STILL NEED YOUR MUSIC. Send it here: ${entry.entryUrl}`
+        : `Manage your entry: ${entry.entryUrl}`,
+    ].join("\n");
+  }
   return [
     `Hi ${msg.registrantName},`,
     `Your registration for ${msg.eventName} is confirmed.`,
@@ -96,6 +127,7 @@ export function confirmationText(msg: ConfirmationEmail): string {
 }
 
 export function confirmationSubject(msg: ConfirmationEmail): string {
+  if (msg.performanceEntry) return `${msg.eventName} — entry confirmed`;
   return `${msg.eventName} — registration confirmed`;
 }
 
@@ -163,6 +195,7 @@ function merchBlock(msg: ConfirmationEmail): string {
  */
 export function confirmationHtml(msg: ConfirmationEmail): string {
   const headcount = msg.campIds.length;
+  const entry = msg.performanceEntry;
   const tickets = msg.campIds.map((id, i) => ticketBlock(id, i)).join("");
   // The venue timezone helper, not a bare Intl call: an email that states a
   // different time from the website is the defect Task G4 just fixed, coming
@@ -179,14 +212,37 @@ export function confirmationHtml(msg: ConfirmationEmail): string {
 
   <tr><td style="padding:24px 24px 0 24px;">
     <div style="font:400 16px/1.6 ${FONT};color:${NAVY};">Hi ${esc(msg.registrantName)},</div>
-    <div style="font:400 16px/1.6 ${FONT};color:${NAVY};padding:8px 0 0 0;">Your registration is confirmed. This email admits <strong>${headcount} ${headcount === 1 ? "guest" : "guests"}</strong> — one code below per guest.</div>
+    <div style="font:400 16px/1.6 ${FONT};color:${NAVY};padding:8px 0 0 0;">${
+      entry
+        ? `Your entry is confirmed for <strong>${esc(entry.groupName)}</strong>, dancing to ${esc(entry.songTitle)}.`
+        : `Your registration is confirmed. This email admits <strong>${headcount} ${headcount === 1 ? "guest" : "guests"}</strong> — one code below per guest.`
+    }</div>
   </td></tr>
 
   <tr><td style="padding:20px 24px 0 24px;">
-    ${heading(headcount === 1 ? "Your ticket" : `Your ${headcount} tickets`)}
+    ${heading(
+      entry ? "Your entry code" : headcount === 1 ? "Your ticket" : `Your ${headcount} tickets`,
+    )}
     ${tickets}
+    ${
+      entry
+        ? `<div style="font:400 14px/1.6 ${FONT};color:${MUTED};padding:8px 0 0 0;">This code identifies your group. It is a receipt, not a ticket &mdash; it does not admit spectators.</div>`
+        : ""
+    }
   </td></tr>
 
+${
+  entry
+    ? `  <tr><td style="padding:16px 24px 0 24px;">
+    <div style="background:${entry.songNeeded ? "#fff7ed" : "#f0fdf4"};border:1px solid ${entry.songNeeded ? "#fed7aa" : "#bbf7d0"};border-radius:10px;padding:14px 16px;">
+      <div style="font:600 15px/1.5 ${FONT};color:${NAVY};">${entry.songNeeded ? "We still need your music" : "Your music"}</div>
+      <div style="font:400 14px/1.6 ${FONT};color:${NAVY};padding:6px 0 10px 0;">${entry.songNeeded ? "Send us the exact cut you&rsquo;ll perform to. Keep this link &mdash; you can come back to it any time." : "You&rsquo;ve told us how your track is coming. You can change it from your entry page."}</div>
+      <a href="${esc(entry.entryUrl)}" style="font:600 15px/1 ${FONT};color:${NAVY};background:${SAFFRON};border-radius:8px;padding:12px 18px;text-decoration:none;display:inline-block;">${entry.songNeeded ? "Send my music" : "Manage my entry"}</a>
+    </div>
+  </td></tr>
+`
+    : ""
+}
   <tr><td style="padding:8px 24px 0 24px;">
     ${paidBlock(msg)}
   </td></tr>

@@ -452,7 +452,12 @@ export async function confirmOrderPaid(
         // Line items (with their service type) drive the PAID block and the
         // will-call list in the confirmation email; the event carries venue,
         // times and the refund policy.
-        include: { event: true, lineItems: { include: { serviceType: true } } },
+        include: {
+          event: true,
+          lineItems: { include: { serviceType: true } },
+          // Decides whether this email is a ticket or an entry receipt.
+          performanceEntry: true,
+        },
       });
       await sendConfirmationEmail({
         to: order.registrantEmail,
@@ -460,6 +465,17 @@ export async function confirmOrderPaid(
         eventName: order.event.name,
         confirmUrl: `${env.NEXT_PUBLIC_APP_URL}/confirm/${order.id}`,
         campIds: result.campIds,
+        // A fee-kind entry is admits:false, so the wording must not call the
+        // code a ticket or promise it admits anyone. The entry URL is keyed on
+        // the receipt code, which only exists now that the order is confirmed.
+        performanceEntry: order.performanceEntry
+          ? {
+              groupName: order.performanceEntry.groupName,
+              songTitle: order.performanceEntry.songTitle,
+              songNeeded: order.performanceEntry.songObjectPath === null,
+              entryUrl: `${env.NEXT_PUBLIC_APP_URL}/perform/${result.campIds[0] ?? ""}`,
+            }
+          : null,
         lineItems: order.lineItems.map((li) => ({
           description: li.serviceType?.name ?? li.description,
           quantity: li.quantity,

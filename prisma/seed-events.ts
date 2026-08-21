@@ -86,6 +86,15 @@ type Seed = {
     admitsCount?: number;
     fulfillable: boolean;
     capacity: number;
+    /**
+     * Competition entry rules, enforced server-side at submit (see
+     * src/server/performance.ts). Only meaningful on a fee-kind service.
+     * Omitted ⇒ unconstrained, which is what the Google Form effectively was.
+     */
+    minParticipants?: number;
+    maxParticipants?: number;
+    minDurationSeconds?: number;
+    maxDurationSeconds?: number;
   }[];
   volunteerRoles?: {
     key: string;
@@ -253,6 +262,14 @@ const EVENTS: Seed[] = [
         earlyBirdUntil: "2026-09-01T04:59:59Z",
         admits: false,
         fulfillable: false,
+        // The rules the entry form actually states: 3-10 participants, 5-6
+        // minutes. These were printed on the Google Form as question LABELS with
+        // nothing enforcing them, so a group of 15 or a 9-minute routine was
+        // accepted and discovered at the venue. Now checked at submit.
+        minParticipants: 3,
+        maxParticipants: 10,
+        minDurationSeconds: 300,
+        maxDurationSeconds: 360,
         // 40 groups. Provisional, like the class capacity — the flyer says
         // "limited spots" without a number, so a coordinator sets the real
         // figure in the admin UI once the venue confirms.
@@ -603,6 +620,10 @@ async function main() {
               earlyBirdPriceCents: s.earlyBirdPriceCents ?? null,
               earlyBirdUntil: s.earlyBirdUntil ? new Date(s.earlyBirdUntil) : null,
               capacity,
+              minParticipants: s.minParticipants ?? null,
+              maxParticipants: s.maxParticipants ?? null,
+              minDurationSeconds: s.minDurationSeconds ?? null,
+              maxDurationSeconds: s.maxDurationSeconds ?? null,
             }
           : {},
         create: {
@@ -613,6 +634,10 @@ async function main() {
           earlyBirdPriceCents: s.earlyBirdPriceCents ?? null,
           earlyBirdUntil: s.earlyBirdUntil ? new Date(s.earlyBirdUntil) : null,
           capacity,
+          minParticipants: s.minParticipants ?? null,
+          maxParticipants: s.maxParticipants ?? null,
+          minDurationSeconds: s.minDurationSeconds ?? null,
+          maxDurationSeconds: s.maxDurationSeconds ?? null,
         },
       });
     }
