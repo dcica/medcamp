@@ -1,3 +1,4 @@
+import Link from "next/link";
 import QRCode from "qrcode";
 import { db } from "@/lib/db";
 import { stripe } from "@/lib/stripe";
@@ -14,6 +15,9 @@ export const dynamic = "force-dynamic";
 
 const orderInclude = {
   event: true,
+  // A competition entry changes what this page MEANS: the code is a receipt, not
+  // an admission, and there is a music step still outstanding.
+  performanceEntry: true,
   attendees: {
     include: {
       lineItems: { include: { serviceType: true } },
@@ -101,6 +105,10 @@ export default async function ConfirmPage({
   }
 
   const isConfirmed = order.status === "CONFIRMED";
+  // Present only for competition/showcase entries. Drives the copy throughout:
+  // the previous wording told an entrant to "bring this QR to check-in", which
+  // promises floor access a fee-kind service explicitly does not grant.
+  const entry = order.performanceEntry;
   const isDev = process.env.NODE_ENV !== "production";
 
   // Pre-render a QR per confirmed attendee (encodes the campId for scanning).
@@ -120,22 +128,41 @@ export default async function ConfirmPage({
     <main className="mx-auto max-w-screen-sm px-4 py-8">
       <PageHelp
         id="confirm"
-        title={isConfirmed ? "You're registered!" : "Almost there"}
+        title={
+          isConfirmed ? (entry ? "You're entered!" : "You're registered!") : "Almost there"
+        }
         subtitle={order.event.name}
-        items={[
-          {
-            label: "Your QR badge",
-            body: "There's one badge per attendee. Bring it printed or on your phone — the check-in desk scans it on camp day.",
-          },
-          {
-            label: "Service dots",
-            body: "The colored dots are the services you paid for; each maps to a station you'll visit.",
-          },
-          {
-            label: "Awaiting payment",
-            body: "If payment hasn't cleared yet, your badge appears here (and arrives by email) as soon as it does.",
-          },
-        ]}
+        items={
+          entry
+            ? [
+                {
+                  label: "Your entry code",
+                  body: "Quote this code to the organizers. It identifies your group — it is NOT a ticket and does not admit spectators.",
+                },
+                {
+                  label: "Your music",
+                  body: "If you still owe us your track, use the entry link below. We'll confirm once we have a playable copy.",
+                },
+                {
+                  label: "Awaiting payment",
+                  body: "If payment hasn't cleared yet, your entry is confirmed as soon as it does.",
+                },
+              ]
+            : [
+                {
+                  label: "Your QR badge",
+                  body: "There's one badge per attendee. Bring it printed or on your phone — the check-in desk scans it on camp day.",
+                },
+                {
+                  label: "Service dots",
+                  body: "The colored dots are the services you paid for; each maps to a station you'll visit.",
+                },
+                {
+                  label: "Awaiting payment",
+                  body: "If payment hasn't cleared yet, your badge appears here (and arrives by email) as soon as it does.",
+                },
+              ]
+        }
       />
 
       {!isConfirmed && (
@@ -184,8 +211,50 @@ export default async function ConfirmPage({
               </div>
             </div>
           ))}
+          {entry && (
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Your entry
+              </p>
+              <dl className="mt-2 space-y-1 text-sm">
+                <div className="flex justify-between gap-4">
+                  <dt className="text-gray-500">Group</dt>
+                  <dd className="font-medium">{entry.groupName}</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-gray-500">Song</dt>
+                  <dd className="font-medium">{entry.songTitle}</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-gray-500">Music</dt>
+                  <dd className="font-medium">
+                    {entry.songReadyAt
+                      ? "Confirmed"
+                      : entry.songObjectPath
+                        ? "Received — being checked"
+                        : "Still needed"}
+                  </dd>
+                </div>
+              </dl>
+              {/* The entry link is the only route back to the music step, and a
+                  confirmation email is where people look for it later. */}
+              {order.attendees[0]?.campId && (
+                <Link
+                  href={`/perform/${order.attendees[0].campId}`}
+                  className="mt-3 flex min-h-tap w-full items-center justify-center rounded-lg border border-gray-300 px-4 text-sm font-semibold text-gray-700"
+                >
+                  {entry.songObjectPath || entry.songReadyAt
+                    ? "Manage my entry and music"
+                    : "Send us my music"}
+                </Link>
+              )}
+            </div>
+          )}
+
           <p className="text-center text-xs text-gray-400">
-            Bring this QR (printed or on your phone) to check-in.
+            {entry
+              ? "This code identifies your group. It is a receipt, not a ticket — it does not admit spectators."
+              : "Bring this QR (printed or on your phone) to check-in."}
           </p>
         </div>
       )}
