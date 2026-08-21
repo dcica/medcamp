@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { RegisterForm } from "./RegisterForm";
@@ -73,11 +74,36 @@ export default async function RegisterPage({
 
   // Only services offered at THIS event (have a cap), priced per-event from the
   // cap. Capacity is enforced atomically at payment confirmation, not here.
+  // Fee-kind services (neither admits nor fulfillable) are competition entries
+  // and are deliberately ABSENT here: they need group details this form has no
+  // notion of, and createRegistration now refuses to sell one anyway. Leaving
+  // them visible is how a $25 RoN entry got taken with no group name and no song.
   const offerings = await db.serviceCap.findMany({
-    where: { eventId: event.id, serviceType: { active: true } },
+    where: {
+      eventId: event.id,
+      serviceType: {
+        active: true,
+        OR: [{ admits: true }, { fulfillable: true }],
+      },
+    },
     include: { serviceType: true },
     orderBy: { serviceType: { name: "asc" } },
   });
+
+  // Nothing left to sell means every offering was an entry fee — so this event
+  // IS the entry form, and /register is the wrong door. Forward rather than show
+  // an empty picker, so the events-page link and any stale bookmark both land
+  // somewhere useful.
+  if (offerings.length === 0) {
+    const hasFeeOffering = await db.serviceCap.findFirst({
+      where: {
+        eventId: event.id,
+        serviceType: { active: true, admits: false, fulfillable: false },
+      },
+      select: { id: true },
+    });
+    if (hasFeeOffering) redirect(`/perform?event=${event.id}`);
+  }
   // Display prices resolve through the SAME function registration.ts uses for
   // the authoritative total (src/lib/pricing.ts resolvePrice, "online"
   // channel) — this is a display feed, not a second source of truth. If this

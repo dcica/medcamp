@@ -22,10 +22,17 @@ export const dynamic = "force-dynamic";
  */
 export default async function PerformEntryPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ code: string }>;
+  searchParams: Promise<{ paid?: string }>;
 }) {
   const { code } = await params;
+  // Set by the post-payment hop. Changes the framing from "your entry" to
+  // "you're in, now send your music", and reveals the onward link to the
+  // confirmation so the song step is a pass-through rather than a dead end.
+  const { paid } = await searchParams;
+  const justPaid = paid === "1";
 
   // Rate limit the LOOKUP too, not just the mutating actions: this page is the
   // cheapest oracle on the site otherwise, and the actions behind it are only
@@ -95,6 +102,18 @@ export default async function PerformEntryPage({
         ]}
       />
 
+      {justPaid && (
+        <section className="mt-6 rounded-xl border border-green-200 bg-green-50 p-5">
+          <h2 className="text-base font-bold text-green-900">
+            You&apos;re in — {entry.groupName} is entered
+          </h2>
+          <p className="mt-1 text-sm text-green-800">
+            Your fee is paid. One last thing: send us your music below. We&apos;ve
+            also emailed you this link, so you can come back to it any time.
+          </p>
+        </section>
+      )}
+
       <section className="mt-6 rounded-xl border border-gray-200 bg-white p-5">
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
           Entry code
@@ -120,7 +139,22 @@ export default async function PerformEntryPage({
         contactEmail={CONTACT_EMAIL}
       />
 
-      <p className="mt-6 text-center text-sm">
+      {justPaid ? (
+        <Link
+          href={`/confirm/${entry.orderId}`}
+          className="mt-6 flex min-h-tap w-full items-center justify-center rounded-lg border border-gray-300 px-4 text-sm font-semibold text-gray-700"
+        >
+          See my confirmation and receipt →
+        </Link>
+      ) : (
+        <p className="mt-6 text-center text-sm">
+          <Link href={`/confirm/${entry.orderId}`} className="text-brand underline">
+            My confirmation and receipt
+          </Link>
+        </p>
+      )}
+
+      <p className="mt-4 text-center text-sm">
         <Link href="/events" className="text-brand underline">
           ← Back to events
         </Link>

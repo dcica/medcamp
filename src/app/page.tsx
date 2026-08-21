@@ -1,6 +1,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import { db } from "@/lib/db";
+import {
+  offeringKindsByEvent,
+  type EventOfferingKinds,
+} from "@/server/performance";
 import { getActiveOrg } from "@/lib/tenant";
 import { formatWhen } from "@/lib/eventTime";
 import { PageHelp } from "@/app/_components/PageHelp";
@@ -43,9 +47,16 @@ type EventRow = {
 };
 
 // Config-driven action set for an event. First entry is the primary CTA.
-function eventActions(e: EventRow) {
+function eventActions(e: EventRow, kinds?: EventOfferingKinds) {
   const actions: { key: string; label: string; href: string }[] = [];
-  if (e.offersRegistration)
+  // Mirrors /events — see the reasoning on the CTA split there.
+  if (e.offersRegistration && kinds?.hasFee)
+    actions.push({
+      key: "perform",
+      label: "Enter a performance",
+      href: `/perform?event=${e.id}`,
+    });
+  if (e.offersRegistration && (kinds?.hasOther ?? true))
     actions.push({
       key: "register",
       label: REGISTER_LABEL[e.type] ?? "Register",
@@ -82,6 +93,8 @@ export default async function Home() {
       })
     : [];
 
+  const offeringKinds = await offeringKindsByEvent(events.map((e) => e.id));
+
   const [featured, ...rest] = events;
   const orgName = org?.name ?? "DCICA platform";
 
@@ -116,7 +129,7 @@ export default async function Home() {
       {featured ? (
         <>
           {/* Featured (soonest) event — full-bleed hero with its action set. */}
-          <FeaturedEvent event={featured} />
+          <FeaturedEvent event={featured} kinds={offeringKinds.get(featured.id)} />
 
           {rest.length > 0 && (
             <section className="mt-10">
@@ -125,7 +138,7 @@ export default async function Home() {
               </h2>
               <ul className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2">
                 {rest.map((e) => (
-                  <EventCard key={e.id} event={e} />
+                  <EventCard key={e.id} event={e} kinds={offeringKinds.get(e.id)} />
                 ))}
               </ul>
             </section>
@@ -141,8 +154,14 @@ export default async function Home() {
   );
 }
 
-function FeaturedEvent({ event: e }: { event: EventRow }) {
-  const actions = eventActions(e);
+function FeaturedEvent({
+  event: e,
+  kinds,
+}: {
+  event: EventRow;
+  kinds?: EventOfferingKinds;
+}) {
+  const actions = eventActions(e, kinds);
   const [primary, ...secondary] = actions;
 
   return (
@@ -211,8 +230,14 @@ function FeaturedEvent({ event: e }: { event: EventRow }) {
   );
 }
 
-function EventCard({ event: e }: { event: EventRow }) {
-  const actions = eventActions(e);
+function EventCard({
+  event: e,
+  kinds,
+}: {
+  event: EventRow;
+  kinds?: EventOfferingKinds;
+}) {
+  const actions = eventActions(e, kinds);
   const [primary, ...secondary] = actions;
 
   return (

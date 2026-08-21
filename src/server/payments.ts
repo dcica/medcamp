@@ -3,6 +3,7 @@ import { stripe } from "@/lib/stripe";
 import { env } from "@/lib/env";
 import { sendConfirmationEmail } from "@/lib/email";
 import { newCampId } from "@/lib/campId";
+import { log } from "@/lib/logger";
 
 /**
  * The single PaymentService (locked decision #6). Every billable thing is a
@@ -40,7 +41,16 @@ export class MissingCapError extends Error {
  * hosted Checkout, no native build). Returns the redirect URL. For a $0 order
  * there's nothing to charge — caller should confirm directly instead.
  */
-export async function createCheckoutForOrder(orderId: string): Promise<string> {
+export async function createCheckoutForOrder(
+  orderId: string,
+  /**
+   * Where Stripe returns the browser. Defaults suit /register. The performance
+   * flow overrides both so the entrant lands on the song-upload step first and
+   * a cancelled entry returns to the entry form rather than to /register, which
+   * cannot sell a competition entry at all.
+   */
+  routes?: { successPath?: string; cancelPath?: string },
+): Promise<string> {
   const order = await db.order.findUniqueOrThrow({
     where: { id: orderId },
     include: { lineItems: true, event: true },
@@ -62,11 +72,15 @@ export async function createCheckoutForOrder(orderId: string): Promise<string> {
 
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
-    success_url: `${env.NEXT_PUBLIC_APP_URL}/confirm/${order.id}?session_id={CHECKOUT_SESSION_ID}`,
+    success_url: `${env.NEXT_PUBLIC_APP_URL}${
+      routes?.successPath ?? `/confirm/${order.id}`
+    }?session_id={CHECKOUT_SESSION_ID}`,
     // Carries the event back. Without ?event= a cancelling buyer landed on bare
     // /register and got whatever the fallback pool picked — a cancelled Diwali
     // buyer dropped onto Navratri's checkout. Read off the order, not threaded in.
-    cancel_url: `${env.NEXT_PUBLIC_APP_URL}/register?event=${order.eventId}&cancelled=${order.id}`,
+    cancel_url: `${env.NEXT_PUBLIC_APP_URL}${
+      routes?.cancelPath ?? `/register?event=${order.eventId}&cancelled=${order.id}`
+    }`,
     customer_email: order.registrantEmail,
     // Webhook reads this to confirm the right order (decision #2).
     metadata: { orderId: order.id, orgId: order.orgId },
@@ -98,6 +112,72 @@ export async function createCheckoutForOrder(orderId: string): Promise<string> {
 
   if (!session.url) throw new Error("Stripe did not return a checkout URL.");
   return session.url;
+}
+
+/**
+ * Confirm a PENDING order from the Stripe Checkout session the browser was
+ * redirected with. Returns true if the order is CONFIRMED afterwards.
+ *
+ * WHY THIS EXISTS: Stripe redirects the browser the instant Checkout succeeds,
+ * and the webhook — the authoritative confirmer — is a separate async POST that
+ * usually loses that race. Any page a buyer lands on straight after paying must
+ * therefore be able to confirm synchronously. confirmOrderPaid is idempotent and
+ * atomically claimed, so whichever path wins, the other is a no-op (and only the
+ * winner sends the email).
+ *
+ * Extracted from the confirmation page when the performance-entry flow added a
+ * SECOND post-payment landing page. Two copies of this would be two chances to
+ * get the "session must belong to THIS order" guard wrong.
+ */
+export async function confirmFromCheckoutSession(
+  orderId: string,
+  sessionId: string | undefined,
+): Promise<boolean> {
+  const order = await db.order.findUnique({
+    where: { id: orderId },
+    select: { id: true, status: true },
+  });
+  if (!order) return false;
+  if (order.status === "CONFIRMED") return true;
+  if (!sessionId || !stripe) return false;
+
+  try {
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    // The session must actually be paid AND belong to THIS order
+    // (metadata.orderId is set when we create it) — never confirm an order from
+    // a session id pasted in from elsewhere.
+    if (
+      session.payment_status !== "paid" ||
+      session.metadata?.orderId !== order.id
+    ) {
+      return false;
+    }
+    await confirmOrderPaid(order.id, {
+      method: "STRIPE",
+      stripeCheckoutId: session.id,
+      stripePaymentIntentId:
+        typeof session.payment_intent === "string"
+          ? session.payment_intent
+          : undefined,
+      idempotencyKey: `checkout-${session.id}`,
+    });
+    return true;
+  } catch (err) {
+    // A genuinely-full cap stays quiet by design: the buyer paid, staff handles
+    // the refund, and the caller falls through to its pending state. A MISSING
+    // cap row is a different animal — a misconfigured event where every purchase
+    // of that service fails — so it is logged at error rather than swallowed
+    // with the sold-out case. The webhook remains the backstop either way.
+    if (err instanceof MissingCapError) {
+      log.error("confirm: service cap row missing (misconfigured event)", {
+        orderId,
+        serviceKey: err.serviceKey,
+      });
+    } else if (!(err instanceof OverCapacityError)) {
+      log.error("confirm: stripe session verify failed", { orderId, err });
+    }
+    return false;
+  }
 }
 
 type ConfirmInput = {

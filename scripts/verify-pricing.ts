@@ -242,16 +242,25 @@ async function main(): Promise<void> {
 
   // ── 5. A fee issues no ticket and is never comped ──
   console.log("\n5. Fee-kind service (competition entry)");
-  const feeOrder = await createRegistration({
-    eventId: event.id,
-    registrant: { ...registrant, email: "verify-fee@example.test" },
-    marketingConsent: false,
-    membershipPlanId: plan.id,
-    quantities: [
-      { serviceKey: "verify-entry", quantity: 2 },
-      { serviceKey: "verify-fee", quantity: 3 },
-    ],
-  });
+  // allowFeeServices: this section is about PRICING a fee (no ticket, never
+  // comped), not about which form may sell one. createRegistration now refuses
+  // fee-kind services to public callers, because /register sold a real $25 RoN
+  // entry with no group details attached; src/server/performance.ts is the only
+  // production caller that passes this. Keeping the pricing assertions here
+  // means the fee's money behaviour stays pinned independently of that policy.
+  const feeOrder = await createRegistration(
+    {
+      eventId: event.id,
+      registrant: { ...registrant, email: "verify-fee@example.test" },
+      marketingConsent: false,
+      membershipPlanId: plan.id,
+      quantities: [
+        { serviceKey: "verify-entry", quantity: 2 },
+        { serviceKey: "verify-fee", quantity: 3 },
+      ],
+    },
+    { allowFeeServices: true },
+  );
   check(
     "3 competition groups + 2 comped admissions mint only 2 tickets",
     await db.attendee.count({ where: { orderId: feeOrder.orderId } }),

@@ -167,6 +167,31 @@ async function main() {
     () => createPerformanceEntry({ ...input, participantCount: 5, serviceKey: "nope" }),
     "not offered for this event");
 
+  console.log("\n§3b /register cannot sell an entry fee (the hole found on test)");
+  const { createRegistration } = await import("../src/server/registration");
+  await rejectsWith("plain registration refuses a fee-kind service",
+    () => createRegistration({
+      eventId: event.id,
+      registrant: baseEntry.registrant,
+      marketingConsent: false,
+      quantities: [{ serviceKey: FEE_KEY, quantity: 1 }],
+    }),
+    "has its own form");
+  // ...but must still sell admission on the same event, or a mixed event loses
+  // its door. Prod RoN is fee-only; test RoN carries a stale floor-admission cap.
+  const admitOrder = await createRegistration({
+    eventId: event.id,
+    registrant: baseEntry.registrant,
+    marketingConsent: false,
+    quantities: [{ serviceKey: ADMIT_KEY, quantity: 2 }],
+  });
+  check("plain registration still sells admission", admitOrder.totalCents === 2000, `${admitOrder.totalCents}`);
+
+  const { offeringKindsByEvent } = await import("../src/server/performance");
+  const kinds = (await offeringKindsByEvent([event.id])).get(event.id);
+  check("event reports BOTH offering kinds", kinds?.hasFee === true && kinds?.hasOther === true,
+    JSON.stringify(kinds));
+
   console.log("\n§4 a valid entry is created, unpaid, and INVISIBLE until paid");
   const created = await createPerformanceEntry({ ...input, participantCount: 6, durationSeconds: 330 });
   check("entry created", Boolean(created.entryId));

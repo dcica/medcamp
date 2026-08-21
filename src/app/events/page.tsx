@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
+import { offeringKindsByEvent } from "@/server/performance";
 import { getActiveOrg } from "@/lib/tenant";
 import { VENUE_TIME_ZONE, formatWhen } from "@/lib/eventTime";
 import { PageHelp } from "@/app/_components/PageHelp";
@@ -96,6 +97,10 @@ export default async function EventsPage() {
   // shared a result set, one refactor that forgot to re-split it would put a
   // finished event back among the sellable cards — which is the exact defect
   // that made this section necessary.
+  // Which upcoming events sell an entry fee vs. anything else — one query for
+  // the whole page. Decides between the Register and Enter-a-performance CTAs.
+  const offeringKinds = await offeringKindsByEvent(events.map((e) => e.id));
+
   const past = org
     ? await db.event.findMany({
         where: {
@@ -165,7 +170,18 @@ export default async function EventsPage() {
           {events.map((e) => {
             // Config-driven action set. First entry is the card's primary CTA.
             const actions: { key: string; label: string; href: string }[] = [];
-            if (e.offersRegistration)
+            const kinds = offeringKinds.get(e.id);
+            // An entry fee needs the performance form, which collects group
+            // details /register has no notion of. When an event sells BOTH, both
+            // doors are legitimate and both are shown; when it sells only entry
+            // fees, "Register" is simply the wrong word and the wrong page.
+            if (e.offersRegistration && kinds?.hasFee)
+              actions.push({
+                key: "perform",
+                label: "Enter a performance",
+                href: `/perform?event=${e.id}`,
+              });
+            if (e.offersRegistration && (kinds?.hasOther ?? true))
               actions.push({
                 key: "register",
                 label: REGISTER_LABEL[e.type] ?? "Register",

@@ -183,13 +183,18 @@ export async function createPerformanceEntry(
   // single receipt code for a fee-only order regardless of line quantity, so a
   // qty-2 line would leave the second group with nowhere to record its details.
   // PerformanceEntry.orderId is unique at the DB to make that structural.
-  const { orderId, totalCents } = await createRegistration({
-    eventId: event.id,
-    registrant: data.registrant,
-    marketingConsent: data.marketingConsent,
-    donationCents: data.donationCents,
-    quantities: [{ serviceKey: data.serviceKey, quantity: 1 }],
-  });
+  const { orderId, totalCents } = await createRegistration(
+    {
+      eventId: event.id,
+      registrant: data.registrant,
+      marketingConsent: data.marketingConsent,
+      donationCents: data.donationCents,
+      quantities: [{ serviceKey: data.serviceKey, quantity: 1 }],
+    },
+    // The ONLY caller allowed to sell a fee-kind service: the group details are
+    // written below in the same request.
+    { allowFeeServices: true },
+  );
 
   // The fee line to attach to. Matched by serviceType rather than taking the
   // first line, because the order may also carry a donation line.
@@ -228,6 +233,8 @@ export async function createPerformanceEntry(
 
 export type EntryView = {
   entryId: string;
+  /** For the onward link to the ordinary confirmation page. */
+  orderId: string;
   eventName: string;
   groupName: string;
   choreographerName: string;
@@ -262,6 +269,7 @@ export async function getEntryByCode(rawCode: string): Promise<EntryView | null>
     select: {
       order: {
         select: {
+          id: true,
           status: true,
           event: { select: { name: true } },
           performanceEntry: true,
@@ -278,6 +286,7 @@ export async function getEntryByCode(rawCode: string): Promise<EntryView | null>
 
   return {
     entryId: e.id,
+    orderId: order.id,
     eventName: order.event.name,
     groupName: e.groupName,
     choreographerName: e.choreographerName,
@@ -479,6 +488,7 @@ export async function listEntries(eventId: string): Promise<RosterEntry[]> {
 
   return [...notReady, ...ready].map((r) => ({
     entryId: r.id,
+    orderId: r.orderId,
     eventName: r.event.name,
     groupName: r.groupName,
     choreographerName: r.choreographerName,
@@ -574,4 +584,48 @@ export async function purgeEventSongs(eventId: string): Promise<number> {
     });
   }
   return deleted;
+}
+
+// ── Listing support ──────────────────────────────────────────────────────────
+
+export type EventOfferingKinds = {
+  /** Has at least one fee-kind offering → an entry form applies. */
+  hasFee: boolean;
+  /** Has at least one admission or merch offering → /register applies. */
+  hasOther: boolean;
+};
+
+/**
+ * Which of these events sell entry fees, and which sell anything else.
+ *
+ * Drives the CTA on the public listings, and it has to be per-SERVICE rather
+ * than per-event: prod's RON-2026 offers only `competition-entry`, while test's
+ * carries a stale `floor-admission` cap alongside it. A per-event rule
+ * ("fee-only ⇒ entry form") would therefore route the two environments
+ * differently, which is precisely the drift that makes a staging site worthless.
+ *
+ * One query for the whole page — not one per card.
+ */
+export async function offeringKindsByEvent(
+  eventIds: string[],
+): Promise<Map<string, EventOfferingKinds>> {
+  const out = new Map<string, EventOfferingKinds>();
+  if (eventIds.length === 0) return out;
+
+  const caps = await db.serviceCap.findMany({
+    where: { eventId: { in: eventIds }, serviceType: { active: true } },
+    select: {
+      eventId: true,
+      serviceType: { select: { admits: true, fulfillable: true } },
+    },
+  });
+
+  for (const cap of caps) {
+    const kinds = out.get(cap.eventId) ?? { hasFee: false, hasOther: false };
+    const isFee = !cap.serviceType.admits && !cap.serviceType.fulfillable;
+    if (isFee) kinds.hasFee = true;
+    else kinds.hasOther = true;
+    out.set(cap.eventId, kinds);
+  }
+  return out;
 }

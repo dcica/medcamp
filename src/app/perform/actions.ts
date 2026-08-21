@@ -98,10 +98,18 @@ export async function submitPerformanceEntry(
         method: "CASH",
         idempotencyKey: `free-${orderId}`,
       });
-      return { ok: true, redirectUrl: `/confirm/${orderId}` };
+      // Free entry: no Stripe hop, but the song step still comes first.
+      return { ok: true, redirectUrl: `/perform/after-payment/${orderId}` };
     }
 
-    const url = await createCheckoutForOrder(orderId);
+    // Land on the song step first, then the confirmation — see
+    // src/app/perform/after-payment/[orderId]/page.tsx for why that ordering.
+    // The receipt code does not exist yet (confirmOrder assigns it), so the
+    // return URL is keyed on the order id.
+    const url = await createCheckoutForOrder(orderId, {
+      successPath: `/perform/after-payment/${orderId}`,
+      cancelPath: `/perform?event=${input.eventId}&cancelled=${orderId}`,
+    });
     return { ok: true, redirectUrl: url };
   } catch (err) {
     return { ok: false, error: toEntrantMessage(err) };

@@ -151,6 +151,22 @@ export function isRegistrationOpen(
 
 export async function createRegistration(
   input: RegistrationInput,
+  /**
+   * INTERNAL. Only src/server/performance.ts passes this.
+   *
+   * A fee-kind service (neither admits nor fulfillable) is a competition entry,
+   * and an entry without its group details is useless: it is a paid slot with no
+   * group name, no song and nobody to contact about either. That is not
+   * hypothetical — a $25 RoN entry was taken through /register with
+   * `performanceEntry: NONE` because /register happily sold the fee.
+   *
+   * Hiding fee services from the /register PAGE is not enough, because the
+   * action is reachable by a hand-rolled POST and by any stale bookmark. So the
+   * refusal lives here, at the one chokepoint both flows share, and only
+   * createPerformanceEntry — which writes the details in the same breath — is
+   * allowed through.
+   */
+  opts?: { allowFeeServices?: boolean },
 ): Promise<CreatedOrder> {
   const data = registrationSchema.parse(input);
 
@@ -193,6 +209,22 @@ export async function createRegistration(
   // size, NOT an unlimited discount. Previously a boolean that zeroed every
   // admission line on the order, so one membership could comp 200 tickets.
   const compUnits = plan && event.honorsMembership ? plan.partySize : 0;
+
+  if (!opts?.allowFeeServices) {
+    for (const q of data.quantities ?? []) {
+      if (q.quantity <= 0) continue;
+      const offering = byKey.get(q.serviceKey);
+      if (
+        offering &&
+        !offering.serviceType.admits &&
+        !offering.serviceType.fulfillable
+      ) {
+        throw new Error(
+          "That entry has its own form — please use the performance entry page.",
+        );
+      }
+    }
+  }
 
   const baseOrder: BaseOrder = {
     orgId: event.orgId,
