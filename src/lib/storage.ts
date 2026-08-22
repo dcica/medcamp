@@ -31,6 +31,27 @@ export const SONG_MAX_BYTES = 10 * 1024 * 1024;
 /** The only accepted track format. Mirror of the bucket's `allowed_mime_types`. */
 export const SONG_CONTENT_TYPE = "audio/mpeg";
 
+/**
+ * 5 MiB. Smaller than a song on purpose: a banner is decoded and laid out on
+ * every visit to the public events page, much of it on phone data, whereas a
+ * track is fetched once by one coordinator.
+ */
+export const BANNER_MAX_BYTES = 5 * 1024 * 1024;
+
+/** Formats next/image handles well. No SVG: it is a script-execution vector. */
+export const BANNER_CONTENT_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+/** Buckets whose objects are world-readable. Everything else is signed-only. */
+const PUBLIC_BUCKETS = new Set<string>(["banners"]);
+
+function assertPublicBucket(bucket: string): void {
+  if (!PUBLIC_BUCKETS.has(bucket)) {
+    throw new Error(
+      `publicUrl() called for private bucket "${bucket}" — a permanent link to a private object is a bug.`,
+    );
+  }
+}
+
 export type SignedUpload = {
   /** Where the browser PUTs the bytes. */
   url: string;
@@ -49,9 +70,13 @@ export type ObjectInfo = {
 export interface StorageAdapter {
   /** Identifies the adapter in logs; also what the UI reports when degraded. */
   readonly name: string;
-  createSignedUpload(path: string, contentType: string): Promise<SignedUpload>;
+  createSignedUpload(
+    bucket: StorageBucket,
+    path: string,
+    contentType: string,
+  ): Promise<SignedUpload>;
   /** Null when the object is absent — i.e. the client lied about uploading. */
-  statObject(path: string): Promise<ObjectInfo | null>;
+  statObject(bucket: StorageBucket, path: string): Promise<ObjectInfo | null>;
   /**
    * Short-lived read URL. Always forces a download rather than inline
    * rendering: `allowed_mime_types` validates the DECLARED content type, so a
@@ -59,11 +84,17 @@ export interface StorageAdapter {
    * a stored-XSS vector.
    */
   createSignedDownload(
+    bucket: StorageBucket,
     path: string,
     expiresInSeconds: number,
     filename: string,
   ): Promise<string>;
-  deleteObject(path: string): Promise<void>;
+  /**
+   * A stable, cacheable URL for a PUBLIC bucket. Throws for a private one —
+   * asking for a permanent link to a private object is a bug, not a fallback.
+   */
+  publicUrl(bucket: StorageBucket, path: string): string;
+  deleteObject(bucket: StorageBucket, path: string): Promise<void>;
 }
 
 /**
@@ -74,14 +105,35 @@ export interface StorageAdapter {
  * Cheap assertion at the one chokepoint every adapter shares.
  */
 export function assertSafeObjectPath(path: string): void {
-  if (!/^[A-Za-z0-9][A-Za-z0-9/_-]*\.mp3$/.test(path) || path.includes("..")) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9/_-]*\.(mp3|jpg|jpeg|png|webp)$/.test(path) || path.includes("..")) {
     throw new Error(`Unsafe storage object path: ${JSON.stringify(path)}`);
   }
 }
 
 // ── Supabase Storage ─────────────────────────────────────────────────────────
 
-const BUCKET = env.SUPABASE_STORAGE_BUCKET;
+/**
+ * TWO buckets, because the two things stored have opposite access models and one
+ * bucket cannot be both.
+ *
+ *   songs   — PRIVATE. A group's performance track. Read only through a
+ *             short-lived signed URL, always as an attachment (see
+ *             createSignedDownload). `allowed_mime_types` validates the
+ *             DECLARED type, so a mislabeled file can land; anything served
+ *             inline from our own origin would be stored XSS.
+ *   banners — PUBLIC. Event artwork rendered on the public events page to
+ *             anonymous visitors. A signed URL would expire mid-page and cannot
+ *             be cached by next/image.
+ *
+ * Collapsing these into one bucket with a path policy is possible and a worse
+ * idea: one misconfigured rule would expose every entrant's track.
+ */
+const BUCKETS = {
+  songs: env.SUPABASE_STORAGE_BUCKET,
+  banners: env.SUPABASE_BANNER_BUCKET,
+} as const;
+
+export type StorageBucket = keyof typeof BUCKETS;
 
 let serviceClient: SupabaseClient | null = null;
 
@@ -104,10 +156,10 @@ function getServiceClient(): SupabaseClient {
 const supabaseAdapter: StorageAdapter = {
   name: "supabase",
 
-  async createSignedUpload(path) {
+  async createSignedUpload(bucket, path) {
     assertSafeObjectPath(path);
     const { data, error } = await getServiceClient()
-      .storage.from(BUCKET)
+      .storage.from(BUCKETS[bucket])
       .createSignedUploadUrl(path);
     if (error || !data) {
       throw new Error(`Signed upload URL failed: ${error?.message ?? "no data"}`);
@@ -115,7 +167,7 @@ const supabaseAdapter: StorageAdapter = {
     return { url: data.signedUrl, token: data.token, path };
   },
 
-  async statObject(path) {
+  async statObject(bucket, path) {
     assertSafeObjectPath(path);
     // `list` with a search on the basename rather than `info`: list has been
     // stable across supabase-js v2 for the whole time this project has pinned
@@ -124,7 +176,7 @@ const supabaseAdapter: StorageAdapter = {
     const dir = cut === -1 ? "" : path.slice(0, cut);
     const base = cut === -1 ? path : path.slice(cut + 1);
     const { data, error } = await getServiceClient()
-      .storage.from(BUCKET)
+      .storage.from(BUCKETS[bucket])
       .list(dir, { search: base, limit: 100 });
     if (error) throw new Error(`Stat failed: ${error.message}`);
     // `search` is a prefix match, so confirm the exact name before trusting it.
@@ -137,10 +189,10 @@ const supabaseAdapter: StorageAdapter = {
     };
   },
 
-  async createSignedDownload(path, expiresInSeconds, filename) {
+  async createSignedDownload(bucket, path, expiresInSeconds, filename) {
     assertSafeObjectPath(path);
     const { data, error } = await getServiceClient()
-      .storage.from(BUCKET)
+      .storage.from(BUCKETS[bucket])
       // `download` sets Content-Disposition: attachment — see the interface note.
       .createSignedUrl(path, expiresInSeconds, { download: filename });
     if (error || !data) {
@@ -149,10 +201,17 @@ const supabaseAdapter: StorageAdapter = {
     return data.signedUrl;
   },
 
-  async deleteObject(path) {
+  async deleteObject(bucket, path) {
     assertSafeObjectPath(path);
-    const { error } = await getServiceClient().storage.from(BUCKET).remove([path]);
+    const { error } = await getServiceClient().storage.from(BUCKETS[bucket]).remove([path]);
     if (error) throw new Error(`Delete failed: ${error.message}`);
+  },
+
+  publicUrl(bucket, path) {
+    assertPublicBucket(bucket);
+    assertSafeObjectPath(path);
+    return getServiceClient().storage.from(BUCKETS[bucket]).getPublicUrl(path)
+      .data.publicUrl;
   },
 };
 
@@ -174,20 +233,20 @@ const LOCAL_DIR = ".uploads";
 const localDiskAdapter: StorageAdapter = {
   name: "local-disk",
 
-  async createSignedUpload(path) {
+  async createSignedUpload(bucket, path) {
     assertSafeObjectPath(path);
     return {
-      url: `/api/dev/upload?path=${encodeURIComponent(path)}`,
+      url: `/api/dev/upload?bucket=${bucket}&path=${encodeURIComponent(path)}`,
       path,
     };
   },
 
-  async statObject(path) {
+  async statObject(bucket, path) {
     assertSafeObjectPath(path);
     const { stat } = await import("node:fs/promises");
     const { join } = await import("node:path");
     try {
-      const info = await stat(join(process.cwd(), LOCAL_DIR, path));
+      const info = await stat(join(process.cwd(), LOCAL_DIR, bucket, path));
       // Type is not recoverable from disk; the dev route only writes what the
       // browser declared, and prod is the case that matters for enforcement.
       return { path, sizeBytes: info.size, contentType: null };
@@ -196,16 +255,22 @@ const localDiskAdapter: StorageAdapter = {
     }
   },
 
-  async createSignedDownload(path) {
+  async createSignedDownload(bucket, path) {
     assertSafeObjectPath(path);
-    return `/api/dev/upload?path=${encodeURIComponent(path)}`;
+    return `/api/dev/upload?bucket=${bucket}&path=${encodeURIComponent(path)}`;
   },
 
-  async deleteObject(path) {
+  publicUrl(bucket, path) {
+    assertPublicBucket(bucket);
+    assertSafeObjectPath(path);
+    return `/api/dev/upload?bucket=${bucket}&path=${encodeURIComponent(path)}`;
+  },
+
+  async deleteObject(bucket, path) {
     assertSafeObjectPath(path);
     const { rm } = await import("node:fs/promises");
     const { join } = await import("node:path");
-    await rm(join(process.cwd(), LOCAL_DIR, path), { force: true });
+    await rm(join(process.cwd(), LOCAL_DIR, bucket, path), { force: true });
   },
 };
 

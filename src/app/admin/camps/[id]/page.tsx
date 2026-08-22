@@ -5,6 +5,8 @@ import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
 import { instantToVenueInput, VENUE_TIME_ZONE } from "@/lib/eventTime";
 import { PageHelp } from "@/app/_components/PageHelp";
+import { BANNER_MAX_BYTES, uploadsEnabled } from "@/lib/storage";
+import { BannerUpload } from "./BannerUpload";
 import { CampControls } from "./CampControls";
 import { EditEventForm } from "./EditEventForm";
 import { EventFlags } from "./EventFlags";
@@ -147,6 +149,19 @@ export default async function CampDetailPage({
             honorsMembership: camp.honorsMembership,
             allowsRefunds: camp.allowsRefunds,
           }}
+        />
+      </div>
+
+      {/* Banner */}
+      <div>
+        <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
+          Banner
+        </h3>
+        <BannerUpload
+          eventId={camp.id}
+          initialUrl={camp.imageUrl}
+          maxBytes={BANNER_MAX_BYTES}
+          uploadsAvailable={uploadsEnabled()}
         />
       </div>
 

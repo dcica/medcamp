@@ -257,7 +257,10 @@ async function main() {
       const { mkdir, writeFile } = await import("node:fs/promises");
       const { join, dirname } = await import("node:path");
       const { localUploadRoot } = await import("../src/lib/storage");
-      const full = join(process.cwd(), localUploadRoot(), ticket.path);
+      // Bucket-nested, matching the local adapter. The whole point of this
+      // section is that begin() and complete() agree on the path, so the
+      // simulated PUT must land exactly where the adapter would put it.
+      const full = join(process.cwd(), localUploadRoot(), "songs", ticket.path);
       await mkdir(dirname(full), { recursive: true });
       await writeFile(full, Buffer.alloc(4096, 3));
 
@@ -271,7 +274,7 @@ async function main() {
       // Oversize: rejected AND removed, not left occupying the bucket.
       await writeFile(full, Buffer.alloc(10 * 1024 * 1024 + 1, 3));
       await rejectsWith("oversize upload rejected", () => completeSongUpload(campId), "larger than 10 MB");
-      check("oversize object deleted", (await storage.statObject(ticket.path)) === null);
+      check("oversize object deleted", (await storage.statObject("songs", ticket.path)) === null);
 
       console.log("\n§7 offline escape hatch clears the object");
       await writeFile(full, Buffer.alloc(2048, 3));
@@ -280,7 +283,7 @@ async function main() {
       const offline = await db.performanceEntry.findUniqueOrThrow({ where: { id: created.entryId } });
       check("delivery switched to OFFLINE", offline.songDelivery === "OFFLINE", offline.songDelivery);
       check("songObjectPath cleared", offline.songObjectPath === null);
-      check("object removed from storage", (await storage.statObject(ticket.path)) === null);
+      check("object removed from storage", (await storage.statObject("songs", ticket.path)) === null);
 
       console.log("\n§8 roster and purge");
       const roster = await listEntries(event.id);
@@ -300,7 +303,7 @@ async function main() {
         (await db.performanceEntry.findUniqueOrThrow({ where: { id: created.entryId } })).songObjectPath === null);
 
       const { rm } = await import("node:fs/promises");
-      await rm(join(process.cwd(), localUploadRoot(), org.id), { recursive: true, force: true });
+      await rm(join(process.cwd(), localUploadRoot(), "songs", org.id), { recursive: true, force: true });
     }
   }
 

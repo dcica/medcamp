@@ -27,6 +27,9 @@ const schema = z.object({
   // test and prod share a Supabase project in places. Unset URL/service key ⇒
   // uploads are disabled and entrants use the offline delivery option.
   SUPABASE_STORAGE_BUCKET: z.string().default("event-songs"),
+  // Separate bucket because banners are PUBLIC (rendered to anonymous
+  // visitors) while songs are private. One bucket cannot be both.
+  SUPABASE_BANNER_BUCKET: z.string().default("event-banners"),
 
   // Auth
   NEXTAUTH_SECRET: z.string().min(1).optional(),

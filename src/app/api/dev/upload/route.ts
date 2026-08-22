@@ -7,9 +7,9 @@ import { assertSafeObjectPath, localUploadRoot, SONG_MAX_BYTES } from "@/lib/sto
  * locally as it is against Supabase (PUT the file to a URL you were handed).
  * Disabled in prod, like the rest of api/dev.
  *
- * PUT /api/dev/upload?path=<objectPath>   body: the file
- * GET /api/dev/upload?path=<objectPath>   → the file back (stands in for a
- *                                           signed download URL)
+ * PUT /api/dev/upload?bucket=<b>&path=<objectPath>   body: the file
+ * GET /api/dev/upload?bucket=<b>&path=<objectPath>   → the file back (stands in
+ *   for a signed download URL, and for a public banner URL)
  */
 
 function disabled() {
@@ -28,12 +28,27 @@ function resolvePath(req: NextRequest): string | null {
   }
 }
 
+/** Buckets are a closed set; anything else would be a directory of its own. */
+function resolveBucket(req: NextRequest): string | null {
+  const b = req.nextUrl.searchParams.get("bucket");
+  return b === "songs" || b === "banners" ? b : null;
+}
+
+const CONTENT_TYPE: Record<string, string> = {
+  ".mp3": "audio/mpeg",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
+};
+
 export async function PUT(req: NextRequest) {
   if (process.env.NODE_ENV === "production") return disabled();
 
   const path = resolvePath(req);
-  if (!path) {
-    return NextResponse.json({ error: "invalid or missing path" }, { status: 400 });
+  const bucket = resolveBucket(req);
+  if (!path || !bucket) {
+    return NextResponse.json({ error: "invalid or missing bucket/path" }, { status: 400 });
   }
 
   const body = await req.arrayBuffer();
@@ -48,31 +63,37 @@ export async function PUT(req: NextRequest) {
 
   const { mkdir, writeFile } = await import("node:fs/promises");
   const { join, dirname } = await import("node:path");
-  const full = join(process.cwd(), localUploadRoot(), path);
+  const full = join(process.cwd(), localUploadRoot(), bucket, path);
   await mkdir(dirname(full), { recursive: true });
   await writeFile(full, Buffer.from(body));
 
-  return NextResponse.json({ ok: true, path, sizeBytes: body.byteLength });
+  return NextResponse.json({ ok: true, bucket, path, sizeBytes: body.byteLength });
 }
 
 export async function GET(req: NextRequest) {
   if (process.env.NODE_ENV === "production") return disabled();
 
   const path = resolvePath(req);
-  if (!path) {
-    return NextResponse.json({ error: "invalid or missing path" }, { status: 400 });
+  const bucket = resolveBucket(req);
+  if (!path || !bucket) {
+    return NextResponse.json({ error: "invalid or missing bucket/path" }, { status: 400 });
   }
 
   const { readFile } = await import("node:fs/promises");
-  const { join } = await import("node:path");
+  const { join, extname } = await import("node:path");
   try {
-    const data = await readFile(join(process.cwd(), localUploadRoot(), path));
+    const data = await readFile(join(process.cwd(), localUploadRoot(), bucket, path));
+    const type = CONTENT_TYPE[extname(path).toLowerCase()] ?? "application/octet-stream";
     return new NextResponse(new Uint8Array(data), {
       headers: {
-        "Content-Type": "audio/mpeg",
-        // Matches the production adapter, which always signs downloads as
-        // attachments — never render an uploaded file inline on our own origin.
-        "Content-Disposition": `attachment; filename="song.mp3"`,
+        "Content-Type": type,
+        // Banners are meant to render inline — that is the whole point of a
+        // public bucket. Songs are always an attachment, matching the production
+        // adapter: `allowed_mime_types` checks the DECLARED type, so anything
+        // served inline from our own origin is a stored-XSS vector.
+        ...(bucket === "banners"
+          ? {}
+          : { "Content-Disposition": `attachment; filename="song.mp3"` }),
       },
     });
   } catch {

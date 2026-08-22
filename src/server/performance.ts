@@ -358,7 +358,7 @@ export async function beginSongUpload(rawCode: string): Promise<UploadTicket> {
   // regardless of whether a given provider supports upsert.
   if (entry.songObjectPath) {
     try {
-      await storage.deleteObject(entry.songObjectPath);
+      await storage.deleteObject("songs", entry.songObjectPath);
     } catch (err) {
       // Non-fatal: a missing old object is exactly the state we want anyway.
       log.warn("performance: could not remove replaced song object", {
@@ -368,7 +368,7 @@ export async function beginSongUpload(rawCode: string): Promise<UploadTicket> {
     }
   }
 
-  const signed = await storage.createSignedUpload(path, SONG_CONTENT_TYPE);
+  const signed = await storage.createSignedUpload("songs", path, SONG_CONTENT_TYPE);
   return {
     url: signed.url,
     token: signed.token,
@@ -399,14 +399,14 @@ export async function completeSongUpload(rawCode: string): Promise<void> {
   });
   const path = songObjectPath(entry);
 
-  const info = await storage.statObject(path);
+  const info = await storage.statObject("songs", path);
   if (!info || info.sizeBytes === 0) {
     throw new Error("We didn't receive the file — please try the upload again.");
   }
   // The bucket enforces this too; re-checking here covers a misconfigured
   // bucket and is the only check the local dev adapter's byte path gets.
   if (info.sizeBytes > SONG_MAX_BYTES) {
-    await storage.deleteObject(path).catch(() => {});
+    await storage.deleteObject("songs", path).catch(() => {});
     throw new Error(
       `That file is larger than ${Math.round(SONG_MAX_BYTES / (1024 * 1024))} MB. Trim the track or send it to the organizers instead.`,
     );
@@ -436,7 +436,7 @@ export async function chooseOfflineDelivery(rawCode: string): Promise<void> {
 
   if (entry.songObjectPath) {
     const storage = getStorage();
-    await storage?.deleteObject(entry.songObjectPath).catch(() => {});
+    await storage?.deleteObject("songs", entry.songObjectPath).catch(() => {});
   }
 
   await db.performanceEntry.update({
@@ -531,8 +531,7 @@ export async function songDownloadUrl(
   // Filename the coordinator sees in Downloads. Group name is sanitized because
   // it reaches a Content-Disposition header.
   const safeName = entry.groupName.replace(/[^A-Za-z0-9 _-]/g, "").trim() || "entry";
-  return storage.createSignedDownload(
-    entry.songObjectPath,
+  return storage.createSignedDownload("songs", entry.songObjectPath,
     expiresInSeconds,
     `${safeName}.mp3`,
   );
@@ -567,7 +566,7 @@ export async function purgeEventSongs(eventId: string): Promise<number> {
   for (const e of entries) {
     if (storage && e.songObjectPath) {
       try {
-        await storage.deleteObject(e.songObjectPath);
+        await storage.deleteObject("songs", e.songObjectPath);
         deleted++;
       } catch (err) {
         // Keep going: one unreachable object must not strand the rest.

@@ -7,6 +7,11 @@ import { NEXT_STATUS } from "@/lib/eventLifecycle";
 import { venueInputToInstant } from "@/lib/eventTime";
 import { getActiveOrg } from "@/lib/tenant";
 import { requireAdmin, requireCoordinator } from "@/server/admin";
+import {
+  beginBannerUpload,
+  clearBanner,
+  completeBannerUpload,
+} from "@/server/banners";
 
 export type ActionResult =
   | { ok: true; id?: string }
@@ -202,4 +207,72 @@ export async function setWalkIn(
   if (res.count === 0) return { ok: false, error: "Camp not found." };
   revalidatePath(`/admin/camps/${id}`);
   return { ok: true };
+}
+
+// ── Event banner ─────────────────────────────────────────────────────────────
+
+export type BannerTicketResult =
+  | { ok: true; ticket: Awaited<ReturnType<typeof beginBannerUpload>> }
+  | { ok: false; error: string };
+
+/** Mint an upload URL for this event's banner. Coordinator/committee only. */
+export async function requestBannerUpload(
+  eventId: string,
+  contentType: string,
+): Promise<BannerTicketResult> {
+  try {
+    await requireAdmin();
+    const ticket = await beginBannerUpload(eventId, contentType);
+    return { ok: true, ticket };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Could not start the upload.",
+    };
+  }
+}
+
+export type BannerSaveResult =
+  | { ok: true; imageUrl: string }
+  | { ok: false; error: string };
+
+/**
+ * Record a finished banner upload. Verifies with the storage provider that the
+ * object exists before writing imageUrl — the browser uploaded directly, so its
+ * success report is a claim, not evidence.
+ */
+export async function finishBannerUpload(
+  eventId: string,
+  path: string,
+): Promise<BannerSaveResult> {
+  try {
+    await requireAdmin();
+    const imageUrl = await completeBannerUpload(eventId, path);
+    revalidatePath(`/admin/camps/${eventId}`);
+    revalidatePath("/events");
+    revalidatePath("/");
+    return { ok: true, imageUrl };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Could not save the banner.",
+    };
+  }
+}
+
+/** Remove this event's banner. */
+export async function removeBanner(eventId: string): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+    await clearBanner(eventId);
+    revalidatePath(`/admin/camps/${eventId}`);
+    revalidatePath("/events");
+    revalidatePath("/");
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Could not remove the banner.",
+    };
+  }
 }
