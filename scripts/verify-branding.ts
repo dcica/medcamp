@@ -192,6 +192,18 @@ function main() {
   check("dcica accent2/accent2Fg clears the bar",
     contrastRatio(DEFAULT_THEME.accent2, DEFAULT_THEME.accent2Fg) >= MIN_CONTRAST,
     `${contrastRatio(DEFAULT_THEME.accent2, DEFAULT_THEME.accent2Fg)}:1`);
+  // Both halves of the "why 4.5 and not 7" argument, so the threshold cannot be
+  // moved without the justification being re-made. AAA would refuse the flag-green
+  // footer — the pair that carries the SMALLEST text on the site, at text-xs.
+  check("AAA (7:1) would refuse the reference tenant's own footer",
+    contrastRatio(DEFAULT_THEME.accent2, DEFAULT_THEME.accent2Fg) < 7,
+    `${contrastRatio(DEFAULT_THEME.accent2, DEFAULT_THEME.accent2Fg)}:1`);
+  check("the footer pair is the one that sets the floor",
+    contrastRatio(DEFAULT_THEME.accent2, DEFAULT_THEME.accent2Fg) <
+      Math.min(
+        contrastRatio(DEFAULT_THEME.brand, DEFAULT_THEME.brandFg),
+        contrastRatio(DEFAULT_THEME.accent, DEFAULT_THEME.accentFg),
+      ));
   // The concrete mistake: saffron with WHITE text. Valid hexes, 2.14:1, and the
   // exact pair a coordinator picks if nobody stops them.
   const saffronWhite = themeSchema.safeParse({ ...DEFAULT_THEME, accentFg: "#ffffff" });

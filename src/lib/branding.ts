@@ -97,9 +97,16 @@ export function contrastRatio(a: string, b: string): number {
  *
  * A pair is also allowed to be used the other way round (dark fill + light text
  * or the reverse), and the ratio is symmetric, so one threshold covers both.
- * 7:1 (AAA) was rejected: it would refuse dcica's own saffron/#16201f header
- * (5.99:1), which is the shipped, reviewed design — a validator that rejects the
- * reference tenant is a validator nobody will keep.
+ *
+ * 7:1 (AAA) was rejected because it would refuse dcica's own shipped, reviewed
+ * design: the flag-green footer band carries white text at 4.61:1. (The other two
+ * pairs are comfortable — navy/white is 13.08:1, saffron/dark is 8.09:1 — so the
+ * footer is the pair that sets the floor, which is the same pair that carries the
+ * smallest text. That is not a coincidence worth relying on, but it does mean
+ * 4.5:1 is the only threshold that is both meaningful and survivable here.) A
+ * validator that rejects the reference tenant is a validator nobody keeps.
+ * verify-branding.ts asserts both halves of this claim so the number cannot be
+ * quietly raised or lowered without the argument being re-made.
  */
 export const MIN_CONTRAST = 4.5;
 
