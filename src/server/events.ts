@@ -1,5 +1,5 @@
-import type { Event, EventType } from "@prisma/client";
-import { db } from "@/lib/db";
+import type { EventType } from "@prisma/client";
+import { db, type EventRecord } from "@/lib/db";
 
 /**
  * Which event is happening right now.
@@ -33,7 +33,7 @@ import { db } from "@/lib/db";
 export async function getCurrentEvent(
   orgId: string,
   opts?: { type?: EventType; now?: Date },
-): Promise<Event | null> {
+): Promise<EventRecord | null> {
   const now = opts?.now ?? new Date();
   const type = opts?.type;
 

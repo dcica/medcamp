@@ -1,4 +1,5 @@
 import type { NextAuthOptions } from "next-auth";
+import type { PrismaClient } from "@prisma/client";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import GoogleProvider from "next-auth/providers/google";
 import GitHubProvider from "next-auth/providers/github";
@@ -40,7 +41,19 @@ if (enabledOidcProviders.microsoft) {
 }
 
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(db),
+  // THE CAST IS LOAD-BEARING AND IT IS SAFE. `db` declares a client-level
+  // `omit` (src/lib/db.ts), which makes its type `PrismaClient<{ omit: ... }>`
+  // rather than the bare `PrismaClient` this adapter's signature asks for —
+  // the generic carries the result shapes, so the two are not assignable even
+  // though the runtime object is the same one. The adapter touches only User,
+  // Account, Session and VerificationToken; it never reads Event, so nothing it
+  // does is affected by which Event columns are withheld.
+  //
+  // Do NOT "fix" this by widening `db`'s own type back to `PrismaClient`. That
+  // would restore `internalNotes` to every event result type while the runtime
+  // kept withholding it — the failure mode being a field that type-checks
+  // everywhere and is undefined at runtime.
+  adapter: PrismaAdapter(db as unknown as PrismaClient),
   providers,
   session: { strategy: "database" },
   pages: {
