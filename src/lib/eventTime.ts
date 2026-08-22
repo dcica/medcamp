@@ -191,3 +191,22 @@ export function venueInputToInstant(value: string): Date | null {
   const firstPass = naive - venueOffsetMs(naive);
   return new Date(naive - venueOffsetMs(firstPass));
 }
+
+/**
+ * Whole days from `now` until `target`, counted in **venue calendar days**.
+ *
+ * "Camp day is in 12 days" is a statement about the calendar a coordinator is
+ * looking at, not about elapsed milliseconds. Dividing a millisecond difference
+ * by 86,400,000 — which is what getTrackedEvents does for its coarser
+ * `daysUntil` — answers a different question: an event starting at 9am tomorrow
+ * is "0 days" at 11pm tonight and "1 day" at 8am tomorrow, and it slips by one
+ * across every DST boundary in between. Both sides are reduced to their venue
+ * calendar date first, so the answer changes exactly once per venue midnight and
+ * never at a DST transition.
+ *
+ * Negative once the target is in the past; 0 means "today, at the venue".
+ */
+export function venueDaysUntil(target: Date, now: Date = new Date()): number {
+  const day = (d: Date) => Date.parse(`${instantToVenueInput(d).slice(0, 10)}T00:00:00Z`);
+  return Math.round((day(target) - day(now)) / 86_400_000);
+}
