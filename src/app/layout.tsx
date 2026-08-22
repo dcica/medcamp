@@ -1,8 +1,11 @@
+import type { CSSProperties } from "react";
 import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Sans } from "next/font/google";
 import "./globals.css";
 import { SiteHeader } from "@/app/_components/SiteHeader";
 import { SiteFooter } from "@/app/_components/SiteFooter";
+import { getActiveBranding } from "@/lib/tenant";
+import { brandingStyleVars } from "@/lib/branding";
 
 // dcica.org's typeface. next/font self-hosts it at build time — no runtime
 // request to Google, which keeps the no-external-calls posture intact.
@@ -27,13 +30,37 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({
+/**
+ * Async because the active tenant's theme has to be resolved before the shell
+ * renders. 37 of 38 pages already declare `force-dynamic`, so this changes
+ * nothing architecturally, and `getActiveBranding` is request-cached — the
+ * layout, the header and the footer share one query.
+ */
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const branding = await getActiveBranding();
+
+  // The tenant's palette, emitted as CSS custom properties on <html>.
+  //
+  // WHY a style ATTRIBUTE and not a <style> element: values that fail the
+  // render-time hex check are dropped rather than emitted (see
+  // brandingStyleVars), but if one ever did get through, a style attribute
+  // confines it to a declaration on this one element — it cannot close a rule
+  // and open a new selector, which is what makes a <style> block a real
+  // injection surface. React also serializes the attribute for us.
+  //
+  // undefined when the tenant has no theme, so no attribute is rendered at all
+  // and the `:root` defaults in globals.css win. Those fallbacks stay: they are
+  // what makes a themeless tenant (and a self-hoster's empty database) render
+  // correctly, and they are the reason this change is visually inert until a
+  // theme is deliberately saved.
+  const themeStyle = brandingStyleVars(branding.theme) as CSSProperties | undefined;
+
   return (
-    <html lang="en" className={ibmPlexSans.className}>
+    <html lang="en" className={ibmPlexSans.className} style={themeStyle}>
       {/* No font-sans here: it would override the IBM Plex family set on <html>. */}
       <body>
         <div className="flex min-h-screen flex-col">
