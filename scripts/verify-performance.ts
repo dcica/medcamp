@@ -344,6 +344,267 @@ async function main() {
   check("music-received variant drops the chase",
     !confirmationText(doneMail).includes("WE STILL NEED"));
 
+
+  console.log("\n§10 the music split classifies every combination");
+  const { musicState, isMusicOutstanding, MUSIC_STATES, MUSIC_SLUG } =
+    await import("../src/lib/musicState");
+
+  // Every combination of the three facts, including the ones the write paths
+  // are supposed to prevent. Precedence is the whole point: songReadyAt beats
+  // everything (a track handed over on a USB stick is DONE while delivery is
+  // still OFFLINE), and a file present beats OFFLINE (something arrived — the
+  // next step is to listen to it, not to phone them).
+  const truthTable: [("UPLOAD" | "OFFLINE"), boolean, boolean, string][] = [
+    ["OFFLINE", false, false, "OFFLINE"],
+    ["OFFLINE", true, false, "RECEIVED"],
+    ["OFFLINE", false, true, "CONFIRMED"],
+    ["OFFLINE", true, true, "CONFIRMED"],
+    ["UPLOAD", false, false, "AWAITING_UPLOAD"],
+    ["UPLOAD", true, false, "RECEIVED"],
+    ["UPLOAD", false, true, "CONFIRMED"],
+    ["UPLOAD", true, true, "CONFIRMED"],
+  ];
+  for (const [songDelivery, hasSongFile, ready, expected] of truthTable) {
+    const facts = { songDelivery, hasSongFile, songReadyAt: ready ? new Date() : null };
+    const got = musicState(facts);
+    check(
+      `${songDelivery} file=${hasSongFile ? "Y" : "N"} ready=${ready ? "Y" : "N"} -> ${expected}`,
+      got === expected,
+      got,
+    );
+    check(
+      `  ...and outstanding is exactly "not confirmed"`,
+      isMusicOutstanding(facts) === (expected !== "CONFIRMED"),
+    );
+  }
+
+  console.log("\n§11 summary arithmetic (pure, on hand-built rows)");
+  const { rosterSummary, CHANGEOVER_SECONDS } = await import("../src/server/performance");
+  type RosterEntry = Awaited<ReturnType<typeof listEntries>>[number];
+
+  function shapeOf(m: string) {
+    if (m === "OFFLINE") return { songDelivery: "OFFLINE" as const, hasSongFile: false, songReadyAt: null };
+    if (m === "AWAITING_UPLOAD") return { songDelivery: "UPLOAD" as const, hasSongFile: false, songReadyAt: null };
+    if (m === "RECEIVED") return { songDelivery: "UPLOAD" as const, hasSongFile: true, songReadyAt: null };
+    return { songDelivery: "UPLOAD" as const, hasSongFile: true, songReadyAt: new Date() };
+  }
+
+  // [music, durationSeconds, ageBand, dancers, usesProps, needsStagePrep, feeCents]
+  const spec: [string, number | null, string, number, boolean | null, boolean | null, number][] = [
+    ["OFFLINE", 300, "7–11 years", 5, true, true, 3000],
+    ["OFFLINE", 310, "7–11 years", 5, true, false, 3000],
+    ["OFFLINE", null, "12–16 years", 5, null, null, 3000],
+    ["AWAITING_UPLOAD", 320, "12–16 years", 5, null, null, 3000],
+    ["AWAITING_UPLOAD", null, "12–16 years", 5, null, null, 3000],
+    ["RECEIVED", 330, "17+ years", 5, true, true, 3000],
+    ["RECEIVED", 340, "17+ years", 5, false, false, 3000],
+    ["RECEIVED", 350, "17+ years", 5, null, null, 3000],
+    ["CONFIRMED", 300, "17+ years", 5, true, null, 3000],
+    ["CONFIRMED", 310, "Mixed ages", 5, null, null, 3000],
+    // A refunded fee line: the entry survives (lineItem is SetNull) and must
+    // stop counting as revenue.
+    ["CONFIRMED", 320, "Mixed ages", 5, null, null, 0],
+    ["CONFIRMED", null, "Mixed ages", 7, null, false, 3000],
+  ];
+
+  const fixture: RosterEntry[] = spec.map(([m, dur, band, n, props, stage, fee], i) => ({
+    entryId: `fix-${i}`,
+    orderId: `ord-${i}`,
+    eventName: "Fixture",
+    groupName: `Group ${i}`,
+    choreographerName: "C",
+    participantCount: n,
+    ageRange: band,
+    songTitle: "S",
+    campId: `FIX-${i}`,
+    durationSeconds: dur,
+    usesProps: props,
+    needsStagePrep: stage,
+    category: null,
+    registrantName: "R",
+    registrantEmail: i % 2 === 0 ? "even@example.org" : `odd${i}@example.org`,
+    registrantPhone: "5550000000",
+    feeCents: fee,
+    createdAt: new Date(),
+    ...shapeOf(m),
+  }));
+
+  const sum = rosterSummary(fixture, { capacity: 40, slotSeconds: 4 * 3600 });
+  check("entries", sum.entries === 12, `${sum.entries}`);
+  check("capacity denominator passed through", sum.capacity === 40, `${sum.capacity}`);
+  check("dancers", sum.dancers === 62, `${sum.dancers}`);
+  check("declared runtime (9 of 12 declared)", sum.declaredRuntimeSeconds === 2880, `${sum.declaredRuntimeSeconds}`);
+  check("entries with no declared length", sum.entriesMissingDuration === 3, `${sum.entriesMissingDuration}`);
+  check("changeover assumption is 60s", CHANGEOVER_SECONDS === 60, `${CHANGEOVER_SECONDS}`);
+  check("changeover is BETWEEN acts (n-1), not per act",
+    sum.changeoverSeconds === 11 * 60, `${sum.changeoverSeconds}`);
+  check("show estimate = runtime + changeover",
+    sum.showEstimateSeconds === 2880 + 660, `${sum.showEstimateSeconds}`);
+  check("booked slot carried through", sum.slotSeconds === 14400, `${sum.slotSeconds}`);
+  check("entry fee revenue excludes the refunded line",
+    sum.entryFeeCents === 33000, `${sum.entryFeeCents}`);
+
+  // THE POINT OF THE THREE-STATE COUNTS: 4 use props, 1 does not, and SEVEN
+  // never answered. Reporting "4 use props" out of 12 would be a false
+  // statement about the show — the true figure is somewhere between 4 and 11.
+  check("props: yes", sum.props.yes === 4, `${sum.props.yes}`);
+  check("props: no", sum.props.no === 1, `${sum.props.no}`);
+  check("props: UNANSWERED counted separately", sum.props.unanswered === 7, `${sum.props.unanswered}`);
+  check("props: three states account for every entry",
+    sum.props.yes + sum.props.no + sum.props.unanswered === sum.entries);
+  check("stage prep: yes", sum.stagePrep.yes === 2, `${sum.stagePrep.yes}`);
+  check("stage prep: no", sum.stagePrep.no === 3, `${sum.stagePrep.no}`);
+  check("stage prep: UNANSWERED counted separately", sum.stagePrep.unanswered === 7, `${sum.stagePrep.unanswered}`);
+  check("stage prep: three states account for every entry",
+    sum.stagePrep.yes + sum.stagePrep.no + sum.stagePrep.unanswered === sum.entries);
+
+  check("age bands in published order",
+    sum.ageBands.map((b) => b.band).join("|") ===
+      "7–11 years|12–16 years|17+ years|Mixed ages",
+    sum.ageBands.map((b) => b.band).join("|"));
+  check("age band entry counts", sum.ageBands.map((b) => b.entries).join(",") === "2,3,4,3",
+    sum.ageBands.map((b) => b.entries).join(","));
+  check("age band dancer counts", sum.ageBands.map((b) => b.dancers).join(",") === "10,15,20,17",
+    sum.ageBands.map((b) => b.dancers).join(","));
+
+  console.log("\n§11b the anti-drift invariant: chip count === filtered row count");
+  // This is the bug that shipped: the summary tile counted `songReadyAt === null`
+  // in page.tsx while each card branched over three fields in EntryRoster.tsx.
+  // Both now route through musicState(), so a chip and the number above it
+  // cannot disagree. Asserted rather than assumed, because the two call sites
+  // are still in different files.
+  for (const state of MUSIC_STATES) {
+    const filtered = fixture.filter((e) => musicState(e) === state).length;
+    check(`chip ${state} (${filtered}) matches summary`, sum.music[state] === filtered,
+      `summary=${sum.music[state]} rows=${filtered}`);
+  }
+  check("music states partition the roster",
+    MUSIC_STATES.reduce((n, s) => n + sum.music[s], 0) === sum.entries);
+  check("outstanding = everything but confirmed",
+    sum.musicOutstanding === sum.entries - sum.music.CONFIRMED, `${sum.musicOutstanding}`);
+  check("outstanding on this fixture is 8 (3 offline + 2 not sent + 3 unchecked)",
+    sum.musicOutstanding === 8, `${sum.musicOutstanding}`);
+
+  console.log("\n§12 the capacity denominator is FEE-kind only");
+  const { feeCapacity, eventRoster, performanceReportRows, PERFORMANCE_REPORT_HEADER } =
+    await import("../src/server/performance");
+  // This event carries a 40-slot FEE cap and a 100-seat ADMISSION cap, which is
+  // the shape prod RoN drifts into and the shape a genuinely mixed event (a
+  // competition plus floor tickets) has on purpose. A naive sum reads 140.
+  check("fee capacity ignores the admission cap on the same event",
+    (await feeCapacity(event.id)) === 40, `${await feeCapacity(event.id)}`);
+
+  console.log("\n§13 roster + CSV against real rows");
+  // Compose the four music states directly on the rows: the state a coordinator
+  // has to act on is what is being checked here, not how it got there, and
+  // driving it through storage would make this section depend on which adapter
+  // happens to be configured.
+  await db.performanceEntry.update({
+    where: { id: created.entryId },
+    data: { songDelivery: "OFFLINE", songObjectPath: null, songReadyAt: new Date() },
+  });
+
+  async function paidEntry(over: {
+    groupName: string;
+    participantCount: number;
+    ageRange: string;
+    durationSeconds?: number;
+    usesProps?: boolean;
+    needsStagePrep?: boolean;
+  }) {
+    const c = await createPerformanceEntry({ ...input, ...over });
+    await confirmOrderPaid(c.orderId, { method: "CASH", idempotencyKey: `verify-${c.orderId}` });
+    return c;
+  }
+
+  const gOffline = await paidEntry({ groupName: "Chase Me", participantCount: 3, ageRange: "7–11 years" });
+  const gNotSent = await paidEntry({ groupName: "Not Sent", participantCount: 4, durationSeconds: 300,
+    ageRange: "12–16 years", usesProps: true, needsStagePrep: false });
+  // Comma AND quotes in a real group name — the field that breaks a CSV row.
+  const gReceived = await paidEntry({ groupName: 'Naach, "Baby" Naach', participantCount: 5,
+    durationSeconds: 360, ageRange: "17+ years", usesProps: false, needsStagePrep: true });
+  const gDone = await paidEntry({ groupName: "All Set", participantCount: 6, durationSeconds: 330,
+    ageRange: "Mixed ages", usesProps: true, needsStagePrep: true });
+
+  await db.performanceEntry.update({ where: { id: gOffline.entryId },
+    data: { songDelivery: "OFFLINE", songObjectPath: null, songReadyAt: null } });
+  await db.performanceEntry.update({ where: { id: gNotSent.entryId },
+    data: { songDelivery: "UPLOAD", songObjectPath: null, songReadyAt: null } });
+  await db.performanceEntry.update({ where: { id: gReceived.entryId },
+    data: { songDelivery: "UPLOAD", songObjectPath: "verify/song.mp3", songReadyAt: null } });
+  await db.performanceEntry.update({ where: { id: gDone.entryId },
+    data: { songDelivery: "UPLOAD", songObjectPath: "verify/song.mp3", songReadyAt: new Date() } });
+
+  const live = await eventRoster(event);
+  check("roster holds the five PAID entries (the pending one stays invisible)",
+    live.entries.length === 5, `${live.entries.length}`);
+  check("default sort still puts the three needing a human first",
+    live.entries.slice(0, 3).every((e) => musicState(e) !== "CONFIRMED") &&
+      live.entries.slice(3).every((e) => musicState(e) === "CONFIRMED"),
+    live.entries.map((e) => musicState(e)).join(","));
+
+  const ls = live.summary;
+  check("live capacity is the fee cap", ls.capacity === 40, `${ls.capacity}`);
+  check("live dancers", ls.dancers === 24, `${ls.dancers}`);
+  check("live declared runtime (one entry gave none)", ls.declaredRuntimeSeconds === 1320,
+    `${ls.declaredRuntimeSeconds}`);
+  check("live missing lengths", ls.entriesMissingDuration === 1, `${ls.entriesMissingDuration}`);
+  check("live show estimate", ls.showEstimateSeconds === 1320 + 4 * 60, `${ls.showEstimateSeconds}`);
+  check("live music split",
+    ls.music.OFFLINE === 1 && ls.music.AWAITING_UPLOAD === 1 &&
+      ls.music.RECEIVED === 1 && ls.music.CONFIRMED === 2,
+    JSON.stringify(ls.music));
+  check("live outstanding", ls.musicOutstanding === 3, `${ls.musicOutstanding}`);
+  check("live props three-state", ls.props.yes === 2 && ls.props.no === 1 && ls.props.unanswered === 2,
+    JSON.stringify(ls.props));
+  check("live stage-prep three-state",
+    ls.stagePrep.yes === 2 && ls.stagePrep.no === 1 && ls.stagePrep.unanswered === 2,
+    JSON.stringify(ls.stagePrep));
+  check("live entry-fee revenue", ls.entryFeeCents === 15000, `${ls.entryFeeCents}`);
+  for (const state of MUSIC_STATES) {
+    const filtered = live.entries.filter((e) => musicState(e) === state).length;
+    check(`live chip ${state} matches summary`, ls.music[state] === filtered,
+      `summary=${ls.music[state]} rows=${filtered}`);
+  }
+
+  const { toCsv } = await import("../src/lib/csv");
+  const allRows = await performanceReportRows(event.id);
+  const csv = toCsv(PERFORMANCE_REPORT_HEADER, allRows).split("\n");
+  check("CSV header is the pinned column order",
+    csv[0] === "receipt_code,group_name,choreographer,participants,age_band,category,song_title," +
+      "duration_seconds,music_state,song_delivery,song_ready_at,uses_props,needs_stage_prep," +
+      "registrant_name,registrant_email,registrant_phone,fee_usd,entered_at",
+    csv[0]);
+  check("CSV has one line per entry plus the header", csv.length === 6, `${csv.length}`);
+  check("a comma-and-quote group name is escaped, not column-shifted",
+    csv.some((l) => l.includes('"Naach, ""Baby"" Naach"')),
+    csv.find((l) => l.includes("Naach")) ?? "not found");
+
+  const byGroup = new Map(allRows.map((r) => [r.group_name, r]));
+  check("CSV records the fee actually paid", byGroup.get("All Set")?.fee_usd === "30.00",
+    byGroup.get("All Set")?.fee_usd);
+  check("CSV: an unanswered Boolean? is BLANK, never \"no\"",
+    byGroup.get("Chase Me")?.uses_props === "", `"${byGroup.get("Chase Me")?.uses_props}"`);
+  check("CSV: a real no is \"no\"", byGroup.get('Naach, "Baby" Naach')?.uses_props === "no",
+    byGroup.get('Naach, "Baby" Naach')?.uses_props);
+  check("CSV: a real yes is \"yes\"", byGroup.get("Not Sent")?.uses_props === "yes",
+    byGroup.get("Not Sent")?.uses_props);
+  check("CSV: no declared length is blank, not 0",
+    byGroup.get("Chase Me")?.duration_seconds === "", `"${byGroup.get("Chase Me")?.duration_seconds}"`);
+  check("CSV: music_state uses the same slugs as the chips",
+    byGroup.get("Chase Me")?.music_state === MUSIC_SLUG.OFFLINE &&
+      byGroup.get("Not Sent")?.music_state === MUSIC_SLUG.AWAITING_UPLOAD &&
+      byGroup.get('Naach, "Baby" Naach')?.music_state === MUSIC_SLUG.RECEIVED &&
+      byGroup.get("All Set")?.music_state === MUSIC_SLUG.CONFIRMED);
+
+  // An export taken while a chip is active must be that chip's list — handing
+  // over all forty rows during a chase is the wrong file.
+  for (const state of MUSIC_STATES) {
+    const scoped = await performanceReportRows(event.id, state);
+    check(`CSV scoped to ${state} matches the chip count`,
+      scoped.length === ls.music[state], `${scoped.length} vs ${ls.music[state]}`);
+  }
+
   await cleanup(org.id);
 }
 
