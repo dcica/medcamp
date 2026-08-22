@@ -89,6 +89,10 @@ export default async function CampDetailPage({
           startsAt: instantToVenueInput(camp.startsAt),
           endsAt: instantToVenueInput(camp.endsAt),
           location: camp.location ?? "",
+          // Null renders as an empty field, which is exactly what null means
+          // here: no stated limit. Do not substitute a 0.
+          venueCapacity: camp.venueCapacity?.toString() ?? "",
+          internalNotes: camp.internalNotes ?? "",
         }}
       />
 
