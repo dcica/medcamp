@@ -1,4 +1,5 @@
 import { CONTACT_EMAIL } from "@/lib/contact";
+import { getActiveBranding } from "@/lib/tenant";
 
 /**
  * Global footer. Carries the open-source (AGPL-3.0) notice and contact the
@@ -8,13 +9,22 @@ import { CONTACT_EMAIL } from "@/lib/contact";
  * NOTE: a Privacy Policy link belongs here too (the mandate discloses the
  * Google Address Validation call there), but no /privacy route exists yet —
  * link it once that page lands rather than pointing at a 404.
+ *
+ * Async now, so the copyright line can carry the ACTIVE TENANT'S name instead of
+ * a literal. Threading it down as a prop from the layout was the alternative;
+ * reading it here keeps the footer self-contained and costs nothing, because
+ * `getActiveBranding` is request-cached and the root layout has already resolved
+ * it by the time this renders.
  */
-export function SiteFooter() {
+export async function SiteFooter() {
   const year = new Date().getFullYear();
+  const branding = await getActiveBranding();
   return (
     // Flag-green band mirrors dcica.org's footer.
     <footer className="no-print bg-accent2 px-4 py-6 text-center text-xs text-accent2-fg">
-      <p>© {year} DCICA · Non-profit event management &amp; commerce</p>
+      <p>
+        © {year} {branding.orgName} · Non-profit event management &amp; commerce
+      </p>
       {/* Inline-flex links at min-h-tap: the platform rule is a 48px target on
           every interactive element, and these were 15px tall — the smallest tap
           targets on the site. */}
