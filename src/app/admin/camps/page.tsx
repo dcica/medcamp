@@ -20,10 +20,14 @@ const STATUS_STYLE: Record<string, string> = {
 export default async function CampsPage() {
   await requireAdmin();
   const org = await getActiveOrg();
+  // Soonest first. This was `desc`, which put 2027 at the top and buried the
+  // next real event — Rhythms of Navratri, 10 Oct — seventh of eleven. A
+  // coordinator opens this list to find what is happening next, not what was
+  // created last.
   const camps = org
     ? await db.event.findMany({
         where: { orgId: org.id },
-        orderBy: { startsAt: "desc" },
+        orderBy: { startsAt: "asc" },
       })
     : [];
 

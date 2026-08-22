@@ -35,13 +35,23 @@ export default async function PerformancesPage({
             some: { serviceType: { active: true, admits: false, fulfillable: false } },
           },
         },
-        orderBy: { startsAt: "desc" },
-        select: { id: true, name: true, code: true, startsAt: true },
+        orderBy: { startsAt: "asc" },
+        select: { id: true, name: true, code: true, startsAt: true, endsAt: true },
       })
     : [];
 
-  const selected =
-    candidates.find((c) => c.id === eventId) ?? candidates[0] ?? null;
+  // Default to the soonest event that has not finished — the one someone is
+  // actually preparing for. Ordering `desc` and taking [0] put the furthest
+  // FUTURE event first, so this page opened on a 2027 fixture with zero groups
+  // while the event holding the real entries sat last in the picker. Falls back
+  // to the most recent past event when everything has finished, because a
+  // roster is still wanted the morning after a show.
+  const now = new Date();
+  const defaultEvent =
+    candidates.find((c) => c.endsAt >= now) ??
+    candidates[candidates.length - 1] ??
+    null;
+  const selected = candidates.find((c) => c.id === eventId) ?? defaultEvent;
 
   const entries = selected ? await listEntries(selected.id) : [];
   const kinds = selected

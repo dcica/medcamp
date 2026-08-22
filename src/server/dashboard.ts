@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
-import { getActiveCamp } from "@/server/stations";
+import { getCurrentEvent } from "@/server/events";
 
 /**
  * Coordinator dashboard data (Module 4). One read of the active camp's checked-in
@@ -42,7 +42,13 @@ export type DashboardData = {
 export async function getDashboard(): Promise<DashboardData> {
   const org = await getActiveOrg();
   if (!org) return null;
-  const camp = await getActiveCamp(org.id);
+  // NO TYPE FILTER, unlike the station screens. This used getActiveCamp, which
+  // scoped to type CAMP — so Garba, Rhythms of Navratri, Dandiya Night and the
+  // Diwali festival could NEVER appear on the coordinator dashboard. On event
+  // night there was no dashboard at all. A general event has no stations, so the
+  // queue section renders empty for one; the headcount and payment figures are
+  // the point there, and they were previously unreachable.
+  const camp = await getCurrentEvent(org.id);
   if (!camp) return null;
 
   const stations = await db.station.findMany({
@@ -153,11 +159,15 @@ export async function getDashboard(): Promise<DashboardData> {
   };
 }
 
-/** Rows for the reconciliation CSV export (camp-scoped payments). */
+/**
+ * Rows for the reconciliation CSV export (event-scoped payments). Matches the
+ * dashboard's event exactly — the treasurer's export must be for the event on
+ * screen, so both resolve through getCurrentEvent with no type filter.
+ */
 export async function getReconciliationRows() {
   const org = await getActiveOrg();
   if (!org) return { campCode: null, rows: [] as ReconRow[] };
-  const camp = await getActiveCamp(org.id);
+  const camp = await getCurrentEvent(org.id);
   if (!camp) return { campCode: null, rows: [] as ReconRow[] };
 
   const payments = await db.payment.findMany({

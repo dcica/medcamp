@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { requireRole } from "@/server/session";
 import { getDashboard } from "@/server/dashboard";
+import { getTrackedEvents } from "@/server/events";
+import { getActiveOrg } from "@/lib/tenant";
 import { formatCents } from "@/lib/money";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { AutoRefresh } from "./AutoRefresh";
@@ -15,11 +17,75 @@ export default async function DashboardPage() {
   await requireRole("COORDINATOR", "COMMITTEE_ADMIN");
   const data = await getDashboard();
 
+  // Nothing is RUNNING — the normal state for most of the year. That is not the
+  // same as nothing happening: events are selling, deadlines are closing, and
+  // finished events may still be open. This used to read "No active camp." and
+  // stop, which is how $238.50 of Garba sales and a 160-day-stale ACTIVE event
+  // stayed invisible.
   if (!data) {
+    const org = await getActiveOrg();
+    const tracked = org ? await getTrackedEvents(org.id) : [];
     return (
       <main className="mx-auto max-w-screen-md px-4 py-8">
-        <h1 className="text-2xl font-bold text-brand">Dashboard</h1>
-        <p className="mt-2 text-sm text-gray-600">No active camp.</p>
+        <h1 className="text-2xl font-bold text-brand">Nothing running today</h1>
+        <p className="mt-2 text-sm text-gray-600">
+          {tracked.length > 0
+            ? "No event is live right now. Here's what's being tracked."
+            : "No event is live, and nothing is currently selling."}
+        </p>
+
+        {tracked.length > 0 && (
+          <ul className="mt-6 space-y-3">
+            {tracked.map((e) => (
+              <li
+                key={e.id}
+                className={`rounded-xl border bg-white p-4 ${
+                  e.isStale ? "border-amber-300" : "border-gray-200"
+                }`}
+              >
+                <Link
+                  href={`/admin/camps/${e.id}`}
+                  className="flex min-h-tap flex-col justify-center"
+                >
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="font-semibold text-gray-900">{e.name}</span>
+                    <span className="shrink-0 text-xs text-gray-500">
+                      {e.daysUntil >= 0
+                        ? `in ${e.daysUntil}d`
+                        : `${Math.abs(e.daysUntil)}d ago`}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-sm text-gray-600">
+                    {e.sold} sold
+                    {e.capacity > 0 ? ` of ${e.capacity}` : ""} ·{" "}
+                    {formatCents(e.revenueCents)}
+                  </div>
+                  {e.isStale && (
+                    <div className="mt-2 text-xs font-medium text-amber-800">
+                      Finished {Math.abs(e.daysUntil)} days ago but still{" "}
+                      {e.status} — close it
+                    </div>
+                  )}
+                  {e.earlyBirdEndsAt && (
+                    <div className="mt-1 text-xs text-gray-500">
+                      Early bird ends{" "}
+                      {e.earlyBirdEndsAt.toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </div>
+                  )}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <p className="mt-6 text-center text-sm">
+          <Link href="/admin/camps" className="text-brand underline">
+            All camps &amp; events →
+          </Link>
+        </p>
       </main>
     );
   }
@@ -111,9 +177,11 @@ export default async function DashboardPage() {
           <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
             Payments
           </h2>
+          {/* min-h-tap: this rendered at 20px against the mandated 48px, and it
+              is the treasurer's money export being thumbed on a phone. */}
           <a
             href="/api/reports/reconciliation"
-            className="text-sm text-brand underline"
+            className="flex min-h-tap items-center text-sm text-brand underline"
           >
             Export reconciliation CSV ↓
           </a>
@@ -147,10 +215,13 @@ export default async function DashboardPage() {
         </div>
       </section>
 
-      <p className="mt-8 text-center text-xs text-gray-400">
-        <Link href="/admin" className="text-brand underline">
+      <p className="mt-8 flex flex-wrap items-center justify-center gap-x-2 text-center text-xs text-gray-400">
+        <Link
+          href="/admin"
+          className="inline-flex min-h-tap items-center text-brand underline"
+        >
           Admin setup
-        </Link>{" "}
+        </Link>
         · auto-refreshes every 10s
       </p>
     </main>

@@ -2,24 +2,24 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { STAFF_MODULES } from "./staffModules";
+import type { Role } from "@prisma/client";
+import { destinationsFor } from "./staffNav";
 
 /**
- * Signed-in staff menu in the top bar. Replaces the old public module index on
- * the home page — the operational tools (registration, check-in, stations,
- * dashboard, admin) now live here, visible only to members. Renders as a
- * dropdown so it stays out of the way on a 6" phone.
+ * Signed-in staff menu in the top bar. A dropdown so it stays out of the way on
+ * a 6" phone, which is where most of this is used.
+ *
+ * Lists only what THIS role can open — see src/app/_components/staffNav.ts for
+ * the rule and why. Nothing here is ever rendered disabled: an entry a user
+ * cannot use is removed, not greyed out.
  */
-export function StaffMenu({
-  name,
-  isAdmin,
-}: {
-  name: string;
-  isAdmin: boolean;
-}) {
+export function StaffMenu({ name, role }: { name: string; role: Role }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const pathname = usePathname();
+  const destinations = destinationsFor(role);
 
   // Close on outside click / Escape so it never traps focus on a phone.
   useEffect(() => {
@@ -62,60 +62,35 @@ export function StaffMenu({
             Signed in as <span className="font-medium text-gray-700">{name}</span>
           </p>
 
-          {/* Admins/coordinators manage camps & events here. Camps and general
-              events are the same record (the Event model) — both live under
-              Admin → Camps. Hidden for non-admin members. */}
-          {isAdmin && (
-            <div className="border-t border-gray-100 py-1">
-              <Link
-                href="/admin/camps"
-                role="menuitem"
-                onClick={() => setOpen(false)}
-                className="flex min-h-tap items-center px-4 py-2 text-sm font-semibold text-brand hover:bg-gray-50"
-              >
-                Camps &amp; events
-                <span className="ml-2 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-500">
-                  Admin
-                </span>
-              </Link>
-              <Link
-                href="/admin"
-                role="menuitem"
-                onClick={() => setOpen(false)}
-                className="flex min-h-tap items-center px-4 py-2 text-sm text-gray-800 hover:bg-gray-50"
-              >
-                Admin overview
-              </Link>
-            </div>
-          )}
-
           <ul className="border-t border-gray-100 py-1">
-            {STAFF_MODULES.map((m) =>
-              m.ready ? (
-                <li key={m.n}>
+            {destinations.map((d) => {
+              const current =
+                d.href === "/admin"
+                  ? pathname === "/admin"
+                  : pathname === d.href || pathname.startsWith(d.href + "/");
+              return (
+                <li key={d.href}>
                   <Link
-                    href={m.href}
+                    href={d.href}
                     role="menuitem"
+                    aria-current={current ? "page" : undefined}
                     onClick={() => setOpen(false)}
-                    className="flex min-h-tap items-center px-4 py-2 text-sm text-gray-800 hover:bg-gray-50"
+                    className={`flex min-h-tap items-center px-4 py-2 text-sm hover:bg-gray-50 ${
+                      current
+                        ? "font-semibold text-brand"
+                        : "text-gray-800"
+                    }`}
                   >
-                    <span className="mr-2 text-gray-400">{m.n}.</span>
-                    {m.name}
+                    {d.name}
+                    {d.admin && (
+                      <span className="ml-2 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-500">
+                        Admin
+                      </span>
+                    )}
                   </Link>
                 </li>
-              ) : (
-                <li key={m.n}>
-                  <span
-                    aria-disabled="true"
-                    className="flex min-h-tap items-center px-4 py-2 text-sm text-gray-300"
-                  >
-                    <span className="mr-2">{m.n}.</span>
-                    {m.name}
-                    <span className="ml-auto text-xs">soon</span>
-                  </span>
-                </li>
-              ),
-            )}
+              );
+            })}
           </ul>
           <div className="border-t border-gray-100 py-1">
             <button

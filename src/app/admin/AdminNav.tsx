@@ -18,7 +18,12 @@ export function AdminNav({ isCoordinator }: { isCoordinator: boolean }) {
   const links = LINKS.filter((l) => !l.coordinatorOnly || isCoordinator);
 
   return (
-    <nav className="-mx-4 mb-6 flex gap-1 overflow-x-auto border-b border-gray-200 px-4">
+    // WRAPS, never scrolls horizontally. This was `overflow-x-auto`, which at
+    // 375px hid 345px of itself — Membership, Email and Settings sat past the
+    // right edge with no scroll cue, on every admin page. Content that is
+    // present, reachable and invisible is the exact failure the phone-first
+    // rule exists to prevent, and it was in the admin shell itself.
+    <nav className="-mx-4 mb-6 flex flex-wrap gap-1 border-b border-gray-200 px-4">
       {links.map((l) => {
         const active =
           l.href === "/admin"

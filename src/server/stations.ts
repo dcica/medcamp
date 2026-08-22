@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
+import { getCurrentEvent } from "@/server/events";
 
 /**
  * Station queue + routing engine (Module 3). A patient's route is their ordered
@@ -10,19 +11,19 @@ import { getActiveOrg } from "@/lib/tenant";
  */
 
 /**
- * The camp staff are working right now: ACTIVE if any, else the OPEN one.
- * Scoped to type CAMP so a concurrently-ACTIVE general event (e.g. a dandia
- * gate, resolved separately by the gate) never shadows the medcamp.
+ * The camp staff are working right now.
+ *
+ * Still scoped to type CAMP — stations exist only on camps, and the original
+ * reasoning holds: a concurrently-ACTIVE general event (a dandiya gate, resolved
+ * separately by getActiveGeneralEvent) must never shadow the medcamp on the
+ * station screens.
+ *
+ * What changed is everything else: this is now date-bounded and deterministic
+ * rather than "any ACTIVE camp, else any OPEN one". See src/server/events.ts for
+ * the three defects that produced a June-2027 fixture on the live dashboard.
  */
 export async function getActiveCamp(orgId: string) {
-  return (
-    (await db.event.findFirst({
-      where: { orgId, type: "CAMP", status: "ACTIVE" },
-    })) ??
-    (await db.event.findFirst({
-      where: { orgId, type: "CAMP", status: "OPEN" },
-    }))
-  );
+  return getCurrentEvent(orgId, { type: "CAMP" });
 }
 
 export type QueueEntry = {

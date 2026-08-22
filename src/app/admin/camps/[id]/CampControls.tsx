@@ -2,43 +2,41 @@
 
 import { useState, useTransition } from "react";
 import type { EventStatus } from "@prisma/client";
+import {
+  NEXT_STATUS,
+  STATUS_ACTION_LABEL,
+  isEarlyClose,
+} from "@/lib/eventLifecycle";
 import { transitionCamp, setWalkIn } from "../actions";
-
-const NEXT: Record<EventStatus, EventStatus[]> = {
-  DRAFT: ["OPEN"],
-  OPEN: ["ACTIVE", "DRAFT"],
-  ACTIVE: ["CLOSED"],
-  CLOSED: ["PURGEABLE"],
-  PURGEABLE: ["PURGED"],
-  PURGED: [],
-};
-
-const LABEL: Record<EventStatus, string> = {
-  DRAFT: "Back to draft",
-  OPEN: "Open registration",
-  ACTIVE: "Start day-of",
-  CLOSED: "Close camp",
-  PURGEABLE: "Mark purgeable",
-  PURGED: "Purge patient data",
-};
 
 export function CampControls({
   id,
   status,
+  endsAt,
   walkInOpen,
 }: {
   id: string;
   status: EventStatus;
+  endsAt: Date;
   walkInOpen: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const targets = NEXT[status];
+  const targets = NEXT_STATUS[status];
 
   function move(target: EventStatus) {
     if (target === "PURGED") {
       const ok = window.confirm(
         "This permanently deletes all patient names and addresses for this camp. Anonymous counts and consented contacts are kept. This cannot be undone. Continue?",
+      );
+      if (!ok) return;
+    }
+    // Only confirm when closing EARLY. Closing an event that already finished is
+    // the routine action — the whole reason this button exists — and must not
+    // nag, or people stop reading the dialog that guards the destructive one.
+    if (target === "CLOSED" && isEarlyClose(endsAt)) {
+      const ok = window.confirm(
+        "This event hasn't reached its end time yet. Closing it now stops all sales and registration. Continue?",
       );
       if (!ok) return;
     }
@@ -74,7 +72,7 @@ export function CampControls({
                   : "bg-brand text-brand-fg"
             }`}
           >
-            {LABEL[t]}
+            {STATUS_ACTION_LABEL[t]}
           </button>
         ))}
         {targets.length === 0 && (

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import type { EventStatus } from "@prisma/client";
 import { db } from "@/lib/db";
+import { NEXT_STATUS } from "@/lib/eventLifecycle";
 import { venueInputToInstant } from "@/lib/eventTime";
 import { getActiveOrg } from "@/lib/tenant";
 import { requireAdmin, requireCoordinator } from "@/server/admin";
@@ -12,14 +13,9 @@ export type ActionResult =
   | { ok: false; error: string };
 
 /** Allowed forward transitions in the purge state machine (decision #4). */
-const NEXT: Record<EventStatus, EventStatus[]> = {
-  DRAFT: ["OPEN"],
-  OPEN: ["ACTIVE", "DRAFT"],
-  ACTIVE: ["CLOSED"],
-  CLOSED: ["PURGEABLE"],
-  PURGEABLE: ["PURGED"],
-  PURGED: [],
-};
+// Single copy, shared with the buttons in CampControls.tsx so the two cannot
+// drift. See src/lib/eventLifecycle.ts.
+const NEXT = NEXT_STATUS;
 
 export async function createCamp(input: {
   name: string;

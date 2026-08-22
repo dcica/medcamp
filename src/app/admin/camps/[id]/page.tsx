@@ -158,6 +158,7 @@ export default async function CampDetailPage({
         <CampControls
           id={camp.id}
           status={camp.status}
+          endsAt={camp.endsAt}
           walkInOpen={Boolean(camp.walkInOpensAt)}
         />
       </div>

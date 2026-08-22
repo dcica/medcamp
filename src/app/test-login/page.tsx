@@ -34,7 +34,10 @@ export default async function TestLoginPage({
           username: a.username,
           label: a.label,
         }))}
-        callbackUrl={callbackUrl || "/dashboard"}
+        // /staff resolves a landing route from the signed-in role. The old
+        // default, "/dashboard", 403s every role except coordinator and
+        // committee admin. See src/app/staff/page.tsx.
+        callbackUrl={callbackUrl || "/staff"}
       />
     </main>
   );

@@ -43,10 +43,7 @@ export async function SiteHeader() {
           {member ? (
             <StaffMenu
               name={member.name ?? member.email}
-              isAdmin={
-                member.role === "COORDINATOR" ||
-                member.role === "COMMITTEE_ADMIN"
-              }
+              role={member.role}
             />
           ) : (
             <Link

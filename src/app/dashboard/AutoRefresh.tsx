@@ -21,7 +21,9 @@ export function AutoRefresh({ seconds = 10 }: { seconds?: number }) {
     <button
       type="button"
       onClick={() => setOn((v) => !v)}
-      className="flex items-center gap-1.5 text-xs text-gray-500"
+      // min-h-tap: rendered at 16px, the smallest target on the page, and it
+      // pauses the live feed a coordinator is reading mid-event.
+      className="flex min-h-tap items-center gap-1.5 text-xs text-gray-500"
       title="Toggle auto-refresh"
     >
       <span

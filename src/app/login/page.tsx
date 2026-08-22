@@ -9,7 +9,10 @@ export const dynamic = "force-dynamic";
 /**
  * Sign-in page. Only configured OIDC providers are offered (email/password
  * fallback is deferred per Approach C). After sign-in the user lands on
- * callbackUrl (or the dashboard).
+ * callbackUrl, or on /staff, which resolves a destination from their role.
+ *
+ * The default used to be "/dashboard" — gated to coordinators, so five of the
+ * eight roles authenticated and landed on /403. See src/app/staff/page.tsx.
  */
 export default async function LoginPage({
   searchParams,
@@ -49,7 +52,7 @@ export default async function LoginPage({
           ]}
         />
       </div>
-      <LoginButtons providers={providers} callbackUrl={callbackUrl || "/dashboard"} />
+      <LoginButtons providers={providers} callbackUrl={callbackUrl || "/staff"} />
 
       {testLoginEnabled && (
         <p className="mt-6 text-center text-xs text-gray-400">
