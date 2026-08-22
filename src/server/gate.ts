@@ -1,3 +1,4 @@
+import type { ServiceKind } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
 import { normalizeCampId } from "@/lib/campId";
@@ -103,23 +104,86 @@ export async function getGateView(rawCode: string): Promise<GateView | null> {
   };
 }
 
+/**
+ * What the gate says when a code is real, paid, and still admits nobody — a
+ * competition entry or a merch-only will-call receipt. Exported so the screen
+ * and the regression suite quote the same words the WalkUpForm prints.
+ */
+export const NOT_A_TICKET =
+  "Not a ticket — this buys no floor access. Sell them admission.";
+
+/**
+ * Does this purchase admit anyone at all?
+ *
+ * A FEE "buys a slot and admits nobody" (ServiceKind, schema.prisma) and merch
+ * is a thing handed over, not a way in — yet `createQuantityOrder` still mints
+ * ONE attendee for a fee- or merch-only order so the buyer has something to
+ * scan at the desk. That code is a RECEIPT. Without this test the gate could not
+ * tell it from a ticket: it is paid, it resolves, and admitting it both let a
+ * competition entrant onto the floor for free and inflated the headcount the
+ * hall's capacity is read from.
+ *
+ * An order with NO line items at all is admissible — that is the membership comp
+ * (`compAdmit`), which is $0, carries no lines, and is a legitimate admission.
+ */
+export function admitsNobody(
+  lineItems: { serviceType: { kind: ServiceKind } | null }[],
+): boolean {
+  return (
+    lineItems.length > 0 &&
+    !lineItems.some((li) => li.serviceType?.kind === "ADMISSION")
+  );
+}
+
 /** Admit a paid attendee. Idempotent — a re-scan is a no-op (wristband owns re-entry). */
 export async function admitAttendee(attendeeId: string): Promise<void> {
   const org = await getActiveOrg();
   if (!org) throw new Error("No active organization.");
   const attendee = await db.attendee.findFirst({
     where: { id: attendeeId, orgId: org.id },
-    include: { order: true },
+    include: {
+      order: { include: { lineItems: { include: { serviceType: true } } } },
+    },
   });
   if (!attendee) throw new Error("Attendee not found.");
   if (attendee.checkedInAt) return; // already processed
   if (attendee.order.status !== "CONFIRMED") {
     throw new Error("Not paid — take payment before admitting.");
   }
+  if (admitsNobody(attendee.order.lineItems)) throw new Error(NOT_A_TICKET);
   await db.attendee.update({
     where: { id: attendee.id },
     data: { checkedInAt: new Date() },
   });
+}
+
+/**
+ * Admit everyone an order actually bought entry for, and nobody it didn't.
+ * Returns how many people this call put through the door — 0 for a fee-only or
+ * merch-only sale, which is the point: the walk-up form sells competition
+ * entries under a "NOT A TICKET · NO FLOOR ACCESS" banner, and the server has to
+ * mean it. A no-op here is a completed sale, not a failure, so this returns a
+ * count rather than throwing the way `admitAttendee` does on a scan.
+ */
+export async function admitOrderAttendees(orderId: string): Promise<number> {
+  const org = await getActiveOrg();
+  if (!org) throw new Error("No active organization.");
+  const order = await db.order.findFirst({
+    where: { id: orderId, orgId: org.id },
+    include: {
+      lineItems: { include: { serviceType: true } },
+      attendees: { select: { id: true, checkedInAt: true } },
+    },
+  });
+  if (!order) throw new Error("Order not found.");
+  if (admitsNobody(order.lineItems)) return 0;
+  let admitted = 0;
+  for (const attendee of order.attendees) {
+    if (attendee.checkedInAt) continue;
+    await admitAttendee(attendee.id);
+    admitted++;
+  }
+  return admitted;
 }
 
 /**
