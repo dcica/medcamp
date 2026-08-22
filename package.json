@@ -23,7 +23,8 @@
     "verify:validation": "tsx scripts/verify-validation.ts",
     "verify:storage": "tsx scripts/verify-storage.ts",
     "verify:performance": "tsx scripts/verify-performance.ts",
-    "verify": "npm run verify:pricing && npm run verify:validation && npm run verify:storage && npm run verify:performance"
+    "verify:gate": "tsx scripts/verify-gate.ts",
+    "verify": "npm run verify:pricing && npm run verify:validation && npm run verify:storage && npm run verify:performance && npm run verify:gate"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
