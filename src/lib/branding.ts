@@ -141,8 +141,22 @@ const MAX_ASSET_URL_LENGTH = 512;
  * code — it is handed to next/image and that is all.
  *
  * Returns the URL when allowed, null otherwise. Callers fall back.
+ *
+ * THIS CHECK IS ENVIRONMENT-DEPENDENT, and that has a consequence which cost a
+ * data-loss bug: the answer changes when NEXT_PUBLIC_SUPABASE_URL changes. So it
+ * runs ONLY on the render path, where the failure mode is "the logo falls back to
+ * /icon.png". It must never decide whether a theme PARSES — see
+ * `hasAssetUrlShape` and `readStoredTheme` for why.
+ *
+ * `prefix` is injectable so the verify suite can exercise the host comparison
+ * with a configured host. Without that the local/CI environment (no
+ * NEXT_PUBLIC_SUPABASE_URL) short-circuits on the null-prefix guard and the
+ * allowlist below is never reached by any test.
  */
-export function sanitizeAssetUrl(raw: unknown): string | null {
+export function sanitizeAssetUrl(
+  raw: unknown,
+  prefix: string | null = supabasePublicObjectPrefix(),
+): string | null {
   if (typeof raw !== "string") return null;
   const value = raw.trim();
   if (!value || value.length > MAX_ASSET_URL_LENGTH) return null;
@@ -151,7 +165,6 @@ export function sanitizeAssetUrl(raw: unknown): string | null {
     return SAME_ORIGIN_PATH.test(value) && !value.includes("..") ? value : null;
   }
 
-  const prefix = supabasePublicObjectPrefix();
   if (!prefix) return null;
 
   let url: URL;
@@ -176,13 +189,70 @@ const hexField = z
   .trim()
   .regex(HEX6, "Use a six-digit hex colour, like #0c3543.");
 
-const assetField = z
-  .string()
-  .trim()
-  .refine((v) => sanitizeAssetUrl(v) !== null, {
-    message:
-      "Logo URLs must be a path on this site or a public object in the configured storage bucket.",
-  });
+/**
+ * HOST-INDEPENDENT shape check: a same-origin path, or a syntactically valid
+ * absolute https URL with no query or fragment. Says nothing about WHICH host.
+ *
+ * WHY THIS EXISTS SEPARATELY FROM `sanitizeAssetUrl`. The first version of this
+ * module validated asset URLs inside `themeSchema` using the host check. Since
+ * that check reads NEXT_PUBLIC_SUPABASE_URL, and since a theme is deliberately
+ * all-or-nothing, changing or dropping that env var made the ENTIRE THEME fail
+ * to parse: the tenant's palette and wordmark silently reverted to the reference
+ * tenant's, and the next colour-only Save from the settings form wrote those
+ * defaults back over the tenant's real stored values. Permanent data loss
+ * triggered by a config change rather than a deploy — the exact failure class
+ * this module exists to prevent.
+ *
+ * The reasoning that justifies all-or-nothing for colours does not extend to
+ * assets. Contrast is a property of a PAIR, so the six colours must arrive
+ * together or a pair gets validated against a partner it never ships with. An
+ * asset URL has no partner and has a safe per-field fallback (/icon.png), so an
+ * unreachable one is a missing logo, never a missing palette.
+ *
+ * This check is therefore the only one allowed to decide whether a theme parses,
+ * and it is stable across every environment: the same string always gives the
+ * same answer. The host restriction still applies with full force — it just
+ * applies on the render path, where failing means falling back.
+ */
+export function hasAssetUrlShape(raw: unknown): boolean {
+  if (typeof raw !== "string") return false;
+  const value = raw.trim();
+  if (!value || value.length > MAX_ASSET_URL_LENGTH) return false;
+  if (value.startsWith("/")) {
+    return SAME_ORIGIN_PATH.test(value) && !value.includes("..");
+  }
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.search && !url.hash;
+  } catch {
+    return false;
+  }
+}
+
+const assetField = z.string().trim().refine(hasAssetUrlShape, {
+  message:
+    "A logo must be a path on this site (like /icon.png) or an https URL with no query string.",
+});
+
+/**
+ * Write-time host check for an asset URL a HUMAN just submitted, for the step-4
+ * upload slots. Returns an error message or null.
+ *
+ * Deliberately separate from `themeSchema`: refusing a wrong-host URL the moment
+ * a coordinator types it is good, but the same refusal applied to a value already
+ * IN the database is the data-loss bug described on `hasAssetUrlShape`. The
+ * difference is that this runs against a live form submission in the current
+ * environment, where "the configured host" is a fact the user can see and act on.
+ */
+export function assetUrlWriteError(raw: unknown): string | null {
+  if (!hasAssetUrlShape(raw)) {
+    return "A logo must be a path on this site (like /icon.png) or an https URL with no query string.";
+  }
+  if (sanitizeAssetUrl(raw) === null) {
+    return "That logo is not on this site or in this deployment's configured storage bucket, so it would not load.";
+  }
+  return null;
+}
 
 /**
  * WHY ALL SIX COLOURS ARE REQUIRED TOGETHER rather than merged field-by-field
@@ -210,9 +280,20 @@ export const themeSchema = z
      * because it sits inline in a 375px-wide bar next to a control.
      */
     wordmark: z.string().trim().min(1).max(8),
-    /** Square logo, rendered round-cropped at 28px in the header. */
+    /**
+     * Square logo, rendered round-cropped at 28px in the header.
+     *
+     * RAW AS STORED — shape-checked only, NOT host-checked (see
+     * hasAssetUrlShape). Never render this field directly: use
+     * `Branding.markUrl`, which is the host-checked, fallback-applied value.
+     * It is kept raw here so that a host change cannot destroy it on the next
+     * save; the render path is what decides whether it is usable today.
+     */
     markUrl: assetField.optional(),
-    /** Horizontal lockup for badges, certificates and email — never the app bar. */
+    /**
+     * Horizontal lockup for badges, certificates and email — never the app bar.
+     * Same caveat as markUrl: raw as stored, use `Branding.lockupUrl` to render.
+     */
     lockupUrl: assetField.optional(),
   })
   .strict()
@@ -272,9 +353,64 @@ export const DEFAULT_THEME: Theme = {
 const FALLBACK_WORDMARK = "DCICA";
 const FALLBACK_ORG_NAME = "DCICA";
 
+/**
+ * What the `theme` key in a settings blob actually turned out to be.
+ *
+ * The three cases have to be distinguishable because they demand OPPOSITE
+ * behaviour on the write path. Rendering treats "absent" and "unreadable"
+ * identically — both fall back to the app defaults, which is always safe. Saving
+ * must not: composing a new theme on top of the defaults is correct when the
+ * tenant genuinely has no theme, and is silent data destruction when they have
+ * one that could not be parsed. "I could not read your theme" must never mean
+ * "so I overwrote it".
+ */
+export type StoredTheme =
+  /** No `theme` key at all — a fresh tenant, or a legacy `{brand, locale}` row. */
+  | { kind: "none" }
+  /** Parsed and validated. */
+  | { kind: "ok"; theme: Theme }
+  /** A `theme` key is present but did not parse. Render defaults; refuse to overwrite. */
+  | { kind: "unreadable"; reason: string };
+
+/**
+ * Read and classify the stored theme. Total — never throws, for any input.
+ *
+ * The try/catch is not decoration: this runs in the ROOT LAYOUT on every
+ * request, so anything thrown here is a site-wide 500 caused by one malformed
+ * JSON column, including on /login, the page you would need to reach the
+ * settings form and fix the column.
+ */
+export function readStoredTheme(settings: unknown): StoredTheme {
+  const raw =
+    settings && typeof settings === "object" && !Array.isArray(settings)
+      ? (settings as Record<string, unknown>).theme
+      : undefined;
+
+  if (raw === undefined || raw === null) return { kind: "none" };
+
+  try {
+    const parsed = themeSchema.safeParse(raw);
+    if (parsed.success) return { kind: "ok", theme: parsed.data };
+    const issue = parsed.error.issues[0];
+    const path = issue?.path.join(".");
+    return {
+      kind: "unreadable",
+      reason: path ? `${path}: ${issue?.message}` : (issue?.message ?? "invalid theme"),
+    };
+  } catch (err) {
+    return { kind: "unreadable", reason: err instanceof Error ? err.message : "invalid theme" };
+  }
+}
+
 export type Branding = {
   /** null ⇒ emit nothing; globals.css keeps the app defaults. */
   theme: Theme | null;
+  /**
+   * The classified read, for callers that WRITE. Rendering wants `theme`; a save
+   * path needs to tell "no theme" from "unreadable theme" so it does not
+   * overwrite the latter. See StoredTheme.
+   */
+  storedTheme: StoredTheme;
   /** Short mark for the header bar. Never empty. */
   wordmark: string;
   /** Header logo. Never empty — falls back to DEFAULT_MARK_URL. */
@@ -294,30 +430,20 @@ export function resolveBranding(
   settings: unknown,
   orgName?: string | null,
 ): Branding {
-  const raw =
-    settings && typeof settings === "object" && !Array.isArray(settings)
-      ? (settings as Record<string, unknown>).theme
-      : undefined;
-
-  // try/catch around safeParse is not paranoia here: this function runs in the
-  // ROOT LAYOUT on every request, so anything it throws is a site-wide 500 caused
-  // by one malformed JSON column. "No theme" is always a safe answer; throwing
-  // never is.
-  let theme: Theme | null = null;
-  try {
-    const parsed = themeSchema.safeParse(raw);
-    if (parsed.success) theme = parsed.data;
-  } catch {
-    theme = null;
-  }
+  const storedTheme = readStoredTheme(settings);
+  const theme = storedTheme.kind === "ok" ? storedTheme.theme : null;
 
   const name = typeof orgName === "string" && orgName.trim() ? orgName.trim() : null;
 
   return {
     theme,
+    storedTheme,
     wordmark: theme?.wordmark ?? name ?? FALLBACK_WORDMARK,
-    // Re-sanitized on read even though the schema already checked it: the blob
-    // can be written by a seed or a script that never went through the schema.
+    // THE HOST CHECK LIVES HERE, on the render path only. The schema shape-checked
+    // the string; this decides whether it is loadable in THIS environment. A
+    // no-longer-reachable URL becomes a fallback logo, never a lost palette — and
+    // never a lost stored value, because `theme` still carries the raw string for
+    // the save path to round-trip.
     markUrl: sanitizeAssetUrl(theme?.markUrl) ?? DEFAULT_MARK_URL,
     lockupUrl: sanitizeAssetUrl(theme?.lockupUrl),
     orgName: name ?? FALLBACK_ORG_NAME,
@@ -388,12 +514,28 @@ export function brandingStyleText(theme: Theme | null | undefined): string {
  * It picks whichever of the design system's two text tokens contrasts better,
  * then the schema re-checks it — so a mid-tone that neither token can carry is
  * refused rather than silently shipped at 3:1.
+ *
+ * IT TAKES A `StoredTheme`, NOT A `Theme | null`, AND THAT IS THE POINT. Given a
+ * bare null it could not tell "this tenant has no theme" (compose on the
+ * defaults — correct) from "this tenant has a theme I could not parse" (composing
+ * on the defaults silently destroys their accent, accent2, wordmark and logos).
+ * A one-field colour edit must not be able to erase the rest of the palette, so
+ * the unreadable case is REFUSED with a message a human can act on. A readable
+ * error always beats a silent overwrite.
  */
 export function themeWithBrand(
-  current: Theme | null,
+  current: StoredTheme,
   brand: string,
 ): { ok: true; theme: Theme } | { ok: false; error: string } {
-  const base = current ?? DEFAULT_THEME;
+  if (current.kind === "unreadable") {
+    return {
+      ok: false,
+      error:
+        `This organization's saved theme could not be read (${current.reason}), so saving would ` +
+        `overwrite it. Fix or clear the stored theme before changing colours here.`,
+    };
+  }
+  const base = current.kind === "ok" ? current.theme : DEFAULT_THEME;
   const candidate = brand.trim().toLowerCase();
   if (!isBrandHex(candidate)) {
     return { ok: false, error: "Use a six-digit hex colour, like #0c3543." };

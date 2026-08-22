@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
 import { requireCoordinator } from "@/server/admin";
-import { resolveBranding, themeWithBrand } from "@/lib/branding";
+import { readStoredTheme, themeWithBrand } from "@/lib/branding";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -39,8 +39,12 @@ export async function updateOrgSettings(input: {
   const name = input.name.trim();
   if (!name) return { ok: false, error: "Name is required." };
 
-  const current = resolveBranding(org.settings, org.name);
-  const next = themeWithBrand(current.theme, input.brand);
+  // readStoredTheme, not resolveBranding: this is a WRITE, and it must be able to
+  // tell "no theme" from "a theme I could not parse". Handing themeWithBrand a
+  // bare null for both would let a one-colour edit silently overwrite a tenant's
+  // whole palette with the reference tenant's defaults — see StoredTheme.
+  const stored = readStoredTheme(org.settings);
+  const next = themeWithBrand(stored, input.brand);
   if (!next.ok) return { ok: false, error: next.error };
 
   const settings = {
