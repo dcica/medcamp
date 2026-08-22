@@ -138,7 +138,7 @@ export type StorageBucket = keyof typeof BUCKETS;
 let serviceClient: SupabaseClient | null = null;
 
 /**
- * Service-role client. Bypasses RLS, so it is server-only and must never be
+ * Secret-key client. Bypasses RLS, so it is server-only and must never be
  * handed to the browser — unlike createRealtimeClient() in src/lib/supabase.ts,
  * which is deliberately anon-key and read-only.
  */
@@ -146,7 +146,7 @@ function getServiceClient(): SupabaseClient {
   if (!serviceClient) {
     serviceClient = createClient(
       env.NEXT_PUBLIC_SUPABASE_URL as string,
-      env.SUPABASE_SERVICE_ROLE_KEY as string,
+      env.SUPABASE_SECRET_KEY as string,
       { auth: { persistSession: false, autoRefreshToken: false } },
     );
   }
@@ -282,7 +282,7 @@ export function localUploadRoot(): string {
 // ── Selection ────────────────────────────────────────────────────────────────
 
 const supabaseConfigured = Boolean(
-  env.NEXT_PUBLIC_SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY,
+  env.NEXT_PUBLIC_SUPABASE_URL && env.SUPABASE_SECRET_KEY,
 );
 
 /**
@@ -305,6 +305,6 @@ export function uploadsEnabled(): boolean {
 
 if (!supabaseConfigured && process.env.NODE_ENV === "production") {
   log.warn("storage: no provider configured — song uploads disabled", {
-    hint: "set NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY",
+    hint: "set NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SECRET_KEY",
   });
 }

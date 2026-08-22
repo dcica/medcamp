@@ -6,7 +6,7 @@
 # SECRETS ARE NOT STORED IN THIS FILE. Export them in your shell first:
 #
 #   export NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
-#   export SUPABASE_SERVICE_ROLE_KEY=eyJ...
+#   export SUPABASE_SECRET_KEY=sb_secret_...   # or a legacy service_role JWT
 #   bash scripts/push-storage-env-to-vercel.sh test        # or: prod
 #
 # WHY A TARGET ARGUMENT INSTEAD OF THE AMBIENT LINK. This repo is Vercel-linked
@@ -25,8 +25,8 @@ cd "$(dirname "$0")/.."
 
 TARGET="${1:-}"
 case "$TARGET" in
-  test) PROJECT="medcamp-test"; SONGS="event-songs-test"; BANNERS="event-banners-test" ;;
-  prod) PROJECT="medcamp-prod"; SONGS="event-songs";      BANNERS="event-banners" ;;
+  test) PROJECT="prj_Zh6SGe3rUhdF9m89jGwGmSsml9Ok"; NAME="medcamp-test"; SONGS="event-songs-test"; BANNERS="event-banners-test" ;;
+  prod) PROJECT="prj_QQGdr3qAmh2mS07qpKaX9Poa1TRP"; NAME="medcamp-prod"; SONGS="event-songs";      BANNERS="event-banners" ;;
   *)
     echo "usage: $0 <test|prod>" >&2
     echo "  test -> medcamp-test  (buckets: event-songs-test / event-banners-test)" >&2
@@ -35,32 +35,77 @@ case "$TARGET" in
 esac
 
 : "${NEXT_PUBLIC_SUPABASE_URL:?Export NEXT_PUBLIC_SUPABASE_URL before running.}"
-: "${SUPABASE_SERVICE_ROLE_KEY:?Export SUPABASE_SERVICE_ROLE_KEY before running (service_role, NOT anon).}"
+: "${SUPABASE_SECRET_KEY:?Export SUPABASE_SECRET_KEY before running (secret/service_role, NOT anon).}"
 
-# The anon key is public by design; the service_role key bypasses RLS entirely.
-# Catching a swap here is cheaper than discovering it when uploads 403 — or,
-# worse, when a service_role key reaches the browser.
-case "$SUPABASE_SERVICE_ROLE_KEY" in
-  *anon*) echo "ERROR: that looks like the ANON key, not service_role." >&2; exit 1 ;;
-esac
+# DECODE the key rather than pattern-match it. The anon key is public by design;
+# a secret key bypasses RLS entirely, and the two are indistinguishable by eye —
+# both are ~208-character JWTs. A substring check for "anon" does NOT catch it,
+# because the word appears only inside the base64 payload. This exact mix-up
+# happened during setup: an anon key sat under the name SUPABASE_SERVICE_ROLE_KEY
+# and would have reported storage configured while 403ing every upload.
+node -e '
+  const k = process.env.SUPABASE_SECRET_KEY || "";
+  if (k.startsWith("sb_secret_")) process.exit(0);          // new-style secret
+  if (k.startsWith("sb_publishable_")) {
+    console.error("ERROR: that is a PUBLISHABLE key. Storage needs the secret key.");
+    process.exit(1);
+  }
+  const parts = k.split(".");
+  if (parts.length !== 3) { console.error("ERROR: not a recognisable Supabase key."); process.exit(1); }
+  let role;
+  try { role = JSON.parse(Buffer.from(parts[1], "base64").toString("utf8")).role; }
+  catch { console.error("ERROR: could not decode the key."); process.exit(1); }
+  if (role !== "service_role") {
+    console.error(`ERROR: that key has role="${role}", not service_role.`);
+    process.exit(1);
+  }
+'
 
-VERCEL="npx --yes vercel@latest"
-echo "Target project: $PROJECT   environment: production"
-echo "Buckets:        $SONGS (private) / $BANNERS (public)"
-echo
 
-put() {
-  local name="$1" value="$2"
-  # Remove first so re-runs don't fail on a duplicate.
-  $VERCEL env rm "$name" production --scope "$PROJECT" --yes >/dev/null 2>&1 || true
-  printf '%s' "$value" | $VERCEL env add "$name" production --scope "$PROJECT" >/dev/null
-  echo "  set $name"
-}
-
-put NEXT_PUBLIC_SUPABASE_URL  "$NEXT_PUBLIC_SUPABASE_URL"
-put SUPABASE_SERVICE_ROLE_KEY "$SUPABASE_SERVICE_ROLE_KEY"
-put SUPABASE_STORAGE_BUCKET   "$SONGS"
-put SUPABASE_BANNER_BUCKET    "$BANNERS"
+# Uses the REST API rather than the CLI. `vercel env add --scope` selects the
+# TEAM, not the project — there is no per-project flag — so the CLI would have
+# written to whichever project this repo happens to be linked to. For a value
+# that decides which bucket an environment writes into, "happens to be linked"
+# is not good enough. The API takes the project explicitly.
+node -e '
+  const fs = require("fs"), path = require("path");
+  const tokenFile = path.join(process.env.APPDATA || process.env.HOME + "/.local/share",
+                              "xdg.data", "com.vercel.cli", "auth.json");
+  const token = JSON.parse(fs.readFileSync(tokenFile, "utf8")).token;
+  const project = process.env.PROJECT, team = process.env.TEAM_ID;
+  const vars = {
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    SUPABASE_SECRET_KEY:      process.env.SUPABASE_SECRET_KEY,
+    SUPABASE_STORAGE_BUCKET:  process.env.SONGS,
+    SUPABASE_BANNER_BUCKET:   process.env.BANNERS,
+  };
+  const call = async (m, p, b) => {
+    const r = await fetch("https://api.vercel.com" + p, { method: m,
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: b ? JSON.stringify(b) : undefined });
+    return { status: r.status, body: await r.json().catch(() => ({})) };
+  };
+  (async () => {
+    const cur = await call("GET", `/v9/projects/${project}/env?teamId=${team}`);
+    if (cur.status >= 400) { console.error("  cannot read project env:", JSON.stringify(cur.body).slice(0,160)); process.exit(1); }
+    const byKey = new Map((cur.body.envs || []).map(e => [e.key + ":" + e.target.join(","), e.id]));
+    let failed = 0;
+    for (const [key, value] of Object.entries(vars)) {
+      // sensitive => unreadable back out of the API, which is what a key that
+      // bypasses RLS should be. `vercel env add` cannot set this at all.
+      const type = key === "SUPABASE_SECRET_KEY" ? "sensitive" : "encrypted";
+      const old = byKey.get(key + ":production");
+      if (old) await call("DELETE", `/v9/projects/${project}/env/${old}?teamId=${team}`);
+      const res = await call("POST", `/v10/projects/${project}/env?teamId=${team}`,
+        { key, value, type, target: ["production"] });
+      const ok = res.status >= 200 && res.status < 300;
+      if (!ok) failed++;
+      console.log(`  ${ok ? "set " : "FAIL"} ${key.padEnd(26)} ${type}` +
+        (ok ? "" : "  -> " + JSON.stringify(res.body).slice(0, 140)));
+    }
+    process.exit(failed ? 1 : 0);
+  })();
+'
 
 cat <<EOF
 
@@ -72,12 +117,11 @@ Done. Three things remain, none of them automatic:
      The public/private flag is the one that cannot be wrong: songs are served
      only as signed attachments, banners must be world-readable for next/image.
 
-  2. Mark SUPABASE_SERVICE_ROLE_KEY as Sensitive in the Vercel dashboard. It
-     bypasses RLS, and 'vercel env add' does not set that flag.
+  2. (done automatically) SUPABASE_SECRET_KEY is written as 'sensitive', so
+     it cannot be read back out of the API.
 
-  3. REDEPLOY. Vercel bakes env at build time, so nothing changes until you do:
-       $VERCEL deploy --prod --scope $PROJECT
-     (or trigger a redeploy from the dashboard)
+  3. REDEPLOY. Vercel bakes env at build time, so nothing changes until you
+     push a commit to the branch, or redeploy from the dashboard.
 
 Then check: an event page should offer "Upload banner" instead of the amber
 "not configured" notice, and /perform/<code> should enable the MP3 option.

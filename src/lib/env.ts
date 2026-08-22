@@ -22,7 +22,18 @@ const schema = z.object({
   DIRECT_URL: z.string().optional(),
   NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().optional(),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+  /**
+   * Server-only Supabase credential. Accepts either the legacy `service_role`
+   * JWT or a new-style `sb_secret_...` key — they are passed identically.
+   *
+   * Named for what it IS rather than which generation it belongs to. The old
+   * name (SUPABASE_SERVICE_ROLE_KEY) invited exactly the mix-up it got: an
+   * ANON key stored under it, which would have reported storage as configured
+   * and then 403d every upload. Prefer sb_secret_ for new setups — it can be
+   * rotated on its own, where rotating a legacy service_role key means
+   * rotating the project JWT secret and invalidating every legacy key at once.
+   */
+  SUPABASE_SECRET_KEY: z.string().optional(),
   // Object storage (song uploads). Private bucket; one per environment, since
   // test and prod share a Supabase project in places. Unset URL/service key ⇒
   // uploads are disabled and entrants use the offline delivery option.
