@@ -281,7 +281,13 @@ export async function confirmOrderPaid(
         where: {
           eventId: order.eventId,
           serviceTypeId,
-          sold: { lte: cap.capacity - qty },
+          // capacity null = UNCAPPED, so there is no ceiling to test and every
+          // claim succeeds. This is the reason capacity became nullable: it used
+          // to be a plain Int where 0 meant "cannot sell", and an offered
+          // service left at 0 charged the buyer and then failed right here
+          // (`sold <= 0 - 1` matches nothing). A DB CHECK now refuses 0, so the
+          // only two states left are "uncapped" and "a real ceiling".
+          ...(cap.capacity === null ? {} : { sold: { lte: cap.capacity - qty } }),
         },
         data: { sold: { increment: qty } },
       });
@@ -465,7 +471,7 @@ export async function confirmOrderPaid(
         eventName: order.event.name,
         confirmUrl: `${env.NEXT_PUBLIC_APP_URL}/confirm/${order.id}`,
         campIds: result.campIds,
-        // A fee-kind entry is admits:false, so the wording must not call the
+        // A FEE-kind entry admits nobody, so the wording must not call the
         // code a ticket or promise it admits anyone. The entry URL is keyed on
         // the receipt code, which only exists now that the order is confirmed.
         performanceEntry: order.performanceEntry
@@ -481,10 +487,10 @@ export async function confirmOrderPaid(
           quantity: li.quantity,
           amountCents: li.amountCents,
         })),
-        // Only `fulfillable` service types are physical goods handed over at
+        // Only MERCH service types are physical goods handed over at
         // the gate — admission and fee lines have nothing to collect.
         merch: order.lineItems
-          .filter((li) => li.serviceType?.fulfillable)
+          .filter((li) => li.serviceType?.kind === "MERCH")
           .map((li) => ({
             description: li.serviceType?.name ?? li.description,
             quantity: li.quantity,

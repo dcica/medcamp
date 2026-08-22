@@ -74,19 +74,19 @@ async function main(): Promise<void> {
 
   const entry = await db.serviceType.upsert({
     where: { orgId_key: { orgId: org.id, key: "verify-entry" } },
-    update: { fulfillable: false, admits: true, priceCents: 1500 },
-    create: { orgId: org.id, key: "verify-entry", name: "Entry", priceCents: 1500, fulfillable: false, admits: true },
+    update: { kind: "ADMISSION", priceCents: 1500 },
+    create: { orgId: org.id, key: "verify-entry", name: "Entry", priceCents: 1500, kind: "ADMISSION" },
   });
   const sticks = await db.serviceType.upsert({
     where: { orgId_key: { orgId: org.id, key: "verify-sticks" } },
-    update: { fulfillable: true, admits: false, priceCents: 500 },
-    create: { orgId: org.id, key: "verify-sticks", name: "Sticks", priceCents: 500, fulfillable: true, admits: false },
+    update: { kind: "MERCH", priceCents: 500 },
+    create: { orgId: org.id, key: "verify-sticks", name: "Sticks", priceCents: 500, kind: "MERCH" },
   });
   // A pure fee: neither admission nor merch. Mints no ticket, grants no entry.
   const fee = await db.serviceType.upsert({
     where: { orgId_key: { orgId: org.id, key: "verify-fee" } },
-    update: { fulfillable: false, admits: false, priceCents: 3000 },
-    create: { orgId: org.id, key: "verify-fee", name: "Competition Entry", priceCents: 3000, fulfillable: false, admits: false },
+    update: { kind: "FEE", priceCents: 3000 },
+    create: { orgId: org.id, key: "verify-fee", name: "Competition Entry", priceCents: 3000, kind: "FEE" },
   });
   for (const s of [entry, sticks, fee]) {
     await db.serviceCap.create({
@@ -106,8 +106,8 @@ async function main(): Promise<void> {
   // the window.
   const earlyBird = await db.serviceType.upsert({
     where: { orgId_key: { orgId: org.id, key: "verify-earlybird" } },
-    update: { fulfillable: false, admits: true, priceCents: 1500 },
-    create: { orgId: org.id, key: "verify-earlybird", name: "Early Bird Entry", priceCents: 1500, fulfillable: false, admits: true },
+    update: { kind: "ADMISSION", priceCents: 1500 },
+    create: { orgId: org.id, key: "verify-earlybird", name: "Early Bird Entry", priceCents: 1500, kind: "ADMISSION" },
   });
   await db.serviceCap.create({
     data: {

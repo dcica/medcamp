@@ -7,40 +7,33 @@ import { requireAdmin } from "@/server/admin";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
+/**
+ * Everything a service costs and allows AT THIS EVENT. Deliberately excludes
+ * name, colour, kind and admitsCount: those are catalogue attributes shared by
+ * every event, and editing them from inside one event's screen is what made an
+ * org-wide rename look like a local tweak. They are edited at /admin/services.
+ */
+type OfferingInput = {
+  priceDollars: number;
+  /** Door price. Null = charge the online price at the door too. */
+  onsitePriceDollars: number | null;
+  earlyBirdPriceDollars: number | null;
+  /** "YYYY-MM-DDTHH:mm" from a datetime-local input. Null = no early bird. */
+  earlyBirdUntil: string | null;
+  /** Null = uncapped. Never 0 — a DB CHECK constraint refuses it. */
+  capacity: number | null;
+  minParticipants: number | null;
+  maxParticipants: number | null;
+  /** "m:ss" exactly as typed; parsed here so the rule lives server-side. */
+  minDuration: string | null;
+  maxDuration: string | null;
+};
 
 /** Blank/absent door price means "same as online" — stored as NULL, not 0. */
 function onsiteCents(dollars: number | null): number | null {
   if (dollars === null || Number.isNaN(dollars)) return null;
   return Math.max(0, Math.round(dollars * 100));
 }
-
-type RowInput = {
-  name: string;
-  priceDollars: number;
-  colorHex: string;
-  hasLab: boolean;
-  fulfillable: boolean;
-  /** Issues a scannable ticket. Off for a pure fee (e.g. competition entry). */
-  admits: boolean;
-  /** Heads per unit; only meaningful when admits. Gate bundles use >1. */
-  admitsCount?: number;
-  /** Door price in dollars. Null/blank = charge the online price at the door. */
-  onsitePriceDollars: number | null;
-  active: boolean;
-  /** Whether this service is offered at THIS event (controls cap existence). */
-  offered: boolean;
-  capacity: number;
-  /** Promotional price in dollars. Null = no early bird. */
-  earlyBirdPriceDollars: number | null;
-  /** ISO datetime-local string, e.g. "2026-09-15T23:59". Null = no early bird. */
-  earlyBirdUntil: string | null;
-};
 
 /**
  * Half an early bird is a silent mispricing: resolvePrice treats a price
@@ -50,17 +43,19 @@ type RowInput = {
  *
  * A deadline being set or changed to a past instant is rejected too — the
  * resolver would never open that window, so saving it can't be what the
- * coordinator intended. `previousUntil` is the deadline already stored on
- * this cap (null for a brand-new row); when the incoming deadline is exactly
- * that same instant, the coordinator isn't touching the date at all — e.g.
- * fixing a typo in the service name a year after the event — so a stale
- * deadline from a past event must not block an unrelated edit.
+ * coordinator intended. `previousUntil` is the deadline already stored on this
+ * offering; when the incoming deadline is exactly that same instant the
+ * coordinator isn't touching the date at all — e.g. fixing a capacity a year
+ * after the event — so a stale deadline from a past event must not block an
+ * unrelated edit.
  */
 function validateEarlyBird(
   priceDollars: number | null,
   until: string | null,
   previousUntil: Date | null,
-): { ok: true; priceCents: number | null; untilDate: Date | null } | { ok: false; error: string } {
+):
+  | { ok: true; priceCents: number | null; untilDate: Date | null }
+  | { ok: false; error: string } {
   const hasPrice = priceDollars !== null && !Number.isNaN(priceDollars);
   const hasUntil = until !== null && until.trim() !== "";
 
@@ -78,7 +73,8 @@ function validateEarlyBird(
   if (Number.isNaN(untilDate.getTime())) {
     return { ok: false, error: "Early-bird deadline is not a valid date." };
   }
-  const deadlineUnchanged = previousUntil !== null && previousUntil.getTime() === untilDate.getTime();
+  const deadlineUnchanged =
+    previousUntil !== null && previousUntil.getTime() === untilDate.getTime();
   if (!deadlineUnchanged && untilDate.getTime() < Date.now()) {
     return { ok: false, error: "Early-bird deadline is in the past — pick a future date or clear it." };
   }
@@ -90,156 +86,196 @@ function validateEarlyBird(
   };
 }
 
-/** Create a new catalogue service + offer it at this camp (cap with price). */
-export async function createService(
-  eventId: string,
-  input: Omit<RowInput, "active" | "offered">,
-): Promise<ActionResult> {
+/**
+ * Performance lengths are stored in seconds but nobody thinks in seconds — the
+ * rules a choreographer is handed read "5 to 6 minutes". Requiring m:ss removes
+ * the ambiguity a bare number carries (is "6" six seconds or six minutes?),
+ * which on the Google Form this replaces produced entries an order of magnitude
+ * off that were only caught at the venue.
+ */
+function parseDuration(
+  raw: string | null,
+  label: string,
+): { ok: true; seconds: number | null } | { ok: false; error: string } {
+  if (raw === null || raw.trim() === "") return { ok: true, seconds: null };
+  const match = /^(\d{1,3}):([0-5]\d)$/.exec(raw.trim());
+  if (!match) {
+    return { ok: false, error: `${label} must be minutes:seconds, e.g. 5:30.` };
+  }
+  const seconds = Number(match[1]) * 60 + Number(match[2]);
+  if (seconds <= 0) return { ok: false, error: `${label} must be longer than zero.` };
+  return { ok: true, seconds };
+}
+
+/** A bound that is set must be a real count; an unset bound means "no limit". */
+function normalizeCount(
+  value: number | null,
+  label: string,
+): { ok: true; value: number | null } | { ok: false; error: string } {
+  if (value === null || Number.isNaN(value)) return { ok: true, value: null };
+  const rounded = Math.round(value);
+  if (rounded < 1) {
+    return { ok: false, error: `${label} must be at least 1, or left blank for no limit.` };
+  }
+  return { ok: true, value: rounded };
+}
+
+/**
+ * Resolve the event + service, both scoped to the active org. Every action is
+ * its own entry point — anything can post directly to any of them — so none may
+ * assume a sibling already proved these ids belong to this tenant.
+ */
+async function authorize(eventId: string, serviceTypeId: string) {
   await requireAdmin();
   const org = await getActiveOrg();
-  if (!org) return { ok: false, error: "No active org." };
-  if (!input.name.trim()) return { ok: false, error: "Name is required." };
+  if (!org) return { ok: false as const, error: "No active org." };
 
-  const event = await db.event.findFirst({ where: { id: eventId, orgId: org.id } });
-  if (!event) return { ok: false, error: "Camp not found." };
+  const [event, service] = await Promise.all([
+    db.event.findFirst({ where: { id: eventId, orgId: org.id }, select: { id: true } }),
+    db.serviceType.findFirst({
+      where: { id: serviceTypeId, orgId: org.id },
+      select: { id: true, name: true, priceCents: true },
+    }),
+  ]);
+  if (!event) return { ok: false as const, error: "Event not found." };
+  if (!service) return { ok: false as const, error: "Service not found." };
+  return { ok: true as const, service };
+}
 
-  const key = slugify(input.name);
-  if (!key) return { ok: false, error: "Name must contain letters or numbers." };
+/**
+ * Attach a catalogue service to this event. Presence of the offering IS
+ * "offered here" — there is no separate flag left unticked by default, which is
+ * how eleven medical services came to be listed under a community festival.
+ *
+ * Seeded uncapped rather than at an invented default: a made-up number stops
+ * sales at a figure nobody chose. Capacity 0 is not even representable (the DB
+ * rejects it) because it takes the payment and then fails confirmation.
+ */
+export async function addOffering(
+  eventId: string,
+  serviceTypeId: string,
+): Promise<ActionResult> {
+  const auth = await authorize(eventId, serviceTypeId);
+  if (!auth.ok) return auth;
 
-  const exists = await db.serviceType.findUnique({
-    where: { orgId_key: { orgId: org.id, key } },
+  const existing = await db.serviceCap.findUnique({
+    where: { eventId_serviceTypeId: { eventId, serviceTypeId } },
+    select: { id: true },
   });
-  if (exists) return { ok: false, error: `A service "${key}" already exists.` };
+  if (existing) {
+    return { ok: false, error: `${auth.service.name} is already offered at this event.` };
+  }
 
-  // A brand-new row has no stored deadline to fall back on — any past
-  // deadline here is one the coordinator just typed in.
-  const earlyBird = validateEarlyBird(input.earlyBirdPriceDollars, input.earlyBirdUntil, null);
-  if (!earlyBird.ok) return earlyBird;
-
-  const priceCents = Math.max(0, Math.round(input.priceDollars * 100));
-  const service = await db.serviceType.create({
-    data: {
-      orgId: org.id,
-      key,
-      name: input.name.trim(),
-      // Catalogue default price (seeds future offerings); per-event price below.
-      priceCents,
-      colorHex: input.colorHex,
-      hasLab: input.hasLab,
-      fulfillable: input.fulfillable,
-      admits: input.admits,
-      admitsCount: Math.max(1, Math.round(input.admitsCount ?? 1)),
-    },
-  });
   await db.serviceCap.create({
     data: {
       eventId,
-      serviceTypeId: service.id,
-      priceCents,
-      onsitePriceCents: onsiteCents(input.onsitePriceDollars),
-      capacity: Math.max(0, Math.round(input.capacity)),
-      earlyBirdPriceCents: earlyBird.priceCents,
-      earlyBirdUntil: earlyBird.untilDate,
+      serviceTypeId,
+      // The catalogue price is only a starting point; the per-event price is
+      // authoritative and is editable the moment the card expands.
+      priceCents: auth.service.priceCents,
+      capacity: null,
     },
   });
   revalidatePath(`/admin/camps/${eventId}/services`);
   return { ok: true };
 }
 
-/**
- * Update a service's catalogue attributes (org-wide) and its per-event offering.
- * Price + capacity live on the per-event cap; toggling `offered` adds/removes the
- * offering (and thus whether the service appears in this event's registration).
- */
-export async function saveServiceRow(
+/** Stop offering a service at this event. Sold units make it un-removable. */
+export async function removeOffering(
   eventId: string,
-  serviceId: string,
-  input: RowInput,
+  serviceTypeId: string,
 ): Promise<ActionResult> {
-  await requireAdmin();
-  const org = await getActiveOrg();
-  if (!org) return { ok: false, error: "No active org." };
+  const auth = await authorize(eventId, serviceTypeId);
+  if (!auth.ok) return auth;
 
-  const service = await db.serviceType.findFirst({
-    where: { id: serviceId, orgId: org.id },
+  const cap = await db.serviceCap.findUnique({
+    where: { eventId_serviceTypeId: { eventId, serviceTypeId } },
+    select: { id: true, sold: true },
   });
-  if (!service) return { ok: false, error: "Service not found." };
+  if (!cap) return { ok: false, error: "Not offered at this event." };
+  if (cap.sold > 0) {
+    return {
+      ok: false,
+      error: `Can't remove — ${cap.sold} already sold at this event.`,
+    };
+  }
 
-  const priceCents = Math.max(0, Math.round(input.priceDollars * 100));
-  const onsitePriceCents = onsiteCents(input.onsitePriceDollars);
-  const capacity = Math.max(0, Math.round(input.capacity));
-  const existingCap = await db.serviceCap.findUnique({
-    where: { eventId_serviceTypeId: { eventId, serviceTypeId: serviceId } },
+  await db.serviceCap.delete({ where: { id: cap.id } });
+  revalidatePath(`/admin/camps/${eventId}/services`);
+  return { ok: true };
+}
+
+/** Update what a service costs and allows at THIS event. Catalogue untouched. */
+export async function saveOffering(
+  eventId: string,
+  serviceTypeId: string,
+  input: OfferingInput,
+): Promise<ActionResult> {
+  const auth = await authorize(eventId, serviceTypeId);
+  if (!auth.ok) return auth;
+
+  const cap = await db.serviceCap.findUnique({
+    where: { eventId_serviceTypeId: { eventId, serviceTypeId } },
+    select: { id: true, sold: true, earlyBirdUntil: true },
   });
+  if (!cap) return { ok: false, error: "Not offered at this event — add it first." };
 
-  // Only validated when a cap is actually being written (the `offered`
-  // branch below) — un-offering deletes the cap, so stale early-bird form
-  // state left over in the UI must not block dropping the offering.
-  const earlyBird = input.offered
-    ? validateEarlyBird(
-        input.earlyBirdPriceDollars,
-        input.earlyBirdUntil,
-        existingCap?.earlyBirdUntil ?? null,
-      )
-    : null;
-  if (earlyBird && !earlyBird.ok) return earlyBird;
+  const earlyBird = validateEarlyBird(
+    input.earlyBirdPriceDollars,
+    input.earlyBirdUntil,
+    cap.earlyBirdUntil,
+  );
+  if (!earlyBird.ok) return earlyBird;
 
-  // Catalogue attributes (org-wide). Price is NOT here — it's per-event.
-  const updateCatalog = db.serviceType.update({
-    where: { id: serviceId },
+  // Null is "uncapped". Anything else is floored at 1 rather than clamped at 0:
+  // the DB refuses 0 because an offered service capped at 0 takes the payment
+  // and then fails confirmation, leaving the buyer charged and empty-handed.
+  let capacity: number | null = null;
+  if (input.capacity !== null && !Number.isNaN(input.capacity)) {
+    capacity = Math.max(1, Math.round(input.capacity));
+    if (capacity < cap.sold) {
+      return { ok: false, error: `Capacity can't be below ${cap.sold} already sold.` };
+    }
+  }
+
+  const minParticipants = normalizeCount(input.minParticipants, "Minimum participants");
+  if (!minParticipants.ok) return minParticipants;
+  const maxParticipants = normalizeCount(input.maxParticipants, "Maximum participants");
+  if (!maxParticipants.ok) return maxParticipants;
+  if (
+    minParticipants.value !== null &&
+    maxParticipants.value !== null &&
+    minParticipants.value > maxParticipants.value
+  ) {
+    return { ok: false, error: "Minimum participants is above the maximum." };
+  }
+
+  const minDuration = parseDuration(input.minDuration, "Minimum length");
+  if (!minDuration.ok) return minDuration;
+  const maxDuration = parseDuration(input.maxDuration, "Maximum length");
+  if (!maxDuration.ok) return maxDuration;
+  if (
+    minDuration.seconds !== null &&
+    maxDuration.seconds !== null &&
+    minDuration.seconds > maxDuration.seconds
+  ) {
+    return { ok: false, error: "Minimum length is above the maximum." };
+  }
+
+  await db.serviceCap.update({
+    where: { id: cap.id },
     data: {
-      name: input.name.trim(),
-      colorHex: input.colorHex,
-      hasLab: input.hasLab,
-      fulfillable: input.fulfillable,
-      admits: input.admits,
-      admitsCount: Math.max(1, Math.round(input.admitsCount ?? 1)),
-      active: input.active,
+      priceCents: Math.max(0, Math.round(input.priceDollars * 100)),
+      onsitePriceCents: onsiteCents(input.onsitePriceDollars),
+      earlyBirdPriceCents: earlyBird.priceCents,
+      earlyBirdUntil: earlyBird.untilDate,
+      capacity,
+      minParticipants: minParticipants.value,
+      maxParticipants: maxParticipants.value,
+      minDurationSeconds: minDuration.seconds,
+      maxDurationSeconds: maxDuration.seconds,
     },
   });
-
-  if (!input.offered) {
-    if (existingCap && existingCap.sold > 0) {
-      return {
-        ok: false,
-        error: `Can't remove — ${existingCap.sold} already sold this camp.`,
-      };
-    }
-    await db.$transaction([
-      updateCatalog,
-      ...(existingCap
-        ? [db.serviceCap.delete({ where: { id: existingCap.id } })]
-        : []),
-    ]);
-  } else {
-    if (existingCap && capacity < existingCap.sold) {
-      return {
-        ok: false,
-        error: `Capacity can't be below ${existingCap.sold} already sold.`,
-      };
-    }
-    // Computed above (and already confirmed ok) whenever input.offered is
-    // true, which is this branch — never null here.
-    const validated = earlyBird as { ok: true; priceCents: number | null; untilDate: Date | null };
-    const earlyBirdPriceCents = validated.priceCents;
-    const earlyBirdUntil = validated.untilDate;
-    await db.$transaction([
-      updateCatalog,
-      db.serviceCap.upsert({
-        where: { eventId_serviceTypeId: { eventId, serviceTypeId: serviceId } },
-        update: { priceCents, onsitePriceCents, capacity, earlyBirdPriceCents, earlyBirdUntil },
-        create: {
-          eventId,
-          serviceTypeId: serviceId,
-          priceCents,
-          onsitePriceCents,
-          capacity,
-          earlyBirdPriceCents,
-          earlyBirdUntil,
-        },
-      }),
-    ]);
-  }
   revalidatePath(`/admin/camps/${eventId}/services`);
   return { ok: true };
 }

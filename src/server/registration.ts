@@ -19,7 +19,7 @@ import { resolvePrice } from "@/lib/pricing";
  *     order-level quantity line. No per-person details.
  *
  * Optional add-ons (both modes): a free-form donation, and a family membership.
- * On events that honor membership, buying one comps admission (non-fulfillable
+ * On events that honor membership, buying one comps admission (ADMISSION-kind
  * services priced at 0 for this order).
  */
 
@@ -154,7 +154,7 @@ export async function createRegistration(
   /**
    * INTERNAL. Only src/server/performance.ts passes this.
    *
-   * A fee-kind service (neither admits nor fulfillable) is a competition entry,
+   * A FEE-kind service is a competition entry,
    * and an entry without its group details is useless: it is a paid slot with no
    * group name, no song and nobody to contact about either. That is not
    * hypothetical — a $25 RoN entry was taken through /register with
@@ -216,8 +216,7 @@ export async function createRegistration(
       const offering = byKey.get(q.serviceKey);
       if (
         offering &&
-        !offering.serviceType.admits &&
-        !offering.serviceType.fulfillable
+        offering.serviceType.kind === "FEE"
       ) {
         throw new Error(
           "That entry has its own form — please use the performance entry page.",
@@ -312,7 +311,7 @@ async function createAttendeeOrder(
     }
   }
 
-  // Membership comps the first `compUnits` admission (non-fulfillable) units;
+  // Membership comps the first `compUnits` ADMISSION units;
   // everything beyond the family's party size is charged. Priced in ONE pass so
   // the allowance is spent once — the totals and the line items read the same
   // array rather than each re-running the allocation. A comp zeroes the
@@ -321,7 +320,7 @@ async function createAttendeeOrder(
   const priced = attendees.map((att) =>
     att.serviceKeys.map((key) => {
       const offering = byKey.get(key)!;
-      const comped = offering.serviceType.admits && compRemaining > 0;
+      const comped = offering.serviceType.kind === "ADMISSION" && compRemaining > 0;
       if (comped) compRemaining -= 1;
       const resolved = resolvePrice(offering, "online", now);
       return { offering, resolved, amountCents: comped ? 0 : resolved.amountCents };
@@ -367,8 +366,8 @@ async function createAttendeeOrder(
 }
 
 /**
- * QUANTITY mode: service × quantity. Each admission unit (non-fulfillable
- * service) becomes one anonymous scannable attendee; merch (fulfillable) is an
+ * QUANTITY mode: service × quantity. Each ADMISSION unit becomes one anonymous
+ * scannable attendee; MERCH is an
  * order-level quantity line. If only merch is bought, one pickup-holder attendee
  * is created so there's still a scannable code for will-call at the gate.
  */
@@ -398,7 +397,7 @@ async function createQuantityOrder(
   let compRemaining = compUnits;
   const priced = picked.flatMap((q) => {
     const offering = byKey.get(q.serviceKey)!;
-    const isAdmission = offering.serviceType.admits;
+    const isAdmission = offering.serviceType.kind === "ADMISSION";
     // Heads per purchased unit — 1 for a plain ticket, 4 for a "family of 4".
     const heads = isAdmission ? Math.max(1, offering.serviceType.admitsCount) : 0;
     // Comps are whole units. A membership with 4 comp units meeting a family-of-4
@@ -445,7 +444,7 @@ async function createQuantityOrder(
   // than per purchase: one "family of 4" is one line and four scannable codes,
   // because four people walk through the door and each needs something to show.
   const admissionUnits = picked
-    .filter((q) => byKey.get(q.serviceKey)!.serviceType.admits)
+    .filter((q) => byKey.get(q.serviceKey)!.serviceType.kind === "ADMISSION")
     .reduce(
       (s, q) =>
         s + q.quantity * Math.max(1, byKey.get(q.serviceKey)!.serviceType.admitsCount),

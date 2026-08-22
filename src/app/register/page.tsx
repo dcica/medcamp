@@ -83,7 +83,7 @@ export default async function RegisterPage({
       eventId: event.id,
       serviceType: {
         active: true,
-        OR: [{ admits: true }, { fulfillable: true }],
+        kind: { in: ["ADMISSION", "MERCH"] },
       },
     },
     include: { serviceType: true },
@@ -98,7 +98,7 @@ export default async function RegisterPage({
     const hasFeeOffering = await db.serviceCap.findFirst({
       where: {
         eventId: event.id,
-        serviceType: { active: true, admits: false, fulfillable: false },
+        serviceType: { active: true, kind: "FEE" },
       },
       select: { id: true },
     });
@@ -115,7 +115,7 @@ export default async function RegisterPage({
     priceCents: resolvePrice(o, "online", now).amountCents,
     colorHex: o.serviceType.colorHex,
     /** Non-fulfillable services are admission (scannable); merch is fulfillable. */
-    fulfillable: o.serviceType.fulfillable,
+    kind: o.serviceType.kind,
   }));
 
   // Active family membership plans (shown as an add-on / compare on the form).

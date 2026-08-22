@@ -34,7 +34,7 @@ export type GateView = {
   /** checkedInAt is set — already processed at the gate. */
   alreadyAdmitted: boolean;
   admittedAt: Date | null;
-  /** Pre-bought physical goods to hand over (fulfillable line items). */
+  /** Pre-bought physical goods to hand over (MERCH line items). */
   pickupItems: GatePickupItem[];
 };
 
@@ -72,12 +72,12 @@ export async function getGateView(rawCode: string): Promise<GateView | null> {
     .filter((li) => li.status === "PENDING_PAYMENT")
     .reduce((s, li) => s + li.amountCents * li.quantity, 0);
 
-  // Merch to hand over: fulfillable items attached to THIS ticket OR to the
+  // Merch to hand over: MERCH items attached to THIS ticket OR to the
   // order itself (quantity-mode merch is order-level). Quantity shown in name.
   const pickupItems = attendee.order.lineItems
     .filter(
       (li) =>
-        li.serviceType?.fulfillable &&
+        li.serviceType?.kind === "MERCH" &&
         (li.attendeeId === attendee.id || li.attendeeId === null),
     )
     .map((li) => ({
@@ -139,7 +139,7 @@ export async function fulfillLineItems(
   });
 }
 
-/** Hand over every fulfillable item on an order (used right after a gate merch sale). */
+/** Hand over every MERCH item on an order (used right after a gate merch sale). */
 export async function fulfillOrder(
   orderId: string,
   userId: string,
@@ -151,7 +151,7 @@ export async function fulfillOrder(
     include: { serviceType: true },
   });
   await fulfillLineItems(
-    items.filter((i) => i.serviceType?.fulfillable).map((i) => i.id),
+    items.filter((i) => i.serviceType?.kind === "MERCH").map((i) => i.id),
     userId,
   );
 }
@@ -336,20 +336,20 @@ export async function getGateCatalog(eventId: string): Promise<{
     resolvePrice(o, "door", now).amountCents;
   return {
     admission: offerings
-      .filter((o) => o.serviceType.admits && !o.serviceType.hasLab)
+      .filter((o) => o.serviceType.kind === "ADMISSION" && !o.serviceType.hasLab)
       .map((o) => ({ id: o.serviceType.id, name: o.serviceType.name, priceCents: doorCents(o) })),
     merch: offerings
-      .filter((o) => o.serviceType.fulfillable)
+      .filter((o) => o.serviceType.kind === "MERCH")
       .map((o) => ({
         id: o.serviceType.id,
         name: o.serviceType.name,
         priceCents: doorCents(o),
         colorHex: o.serviceType.colorHex,
       })),
-    // Neither admission nor merch: a competition entry sold at the desk. Buying
-    // one admits nobody and hands over nothing.
+    // A competition entry sold at the desk. Buying one admits nobody and hands
+    // over nothing.
     fees: offerings
-      .filter((o) => !o.serviceType.admits && !o.serviceType.fulfillable && !o.serviceType.hasLab)
+      .filter((o) => o.serviceType.kind === "FEE" && !o.serviceType.hasLab)
       .map((o) => ({ id: o.serviceType.id, name: o.serviceType.name, priceCents: doorCents(o) })),
   };
 }

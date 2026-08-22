@@ -140,7 +140,7 @@ export async function createPerformanceEntry(
   // an admission service would mint a scannable door ticket per group at a
   // competition that grants no floor access, and attaching one to merch would
   // put a group's song on a bag of dandiya sticks.
-  if (offering.serviceType.admits || offering.serviceType.fulfillable) {
+  if (offering.serviceType.kind !== "FEE") {
     throw new Error("That entry is not offered for this event.");
   }
 
@@ -616,13 +616,13 @@ export async function offeringKindsByEvent(
     where: { eventId: { in: eventIds }, serviceType: { active: true } },
     select: {
       eventId: true,
-      serviceType: { select: { admits: true, fulfillable: true } },
+      serviceType: { select: { kind: true } },
     },
   });
 
   for (const cap of caps) {
     const kinds = out.get(cap.eventId) ?? { hasFee: false, hasOther: false };
-    const isFee = !cap.serviceType.admits && !cap.serviceType.fulfillable;
+    const isFee = cap.serviceType.kind === "FEE";
     if (isFee) kinds.hasFee = true;
     else kinds.hasOther = true;
     out.set(cap.eventId, kinds);

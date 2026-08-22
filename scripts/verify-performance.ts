@@ -105,8 +105,8 @@ async function main() {
   // Navratri — 3–10 participants, 5–6 minutes.
   const fee = await db.serviceType.upsert({
     where: { orgId_key: { orgId: org.id, key: FEE_KEY } },
-    update: { admits: false, fulfillable: false, priceCents: 3000 },
-    create: { orgId: org.id, key: FEE_KEY, name: "Competition Entry", priceCents: 3000, admits: false, fulfillable: false },
+    update: { kind: "FEE", priceCents: 3000 },
+    create: { orgId: org.id, key: FEE_KEY, name: "Competition Entry", priceCents: 3000, kind: "FEE" },
   });
   await db.serviceCap.create({
     data: {
@@ -119,8 +119,8 @@ async function main() {
   // An ADMISSION service, to prove an entry cannot attach to one.
   const admit = await db.serviceType.upsert({
     where: { orgId_key: { orgId: org.id, key: ADMIT_KEY } },
-    update: { admits: true, fulfillable: false, priceCents: 1000 },
-    create: { orgId: org.id, key: ADMIT_KEY, name: "Floor Entry", priceCents: 1000, admits: true, fulfillable: false },
+    update: { kind: "ADMISSION", priceCents: 1000 },
+    create: { orgId: org.id, key: ADMIT_KEY, name: "Floor Entry", priceCents: 1000, kind: "ADMISSION" },
   });
   await db.serviceCap.create({
     data: { eventId: event.id, serviceTypeId: admit.id, priceCents: 1000, capacity: 100 },

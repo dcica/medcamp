@@ -19,11 +19,21 @@ function toDatetimeLocal(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/** Seconds → "m:ss", the way performance lengths are quoted to a choreographer. */
+function toDurationInput(seconds: number | null): string | null {
+  if (seconds === null) return null;
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
 /**
- * Service menu (org-level) + capacity caps (per camp). Editing a service changes
- * it org-wide; the capacity applies to this camp only.
+ * What THIS event sells. The list is the event's own offerings (ServiceCap
+ * rows), not the org catalogue with ticks against it: the old shape asked
+ * "here is everything the org sells, which applies?" and answered a community
+ * festival with eleven medical services, which is how a dance competition ended
+ * up attached to a medical camp. The catalogue is now reachable only through
+ * the Add picker.
  */
-export default async function CampServicesPage({
+export default async function EventServicesPage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -33,27 +43,39 @@ export default async function CampServicesPage({
   const org = await getActiveOrg();
   if (!org) notFound();
 
-  const camp = await db.event.findFirst({ where: { id, orgId: org.id } });
-  if (!camp) notFound();
+  const event = await db.event.findFirst({ where: { id, orgId: org.id } });
+  if (!event) notFound();
 
-  const services = await db.serviceType.findMany({
-    where: { orgId: org.id },
-    orderBy: { name: "asc" },
-    include: {
-      caps: { where: { eventId: id } },
-    },
-  });
+  const [offerings, catalogue] = await Promise.all([
+    db.serviceCap.findMany({
+      where: { eventId: id, serviceType: { orgId: org.id } },
+      orderBy: { serviceType: { name: "asc" } },
+      include: { serviceType: true },
+    }),
+    // Inactive services are excluded: attaching one would offer something the
+    // registration form is built to hide.
+    db.serviceType.findMany({
+      where: { orgId: org.id, active: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, kind: true, colorHex: true, priceCents: true },
+    }),
+  ]);
 
   return (
     <div className="space-y-5">
       <div>
-        <Link href={`/admin/camps/${id}`} className="text-sm text-brand underline">
-          ← {camp.name}
+        {/* inline-flex + min-h-tap: as a bare inline link this back-out was an
+            18px target, the smallest thing on the page. */}
+        <Link
+          href={`/admin/camps/${id}`}
+          className="inline-flex min-h-tap items-center text-sm text-brand underline"
+        >
+          ← {event.name}
         </Link>
-        <h2 className="mt-2 text-lg font-bold">Services &amp; caps</h2>
+        <h2 className="mt-2 text-lg font-bold">What this event sells</h2>
         <p className="text-xs text-gray-500">
-          Catalogue is shared across camps; price, capacity, and which services
-          are offered apply to this camp only.
+          Only these services appear in this event&apos;s registration. Prices and
+          limits below apply to this event alone.
         </p>
       </div>
 
@@ -61,63 +83,57 @@ export default async function CampServicesPage({
         id="admin-services"
         items={[
           {
-            label: "Catalogue vs camp",
-            body: "Name, color, lab, and merch are catalogue attributes shared across every camp. Price, capacity, and whether the service is offered are per-camp — the same service can cost different amounts at different events.",
+            label: "This list is the event",
+            body: "A service appears in this event's registration because it is in this list. Add one from the catalogue, or remove it — there is no separate 'offered' tick to forget.",
           },
           {
-            label: "Offered at this camp",
-            body: "Untick to drop a catalogue service from THIS camp — it won't appear in this event's registration. Not all services are offered at every event.",
+            label: "Catalogue vs event",
+            body: "Name, colour and kind belong to the org catalogue and are shared by every event. Price, capacity, door price, early bird and competition rules are yours to set per event.",
+          },
+          {
+            label: "Kind",
+            body: "Admission issues a scannable ticket and counts toward the door headcount. Merchandise is a physical good handed over at the gate. Entry fee buys a slot and admits nobody — a competition entry.",
           },
           {
             label: "Capacity",
-            body: "The cap applies to THIS camp only. Registration stops selling a service once its sold count reaches the cap.",
+            body: "Unlimited means registration never stops selling. A limit stops sales once that many are sold; it can't be set below what's already sold.",
           },
           {
-            label: "Lab",
-            body: "Flag services that produce a result you'll mail back, so they show up in lab tracking.",
-          },
-          {
-            label: "Merch",
-            body: "Flag a physical good (e.g. dandiya sticks, T-shirt) so it shows as a hand-over item at the event gate.",
-          },
-          {
-            label: "Active",
-            body: "Inactive services are hidden from the registration form without deleting their history.",
+            label: "Removing",
+            body: "A service that has already sold at this event can't be removed — the money and the ticket already exist.",
           },
         ]}
       />
 
       <ServicesManager
         eventId={id}
-        services={services.map((s) => ({
+        offerings={offerings.map((c) => ({
+          serviceTypeId: c.serviceTypeId,
+          name: c.serviceType.name,
+          colorHex: c.serviceType.colorHex,
+          kind: c.serviceType.kind,
+          admitsCount: c.serviceType.admitsCount,
+          hasLab: c.serviceType.hasLab,
+          priceDollars: c.priceCents / 100,
+          onsitePriceDollars:
+            c.onsitePriceCents === null ? null : c.onsitePriceCents / 100,
+          earlyBirdPriceDollars:
+            c.earlyBirdPriceCents === null ? null : c.earlyBirdPriceCents / 100,
+          earlyBirdUntil:
+            c.earlyBirdUntil === null ? null : toDatetimeLocal(c.earlyBirdUntil),
+          capacity: c.capacity,
+          sold: c.sold,
+          minParticipants: c.minParticipants,
+          maxParticipants: c.maxParticipants,
+          minDuration: toDurationInput(c.minDurationSeconds),
+          maxDuration: toDurationInput(c.maxDurationSeconds),
+        }))}
+        catalogue={catalogue.map((s) => ({
           id: s.id,
           name: s.name,
-          // Per-event price (cap) when offered here; else the catalogue default
-          // as a starting point for a new offering.
-          priceDollars: (s.caps[0]?.priceCents ?? s.priceCents) / 100,
+          kind: s.kind,
           colorHex: s.colorHex,
-          hasLab: s.hasLab,
-          fulfillable: s.fulfillable,
-          admits: s.admits,
-          admitsCount: s.admitsCount,
-          onsitePriceDollars:
-            s.caps[0]?.onsitePriceCents == null
-              ? null
-              : s.caps[0].onsitePriceCents / 100,
-          active: s.active,
-          offered: s.caps.length > 0,
-          capacity: s.caps[0]?.capacity ?? 0,
-          sold: s.caps[0]?.sold ?? 0,
-          earlyBirdPriceDollars:
-            s.caps[0]?.earlyBirdPriceCents == null
-              ? null
-              : s.caps[0].earlyBirdPriceCents / 100,
-          // datetime-local input value: "YYYY-MM-DDTHH:mm" in local time, to
-          // match how the browser interprets what it submits back.
-          earlyBirdUntil:
-            s.caps[0]?.earlyBirdUntil == null
-              ? null
-              : toDatetimeLocal(s.caps[0].earlyBirdUntil),
+          priceDollars: s.priceCents / 100,
         }))}
       />
     </div>

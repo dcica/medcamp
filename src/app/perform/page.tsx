@@ -36,7 +36,7 @@ export default async function PerformPage({
   // merch. Without this filter the fallback could land on a dandiya night that
   // sells floor tickets and has no competition at all.
   const feeOffering = {
-    serviceType: { active: true, admits: false, fulfillable: false },
+    serviceType: { active: true, kind: "FEE" },
   } as const;
 
   // Fetch, THEN apply isRegistrationOpen — the same predicate the submit action

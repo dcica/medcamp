@@ -160,7 +160,10 @@ export async function getTrackedEvents(
       // drifts; this is the system noticing rather than waiting to be told.
       isStale: e.endsAt < now,
       sold: e.caps.reduce((n, c) => n + c.sold, 0),
-      capacity: e.caps.reduce((n, c) => n + c.capacity, 0),
+      // Uncapped services contribute nothing to a total — "25 sold of 40" is
+      // meaningful, "25 sold of unlimited" is not, so the UI shows the bare
+      // count when this is 0.
+      capacity: e.caps.reduce((n, c) => n + (c.capacity ?? 0), 0),
       revenueCents: revenueByEvent.get(e.id) ?? 0,
       earlyBirdEndsAt: deadlines[0] ?? null,
     };

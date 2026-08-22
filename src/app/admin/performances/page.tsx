@@ -32,7 +32,7 @@ export default async function PerformancesPage({
         where: {
           orgId: org.id,
           caps: {
-            some: { serviceType: { active: true, admits: false, fulfillable: false } },
+            some: { serviceType: { active: true, kind: "FEE" } },
           },
         },
         orderBy: { startsAt: "asc" },

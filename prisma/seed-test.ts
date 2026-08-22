@@ -68,10 +68,10 @@ const TEST_MEMBERS: {
 ];
 
 const SERVICES = [
-  { key: "vision", name: "Vision Screening", priceCents: 1500, colorHex: "#2563eb", hasLab: false },
-  { key: "dental", name: "Dental Check", priceCents: 2000, colorHex: "#16a34a", hasLab: false },
-  { key: "bloodwork", name: "Bloodwork", priceCents: 3500, colorHex: "#dc2626", hasLab: true },
-  { key: "general", name: "General Consult", priceCents: 0, colorHex: "#7c3aed", hasLab: false },
+  { key: "vision", name: "Vision Screening", priceCents: 1500, colorHex: "#2563eb", hasLab: false, kind: "ADMISSION" as const },
+  { key: "dental", name: "Dental Check", priceCents: 2000, colorHex: "#16a34a", hasLab: false, kind: "ADMISSION" as const },
+  { key: "bloodwork", name: "Bloodwork", priceCents: 3500, colorHex: "#dc2626", hasLab: true, kind: "ADMISSION" as const },
+  { key: "general", name: "General Consult", priceCents: 0, colorHex: "#7c3aed", hasLab: false, kind: "ADMISSION" as const },
 ];
 
 const STATIONS = [
@@ -652,31 +652,26 @@ async function main() {
   // rows silently come out BOTH merch and admission on a fresh database —
   // handing over a t-shirt would also mint a scannable door ticket.
   const DANDIA_SERVICES = [
-    { key: "dandia-entry", name: "Dandia Entry", priceCents: 2500, colorHex: "#9333ea", admits: true, fulfillable: false },
-    { key: "dandiya-sticks", name: "Dandiya Sticks", priceCents: 1500, colorHex: "#f59e0b", admits: false, fulfillable: true },
-    { key: "event-tshirt", name: "Event T-Shirt", priceCents: 2000, colorHex: "#0ea5e9", admits: false, fulfillable: true },
+    { key: "dandia-entry", name: "Dandia Entry", priceCents: 2500, colorHex: "#9333ea", kind: "ADMISSION" as const },
+    { key: "dandiya-sticks", name: "Dandiya Sticks", priceCents: 1500, colorHex: "#f59e0b", kind: "MERCH" as const },
+    { key: "event-tshirt", name: "Event T-Shirt", priceCents: 2000, colorHex: "#0ea5e9", kind: "MERCH" as const },
   ];
   for (const s of DANDIA_SERVICES) {
     const existingSvc = await db.serviceType.findUnique({
       where: { orgId_key: { orgId: org.id, key: s.key } },
     });
 
-    // admits/fulfillable is a correctness invariant, not a coordinator
-    // preference (see file header) — and dandiya-sticks is the exact shared
-    // key that motivated this rule: seed-events.ts (RON-2026, $5) and this
-    // fixture ($15) both upsert the same org-scoped row. Warn loudly on a
-    // flag-pair mismatch instead of silently keeping it (default) or
-    // silently overwriting it (force).
-    if (
-      existingSvc &&
-      (existingSvc.admits !== s.admits || existingSvc.fulfillable !== s.fulfillable)
-    ) {
+    // Kind is a correctness invariant, not a coordinator preference (see file
+    // header) — and dandiya-sticks is the exact shared key that motivated this
+    // rule: seed-events.ts (RON-2026, $5) and this fixture ($15) both upsert
+    // the same org-scoped row. Warn loudly on a mismatch instead of silently
+    // keeping it (default) or silently overwriting it (force).
+    if (existingSvc && existingSvc.kind !== s.kind) {
       console.warn(
-        `  ! WARNING: "${s.key}" admits/fulfillable mismatch — DB has ` +
-          `(admits=${existingSvc.admits}, fulfillable=${existingSvc.fulfillable}), seed ` +
-          `declares (admits=${s.admits}, fulfillable=${s.fulfillable}). ` +
+        `  ! WARNING: "${s.key}" kind mismatch — DB has ${existingSvc.kind}, ` +
+          `seed declares ${s.kind}. ` +
           (FORCE_UPDATE
-            ? `SEED_FORCE_UPDATE=1 is set — overwriting to the seed's declared pair.`
+            ? `SEED_FORCE_UPDATE=1 is set — overwriting to the seed's declared kind.`
             : `NOT overwritten — SEED_FORCE_UPDATE=1 would correct it. Verify this isn't ` +
               `a live safety bug (scannable ticket on merch, or a free admission via a fee) ` +
               `before forcing.`),
@@ -686,7 +681,7 @@ async function main() {
     await db.serviceType.upsert({
       where: { orgId_key: { orgId: org.id, key: s.key } },
       update: FORCE_UPDATE
-        ? { name: s.name, priceCents: s.priceCents, colorHex: s.colorHex, admits: s.admits, fulfillable: s.fulfillable }
+        ? { name: s.name, priceCents: s.priceCents, colorHex: s.colorHex, kind: s.kind }
         : {},
       create: { orgId: org.id, ...s },
     });
@@ -846,7 +841,7 @@ async function main() {
     // merch (dandiya-sticks, event-tshirt) and any fee never do. An order with
     // no admission units still gets ONE fallback "receipt" attendee so a
     // merch-only or fee-only order has something to attach line items to.
-    const admissionUnits = lineRows.filter((l) => l.svc.admits).reduce((s, l) => s + l.qty, 0);
+    const admissionUnits = lineRows.filter((l) => l.svc.kind === "ADMISSION").reduce((s, l) => s + l.qty, 0);
     const ticketCount = admissionUnits > 0 ? admissionUnits : 1;
     const admittedCount = Math.min(spec.admitted, admissionUnits);
     const attendees: { id: string }[] = [];
@@ -886,8 +881,8 @@ async function main() {
           amountCents: isComp ? 0 : l.svc.priceCents,
           quantity: l.qty,
           status: lineStatus,
-          // Will-call hand-over: only meaningful for fulfillable merch.
-          fulfilledAt: l.svc.fulfillable && l.fulfilled ? dandiaNow : null,
+          // Will-call hand-over: only meaningful for MERCH.
+          fulfilledAt: l.svc.kind === "MERCH" && l.fulfilled ? dandiaNow : null,
         },
       });
     }

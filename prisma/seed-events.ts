@@ -1,3 +1,4 @@
+import type { ServiceKind } from "@prisma/client";
 import { config } from "dotenv";
 // Override any inherited shell DATABASE_URL so this targets the project's .env
 // DB (the local Docker Postgres), not a global var from another project.
@@ -81,10 +82,9 @@ type Seed = {
     onsitePriceCents?: number;
     earlyBirdPriceCents?: number;
     earlyBirdUntil?: string;
-    admits: boolean;
+    kind: ServiceKind;
     /** Heads admitted per purchased unit. Gate bundles only (family of 4 = 4). */
     admitsCount?: number;
-    fulfillable: boolean;
     capacity: number;
     /**
      * Competition entry rules, enforced server-side at submit (see
@@ -183,8 +183,7 @@ const EVENTS: Seed[] = [
         // changes the online price later, the door does not silently follow.
         priceCents: 500,
         onsitePriceCents: 500,
-        admits: true,
-        fulfillable: false,
+        kind: "ADMISSION",
         // PROVISIONAL. The flyer says "LIMITED ENTRIES" but names no number;
         // the real hall capacity has to come from the organisers (Madhu Rana /
         // Abha Joshi). 40 is a placeholder so the cap exists and sells —
@@ -246,7 +245,7 @@ const EVENTS: Seed[] = [
         colorHex: "#dc2626",
         // $30 per GROUP, not per dancer — the unit here is a troupe. Quantity
         // on the checkout line is a count of groups entering, so a five-person
-        // team buys one. admits:false because the entry fee buys a slot in the
+        // team buys one. FEE because the entry fee buys a slot in the
         // competition, not admission for spectators; there is no floor sale at
         // this event at all.
         // Committee pricing sheet: $25 early bird through Aug 31 2026, $30
@@ -260,8 +259,7 @@ const EVENTS: Seed[] = [
         // as 00:00Z would expire the early bird at 7pm on Aug 30 local, cutting
         // a day off the offer the sheet advertises.
         earlyBirdUntil: "2026-09-01T04:59:59Z",
-        admits: false,
-        fulfillable: false,
+        kind: "FEE",
         // The rules the entry form actually states: 3-10 participants, 5-6
         // minutes. These were printed on the Google Form as question LABELS with
         // nothing enforcing them, so a group of 15 or a 9-minute routine was
@@ -333,8 +331,7 @@ const EVENTS: Seed[] = [
         earlyBirdPriceCents: 1000,
         // End of day Sep 15 CENTRAL (CDT, UTC-5) — same reasoning as RON's.
         earlyBirdUntil: "2026-09-16T04:59:59Z",
-        admits: true,
-        fulfillable: false,
+        kind: "ADMISSION",
         capacity: 500,
       },
       {
@@ -345,8 +342,7 @@ const EVENTS: Seed[] = [
         // the catalogue's existing $5 so the merch line exists; a coordinator
         // can reprice it.
         priceCents: 500,
-        admits: false,
-        fulfillable: true,
+        kind: "MERCH",
         capacity: 500,
       },
       {
@@ -361,11 +357,10 @@ const EVENTS: Seed[] = [
         // $50 for 4 against $12 each is a real discount, which is the offer.
         priceCents: 5000,
         onsitePriceCents: 5000,
-        admits: true,
+        kind: "ADMISSION",
         // The reason ServiceType.admitsCount exists: ONE purchased unit, FOUR
         // people through the door and four scannable codes.
         admitsCount: 4,
-        fulfillable: false,
         capacity: 50,
       },
       {
@@ -374,9 +369,8 @@ const EVENTS: Seed[] = [
         colorHex: "#14b8a6",
         priceCents: 10000,
         onsitePriceCents: 10000,
-        admits: true,
+        kind: "ADMISSION",
         admitsCount: 10,
-        fulfillable: false,
         capacity: 20,
       },
     ],
@@ -532,32 +526,30 @@ async function main() {
 
     // Explicit ticketed-service menu (RON-2026's admission/merch/fee ladder).
     // Upsert into the org catalogue by key so a re-seed doesn't duplicate rows,
-    // then upsert this event's own cap. `admits` is set explicitly on every
-    // entry — the column defaults to true, and leaving it off would make a
-    // fee-kind service (competition-entry) both a fee AND a free admission.
+    // then upsert this event's own cap. `kind` is required on every entry —
+    // there is no default to fall through to, which is the point: a service
+    // cannot be created without someone stating what it is.
     const seededServiceTypeIds: string[] = [];
     for (const s of e.services ?? []) {
       const existingSvc = await db.serviceType.findUnique({
         where: { orgId_key: { orgId: org.id, key: s.key } },
       });
 
-      // admits/fulfillable is a correctness invariant, not a coordinator
-      // preference — the three kinds are admission (admits, !fulfillable),
-      // merch (!admits, fulfillable), and fee (neither). A wrong pair either
-      // hands a scannable door ticket to a merch purchase or admits someone
-      // who only paid a fee. Warn loudly on mismatch instead of silently
-      // keeping it (default) or silently overwriting it (force) — either one
-      // could be hiding a live safety bug.
-      if (
-        existingSvc &&
-        (existingSvc.admits !== s.admits || existingSvc.fulfillable !== s.fulfillable)
-      ) {
+      // Kind is a correctness invariant, not a coordinator preference.
+      // A wrong kind either hands a scannable door ticket to a merch purchase
+      // or admits someone who only paid a fee. Warn loudly on mismatch instead
+      // of silently keeping it (default) or silently overwriting it (force) —
+      // either one could be hiding a live safety bug.
+      //
+      // Narrower than it was: the old check compared an `admits`/`fulfillable`
+      // PAIR, which could also disagree with itself. A single enum can only
+      // differ, never contradict.
+      if (existingSvc && existingSvc.kind !== s.kind) {
         console.warn(
-          `  ! WARNING: "${s.key}" admits/fulfillable mismatch — DB has ` +
-            `(admits=${existingSvc.admits}, fulfillable=${existingSvc.fulfillable}), seed ` +
-            `declares (admits=${s.admits}, fulfillable=${s.fulfillable}). ` +
+          `  ! WARNING: "${s.key}" kind mismatch — DB has ${existingSvc.kind}, ` +
+            `seed declares ${s.kind}. ` +
             (FORCE_UPDATE
-              ? `SEED_FORCE_UPDATE=1 is set — overwriting to the seed's declared pair.`
+              ? `SEED_FORCE_UPDATE=1 is set — overwriting to the seed's declared kind.`
               : `NOT overwritten — SEED_FORCE_UPDATE=1 would correct it. Verify this isn't ` +
                 `a live safety bug (scannable ticket on merch, or a free admission via a fee) ` +
                 `before forcing.`),
@@ -571,9 +563,8 @@ async function main() {
               name: s.name,
               colorHex: s.colorHex,
               priceCents: s.priceCents,
-              admits: s.admits,
+              kind: s.kind,
               admitsCount: s.admitsCount ?? 1,
-              fulfillable: s.fulfillable,
             }
           : {},
         create: {
@@ -582,9 +573,8 @@ async function main() {
           name: s.name,
           colorHex: s.colorHex,
           priceCents: s.priceCents,
-          admits: s.admits,
+          kind: s.kind,
           admitsCount: s.admitsCount ?? 1,
-          fulfillable: s.fulfillable,
         },
       });
       seededServiceTypeIds.push(svc.id);

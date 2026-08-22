@@ -226,38 +226,35 @@ async function main(): Promise<void> {
 
   const admission = await db.serviceType.upsert({
     where: { orgId_key: { orgId: org.id, key: "vv-admission" } },
-    update: { fulfillable: false, admits: true, priceCents: 1500 },
+    update: { kind: "ADMISSION", priceCents: 1500 },
     create: {
       orgId: org.id,
       key: "vv-admission",
       name: "VV Admission",
       priceCents: 1500,
-      fulfillable: false,
-      admits: true,
+      kind: "ADMISSION",
     },
   });
   const merch = await db.serviceType.upsert({
     where: { orgId_key: { orgId: org.id, key: "vv-merch" } },
-    update: { fulfillable: true, admits: false, priceCents: 500 },
+    update: { kind: "MERCH", priceCents: 500 },
     create: {
       orgId: org.id,
       key: "vv-merch",
       name: "VV Merch",
       priceCents: 500,
-      fulfillable: true,
-      admits: false,
+      kind: "MERCH",
     },
   });
   const consult = await db.serviceType.upsert({
     where: { orgId_key: { orgId: org.id, key: "vv-consult" } },
-    update: { fulfillable: false, admits: true, priceCents: 2000 },
+    update: { kind: "ADMISSION", priceCents: 2000 },
     create: {
       orgId: org.id,
       key: "vv-consult",
       name: "VV Consult",
       priceCents: 2000,
-      fulfillable: false,
-      admits: true,
+      kind: "ADMISSION",
     },
   });
   // Exists in the org's catalogue and is active, but is offered at the CAMP
@@ -265,14 +262,13 @@ async function main(): Promise<void> {
   // real key from a real menu, aimed at the wrong event.
   const campOnly = await db.serviceType.upsert({
     where: { orgId_key: { orgId: org.id, key: "vv-camp-only" } },
-    update: { fulfillable: false, admits: false, priceCents: 4000 },
+    update: { kind: "FEE", priceCents: 4000 },
     create: {
       orgId: org.id,
       key: "vv-camp-only",
       name: "VV Camp Only",
       priceCents: 4000,
-      fulfillable: false,
-      admits: false,
+      kind: "FEE",
     },
   });
 

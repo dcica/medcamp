@@ -244,6 +244,19 @@ model Event {
 
 // ── Service menu & capacity (config-over-code) ───────────────────────────────
 
+/// What a service IS. Exactly three kinds exist, and they are mutually
+/// exclusive — which is why this is an enum and not the `admits` + `fulfillable`
+/// boolean pair it replaces. Three independent booleans could express
+/// combinations that are nonsense (a thing that both admits someone AND is
+/// handed over), and the seed already had to warn that the pair was "a
+/// correctness invariant, not a coordinator preference". Now the invalid state
+/// cannot be stored, whichever screen, seed or script does the writing.
+enum ServiceKind {
+  ADMISSION // issues a scannable ticket and counts toward the door headcount
+  MERCH // a physical good handed over at the gate (will-call)
+  FEE // buys a slot and admits nobody — e.g. a competition entry
+}
+
 /// Org-level catalogue of offerable services. Reused across events; the actual
 /// price + capacity for a given event live on the per-event offering (ServiceCap),
 /// so the same catalogue service can be coded at different prices per event.
@@ -260,19 +273,11 @@ model ServiceType {
   colorHex    String       @default("#888888")
   /// Whether this service mails labs (drives lab tracking + purge hold).
   hasLab      Boolean      @default(false)
-  /// A physical good handed over at the gate (merch — dandiya sticks, T-shirts).
-  /// Drives the will-call pickup step; clinical services / admission stay false.
-  fulfillable Boolean      @default(false)
-  /// Issues a scannable admission ticket and counts toward the door headcount.
-  /// With `fulfillable` this gives THREE service kinds, not two:
-  ///   admission (admits)      — floor entry, camp attendance
-  ///   merch     (fulfillable) — dandiya sticks, T-shirts
-  ///   fee       (neither)     — a dance-competition entry that grants no floor
-  ///                             access and must not mint a ticket per group.
-  /// Backfilled as NOT fulfillable, so pre-existing events are unchanged.
-  admits      Boolean      @default(true)
+  /// Which of the three kinds this is. Replaced the `admits` + `fulfillable`
+  /// pair; see the ServiceKind enum above for why.
+  kind        ServiceKind
   /// How many people ONE unit of this service admits. Only meaningful when
-  /// `admits` is true; ignored otherwise.
+  /// `kind` is ADMISSION; ignored otherwise.
   ///
   /// Exists for gate bundles — "family of 4" at $50, "10 tickets" at $100 —
   /// which are one purchased unit but several people through the door. Without
@@ -326,7 +331,12 @@ model ServiceCap {
   maxParticipants     Int?
   minDurationSeconds  Int?
   maxDurationSeconds  Int?
-  capacity            Int // null-equivalent: very large number for "uncapped"
+  /// Uncapped when null. A CHECK constraint refuses 0: an offered service at
+  /// capacity 0 TAKES THE PAYMENT and then fails confirmation, because
+  /// confirmOrder gates on `sold <= capacity - qty` → `0 <= -1`. The buyer is
+  /// charged and gets nothing. That state existed on the live Diwali festival,
+  /// so it is now unrepresentable rather than merely discouraged.
+  capacity            Int?
   sold                Int         @default(0)
 
   @@unique([eventId, serviceTypeId])

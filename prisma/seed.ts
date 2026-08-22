@@ -27,10 +27,10 @@ async function main() {
 
   // ── Service menu ──
   const services = [
-    { key: "vision", name: "Vision Screening", priceCents: 1500, colorHex: "#2563eb", hasLab: false },
-    { key: "dental", name: "Dental Check", priceCents: 2000, colorHex: "#16a34a", hasLab: false },
-    { key: "bloodwork", name: "Bloodwork", priceCents: 3500, colorHex: "#dc2626", hasLab: true },
-    { key: "general", name: "General Consult", priceCents: 0, colorHex: "#7c3aed", hasLab: false },
+    { key: "vision", name: "Vision Screening", priceCents: 1500, colorHex: "#2563eb", hasLab: false, kind: "ADMISSION" as const },
+    { key: "dental", name: "Dental Check", priceCents: 2000, colorHex: "#16a34a", hasLab: false, kind: "ADMISSION" as const },
+    { key: "bloodwork", name: "Bloodwork", priceCents: 3500, colorHex: "#dc2626", hasLab: true, kind: "ADMISSION" as const },
+    { key: "general", name: "General Consult", priceCents: 0, colorHex: "#7c3aed", hasLab: false, kind: "ADMISSION" as const },
   ];
 
   for (const s of services) {

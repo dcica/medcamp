@@ -1,5 +1,7 @@
 "use client";
 
+import type { ServiceKind } from "@prisma/client";
+
 import { useState, useTransition } from "react";
 import { formatCents } from "@/lib/money";
 import { AddressInput } from "@/app/_components/AddressInput";
@@ -16,7 +18,7 @@ type Service = {
   name: string;
   priceCents: number;
   colorHex: string;
-  fulfillable: boolean;
+  kind: ServiceKind;
 };
 
 type Plan = {
@@ -75,7 +77,7 @@ export function RegisterForm({
   const priceOf = (key: string) =>
     services.find((s) => s.key === key)?.priceCents ?? 0;
   const isAdmission = (key: string) =>
-    !services.find((s) => s.key === key)?.fulfillable;
+    services.find((s) => s.key === key)?.kind === "ADMISSION";
 
   const selectedPlan = plans.find((p) => p.id === planId) ?? null;
   const donationCents = Math.max(0, Math.round((Number(donation) || 0) * 100));
@@ -96,7 +98,7 @@ export function RegisterForm({
     : services.reduce(
         (s, svc) =>
           s +
-          (admissionComped && !svc.fulfillable ? 0 : priceOf(svc.key)) *
+          (admissionComped && svc.kind === "ADMISSION" ? 0 : priceOf(svc.key)) *
             (quantities[svc.key] ?? 0),
         0,
       );
@@ -271,7 +273,7 @@ export function RegisterForm({
                   <p className="text-xs text-gray-500">Select services</p>
                   {services.map((s) => {
                     const checked = att.serviceKeys.includes(s.key);
-                    const comped = admissionComped && !s.fulfillable;
+                    const comped = admissionComped && s.kind === "ADMISSION";
                     return (
                       <label
                         key={s.key}
@@ -322,7 +324,7 @@ export function RegisterForm({
           </h2>
           {services.map((s) => {
             const qty = quantities[s.key] ?? 0;
-            const comped = admissionComped && !s.fulfillable;
+            const comped = admissionComped && s.kind === "ADMISSION";
             return (
               <div
                 key={s.key}
