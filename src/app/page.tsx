@@ -101,8 +101,11 @@ export default async function Home() {
   return (
     <main className="mx-auto max-w-screen-md px-4 py-8">
       <header>
-        <h1 className="text-2xl font-bold text-brand">{orgName}</h1>
-        <p className="mt-1 text-sm text-gray-600">
+        {/* sr-only, not deleted: the visible wordmark is three lines above in
+            SiteHeader, so showing it again was the same word twice on a 375px
+            screen. A page still needs one h1 for screen readers and search. */}
+        <h1 className="sr-only">{orgName} — upcoming events</h1>
+        <p className="text-sm text-gray-600">
           Register for an event, buy tickets, or sign up to volunteer or set up
           to be a vendor.
         </p>

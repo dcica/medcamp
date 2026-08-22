@@ -1,5 +1,4 @@
 import { requireAdmin } from "@/server/admin";
-import { AdminNav } from "./AdminNav";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +21,6 @@ export default async function AdminLayout({
         <h1 className="text-xl font-bold text-brand">Admin</h1>
         <span className="text-xs text-gray-500">{member.role}</span>
       </div>
-      <AdminNav isCoordinator={member.role === "COORDINATOR"} />
       {children}
     </main>
   );

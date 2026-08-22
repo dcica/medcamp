@@ -30,12 +30,16 @@ export type StaffDestination = {
   href: string;
   name: string;
   /**
-   * Roles the page's own guard admits, COORDINATOR excluded (see above).
-   * Empty array = reachable by any signed-in member.
+   * The non-coordinator roles the page's own guard admits. COORDINATOR is
+   * excluded by convention (it is a superuser bypass), so an EMPTY array means
+   * coordinator-only — not "everyone".
    */
   roles: Role[];
-  /** Renders an "Admin" chip; purely presentational. */
-  admin?: boolean;
+  /**
+   * `work` is what you do during an event; `admin` is setup. The menu renders
+   * them as two sections, because a 15-item flat list on a phone is a wall.
+   */
+  group: "work" | "admin";
 };
 
 /**
@@ -47,70 +51,80 @@ export type StaffDestination = {
  *   /dashboard           COORDINATOR, COMMITTEE_ADMIN
  *   /volunteers          COORDINATOR, COMMITTEE_ADMIN, VOLUNTEER_COORDINATOR
  *   /volunteer/checkin   VOLUNTEER_COORDINATOR, COMMITTEE_ADMIN, STATION_VOLUNTEER
- *   /admin*              COORDINATOR, COMMITTEE_ADMIN
+ *   /admin, /admin/camps, /admin/performances, /admin/services
+ *                        COORDINATOR, COMMITTEE_ADMIN (requireAdmin)
+ *   /admin/members, /admin/membership, /admin/email, /admin/settings
+ *                        COORDINATOR only (requireCoordinator)
  */
 export const STAFF_DESTINATIONS: StaffDestination[] = [
+  // ── Working an event ──
+  // Public, but kept in the menu: it left the header bar, and staff still
+  // need to reach the listing they send guests to.
   {
-    href: "/dashboard",
-    name: "Event dashboard",
-    roles: ["COMMITTEE_ADMIN"],
+    href: "/events",
+    name: "Public events page",
+    roles: [
+      "COMMITTEE_ADMIN",
+      "REGISTRATION_TILL",
+      "REGISTRATION_NO_TILL",
+      "STATION_VOLUNTEER",
+      "DOCTOR",
+      "POS_TILL",
+      "VOLUNTEER_COORDINATOR",
+    ],
+    group: "work",
   },
+  { href: "/dashboard", name: "Event dashboard", roles: ["COMMITTEE_ADMIN"], group: "work" },
   {
     href: "/register",
     name: "Register a guest",
     roles: ["REGISTRATION_TILL", "REGISTRATION_NO_TILL"],
+    group: "work",
   },
   {
     href: "/checkin",
     name: "Check in",
     roles: ["REGISTRATION_TILL", "REGISTRATION_NO_TILL", "STATION_VOLUNTEER"],
+    group: "work",
   },
   {
     // Absent from the old menu entirely, despite four roles being able to use it.
     href: "/gate",
     name: "Gate",
-    roles: [
-      "REGISTRATION_TILL",
-      "REGISTRATION_NO_TILL",
-      "STATION_VOLUNTEER",
-      "POS_TILL",
-    ],
+    roles: ["REGISTRATION_TILL", "REGISTRATION_NO_TILL", "STATION_VOLUNTEER", "POS_TILL"],
+    group: "work",
   },
-  {
-    href: "/station",
-    name: "My station",
-    roles: ["STATION_VOLUNTEER", "DOCTOR"],
-  },
+  { href: "/station", name: "My station", roles: ["STATION_VOLUNTEER", "DOCTOR"], group: "work" },
   {
     // The coordinator ROSTER. The old menu offered only /volunteer — the public
     // signup form — under the label "Volunteer Module", which reads like this.
     href: "/volunteers",
     name: "Volunteer roster",
     roles: ["COMMITTEE_ADMIN", "VOLUNTEER_COORDINATOR"],
+    group: "work",
   },
   {
     href: "/volunteer/checkin",
     name: "Volunteer sign in/out",
     roles: ["VOLUNTEER_COORDINATOR", "COMMITTEE_ADMIN", "STATION_VOLUNTEER"],
+    group: "work",
   },
-  {
-    href: "/admin/camps",
-    name: "Camps & events",
-    roles: ["COMMITTEE_ADMIN"],
-    admin: true,
-  },
-  {
-    href: "/admin/performances",
-    name: "Performance entries",
-    roles: ["COMMITTEE_ADMIN"],
-    admin: true,
-  },
-  {
-    href: "/admin",
-    name: "Admin overview",
-    roles: ["COMMITTEE_ADMIN"],
-    admin: true,
-  },
+
+  // ── Setting things up ──
+  // These were a horizontal tab bar inside the /admin shell, which at 375px hid
+  // 345px of itself with no scroll cue. Two navigations for one product is one
+  // too many; folding them in here means every destination lives in one place
+  // and the phone gets a single, scrollable list instead of a clipped strip.
+  { href: "/admin", name: "Admin overview", roles: ["COMMITTEE_ADMIN"], group: "admin" },
+  { href: "/admin/camps", name: "Camps & events", roles: ["COMMITTEE_ADMIN"], group: "admin" },
+  { href: "/admin/performances", name: "Performance entries", roles: ["COMMITTEE_ADMIN"], group: "admin" },
+  { href: "/admin/services", name: "Service catalogue", roles: ["COMMITTEE_ADMIN"], group: "admin" },
+  // roles: [] = coordinator only. These four use requireCoordinator, not
+  // requireAdmin, so a committee admin must not be offered them.
+  { href: "/admin/members", name: "Members", roles: [], group: "admin" },
+  { href: "/admin/membership", name: "Membership", roles: [], group: "admin" },
+  { href: "/admin/email", name: "Email", roles: [], group: "admin" },
+  { href: "/admin/settings", name: "Settings", roles: [], group: "admin" },
 ];
 
 /**
@@ -120,9 +134,7 @@ export const STAFF_DESTINATIONS: StaffDestination[] = [
  */
 export function destinationsFor(role: Role): StaffDestination[] {
   if (role === "COORDINATOR") return STAFF_DESTINATIONS;
-  return STAFF_DESTINATIONS.filter(
-    (d) => d.roles.length === 0 || d.roles.includes(role),
-  );
+  return STAFF_DESTINATIONS.filter((d) => d.roles.includes(role));
 }
 
 /**

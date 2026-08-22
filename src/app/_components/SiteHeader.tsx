@@ -33,13 +33,11 @@ export async function SiteHeader() {
           />
           DCICA
         </Link>
+        {/* The bar carries the home link (the logo, left) and one control. The
+            "Events" link that sat here is now in the menu for staff; signed-out
+            visitors reach the same list via the logo, since the home page IS
+            the events listing. */}
         <nav className="flex items-center gap-4">
-          <Link
-            href="/events"
-            className="flex min-h-tap items-center text-sm font-semibold text-brand"
-          >
-            Events
-          </Link>
           {member ? (
             <StaffMenu
               name={member.name ?? member.email}
