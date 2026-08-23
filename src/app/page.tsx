@@ -16,8 +16,9 @@ export const dynamic = "force-dynamic";
  * Public landing. Leads with the org's upcoming events — the soonest one is
  * featured as a hero with its full action set (register/buy tickets, volunteer,
  * vendor), the rest follow in a grid. Action buttons per event are config-driven
- * (Event.offers* flags), matching /events. The staff module index is no longer
- * shown here — it lives behind the signed-in menu in SiteHeader.
+ * (Event.offers* flags). This is the only public event listing — the separate
+ * /events route is gone. The staff module index is no longer shown here — it
+ * lives behind the signed-in menu in SiteHeader.
  */
 
 const TYPE_LABEL: Record<string, string> = {
@@ -49,7 +50,10 @@ type EventRow = {
 // Config-driven action set for an event. First entry is the primary CTA.
 function eventActions(e: EventRow, kinds?: EventOfferingKinds) {
   const actions: { key: string; label: string; href: string }[] = [];
-  // Mirrors /events — see the reasoning on the CTA split there.
+  // An entry fee needs the performance form, which collects group details
+  // /register has no notion of. When an event sells BOTH, both doors are
+  // legitimate and both are shown; when it sells only entry fees, "Register" is
+  // simply the wrong word and the wrong page.
   if (e.offersRegistration && kinds?.hasFee)
     actions.push({
       key: "perform",
@@ -148,9 +152,9 @@ export default async function Home() {
           )}
         </>
       ) : (
-        // Same empty state as /events, and nothing more. The front door does not
-        // get a past-events section: a landing page leading with events that are
-        // over is worse than one leading with nothing.
+        // The empty state, and nothing more. The front door does not get a
+        // past-events section: a landing page leading with events that are over
+        // is worse than one leading with nothing.
         <EmptyEventsState />
       )}
     </main>

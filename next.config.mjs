@@ -28,6 +28,12 @@ const nextConfig = {
       ? [{ protocol: "https", hostname: supabaseHost, pathname: "/storage/v1/object/public/**" }]
       : [],
   },
+  // /events was the public event listing until the front door absorbed it. The
+  // path is in the wild — printed on flyers, pasted into WhatsApp, indexed — so
+  // it redirects rather than 404s. Permanent: the route is not coming back.
+  async redirects() {
+    return [{ source: "/events", destination: "/", permanent: true }];
+  },
   // Phone-first PWA-ish defaults; image optimization stays on for badge/QR assets.
   experimental: {
     // Server Actions are enabled by default in Next 15; nothing extra needed.

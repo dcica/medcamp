@@ -2,10 +2,10 @@ import Link from "next/link";
 import { CONTACT_EMAIL } from "@/lib/contact";
 
 /**
- * The "nothing on the calendar" state shared by the two public event surfaces
- * (`/` and `/events`). Extracted rather than copied: the identical copy block
- * living in both files twice already let a claim rot in one file and not the
- * other, and the site should say one thing about an empty calendar.
+ * The "nothing on the calendar" state for the public event surface (`/`).
+ * Extracted rather than inlined: the identical copy block once lived in two
+ * pages at once, which let a claim rot in one file and not the other, and the
+ * site should say one thing about an empty calendar.
  *
  * The copy names Diwali and Holi and their rough seasons so a visitor learns
  * *when* to come back — editorial fact about a recurring calendar. It never
@@ -37,18 +37,9 @@ const MEMBERSHIP_HREF = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(
   "Becoming a DCICA member",
 )}`;
 
-/**
- * @param pastEventsHref anchor to the past-events section, passed only by a page
- *   that actually renders one and only when it has something in it. Omitted on
- *   the landing page, which must never lead with finished events.
- */
-export function EmptyEventsState({
-  pastEventsHref,
-}: {
-  pastEventsHref?: string;
-}) {
+export function EmptyEventsState() {
   return (
-    // Rounded to match the local idiom of both pages, not the design system's
+    // Rounded to match the local idiom of the page, not the design system's
     // border-radius: 0 — a single square box among rounded cards reads as a bug.
     <section className="mt-8 rounded-xl border border-gray-200 bg-white p-5">
       <h2 className="text-lg font-bold leading-tight text-brand">
@@ -71,15 +62,6 @@ export function EmptyEventsState({
         back. There are no automatic alerts, so tell us what you are interested
         in and someone can let you know once it is scheduled.
       </p>
-
-      {pastEventsHref && (
-        <a
-          href={pastEventsHref}
-          className="mt-2 flex min-h-tap items-center text-sm font-medium text-brand underline"
-        >
-          Look back at past events
-        </a>
-      )}
 
       <div className="mt-5 border-t border-gray-200 pt-4">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">

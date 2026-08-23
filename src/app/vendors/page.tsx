@@ -92,7 +92,7 @@ export default async function VendorsPage({
       </div>
 
       <p className="mt-6 text-center text-sm">
-        <Link href="/events" className="text-brand underline">
+        <Link href="/" className="text-brand underline">
           ← Back to events
         </Link>
       </p>

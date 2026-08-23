@@ -58,8 +58,8 @@ export function formatVenueTime(instant: Date): string {
  * An event's when-line: one day plus a time range, or a date range if it really
  * spans days.
  *
- * Lives here rather than in a page because `/` and `/events` held a
- * byte-identical copy each. That duplication has already produced two separate
+ * Lives here rather than in a page because `/` and the since-removed `/events`
+ * held a byte-identical copy each. That duplication produced two separate
  * defects on this branch (C1 and C3), and the timezone bug above was a third —
  * present twice, fixable only twice.
  *

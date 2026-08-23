@@ -125,9 +125,9 @@ type BaseOrder = {
  * load-bearing rather than housekeeping: it is the only thing preventing that.
  * (On camp day the same inversion is exactly what you want — the camp actually
  * running should outrank an OPEN event three months out. It is wrong only in the
- * un-CLOSED tail.) The hole is not reachable from the public lists — `/events`
- * and `/` keep an unconditional `endsAt` filter, so a finished event still stops
- * being LISTED even while it stays sellable; that asymmetry is deliberate,
+ * un-CLOSED tail.) The hole is not reachable from the public list — `/` keeps an
+ * unconditional `endsAt` filter, so a finished event still stops being LISTED
+ * even while it stays sellable; that asymmetry is deliberate,
  * because a list is a browse surface where a finished event is just noise,
  * whereas a direct link or a coordinator-opened door is a deliberate act by
  * someone who means to register. The lifecycle (DRAFT → OPEN → ACTIVE → CLOSED)

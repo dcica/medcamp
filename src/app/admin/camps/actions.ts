@@ -275,7 +275,6 @@ export async function finishBannerUpload(
     await requireAdmin();
     const imageUrl = await completeBannerUpload(eventId, path);
     revalidatePath(`/admin/camps/${eventId}`);
-    revalidatePath("/events");
     revalidatePath("/");
     return { ok: true, imageUrl };
   } catch (err) {
@@ -292,7 +291,6 @@ export async function removeBanner(eventId: string): Promise<ActionResult> {
     await requireAdmin();
     await clearBanner(eventId);
     revalidatePath(`/admin/camps/${eventId}`);
-    revalidatePath("/events");
     revalidatePath("/");
     return { ok: true };
   } catch (err) {
