@@ -167,7 +167,10 @@ and are safe. The forbidding comment at `src/server/payments.ts:242-260` stays.
 
 ### Verification
 
-- `npx tsc --noEmit` after every task, then `npm run verify` — 7 suites, ~750 assertions.
+- `npx tsc --noEmit` after every task, then `npm run verify`. Baseline as of 2026-08-23:
+  **8 suites, 803 assertions, all green** — schema 54, pricing 39, validation 62,
+  storage 31, branding 310, performance 125, gate 101, readiness 81. (`pricing` and
+  `validation` print `PASS`; the rest print `ok` — count both when reporting totals.)
 - **Never make the chain green by weakening a check.** Report before/after assertion counts.
 - New checks must be **mutation-tested**: name the one-line source edit that makes the check
   fail, and make it once to prove it does. A check that cannot fail is worse than none.

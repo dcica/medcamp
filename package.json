@@ -21,12 +21,13 @@
     "db:import:members": "tsx prisma/import-members.ts",
     "verify:pricing": "tsx scripts/verify-pricing.ts",
     "verify:validation": "tsx scripts/verify-validation.ts",
+    "verify:schema": "tsx scripts/verify-schema.ts",
     "verify:storage": "tsx scripts/verify-storage.ts",
     "verify:branding": "tsx scripts/verify-branding.ts",
     "verify:performance": "tsx scripts/verify-performance.ts",
     "verify:gate": "tsx scripts/verify-gate.ts",
     "verify:readiness": "tsx scripts/verify-readiness.ts",
-    "verify": "npm run verify:pricing && npm run verify:validation && npm run verify:storage && npm run verify:branding && npm run verify:performance && npm run verify:gate && npm run verify:readiness"
+    "verify": "npm run verify:schema && npm run verify:pricing && npm run verify:validation && npm run verify:storage && npm run verify:branding && npm run verify:performance && npm run verify:gate && npm run verify:readiness"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

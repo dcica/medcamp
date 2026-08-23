@@ -328,6 +328,12 @@ model Event {
 
   @@unique([orgId, code])
   @@index([orgId, status])
+  /// FK child index for flagsReviewedById, per the policy 20260822120000
+  /// established. It is NOT optional decoration on a SetNull edge: deleting a
+  /// user has to find every event that names them as reviewer in order to null
+  /// the column, and without this it does that with a sequential scan of
+  /// `events` while holding the row lock on `users`.
+  @@index([flagsReviewedById])
   @@map("events")
 }
 

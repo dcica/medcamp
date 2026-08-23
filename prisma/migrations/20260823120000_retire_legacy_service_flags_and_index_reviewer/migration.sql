@@ -1,0 +1,55 @@
+-- Two unrelated pieces of housekeeping that both close a promise made by an
+-- earlier migration. Neither adds a feature; both remove a trap.
+--
+-- ORDERING. Section 1 is a DROP, which is destructive, so it does NOT follow the
+-- additive-first rule that governs new columns — it follows the mirror of it. A
+-- destructive change must land AFTER the deploy that stopped reading the thing,
+-- and that deploy happened on 2026-08-22: `20260822040000_service_kind_and_capacity`
+-- removed both columns from schema.prisma and derived `ServiceKind` from them, so
+-- the Prisma client running in every environment has not named `admits` or
+-- `fulfillable` in a SELECT since. Verified by grep before writing this: the only
+-- surviving occurrences in src/ are the word "admits" inside help copy and the
+-- unrelated column `admitsCount`. Section 2 is a pure CREATE INDEX and is safe in
+-- either order.
+
+-- ── 1. Retire the two legacy service flags ───────────────────────────────────
+--
+-- `20260822040000_service_kind_and_capacity` replaced the `admits` +
+-- `fulfillable` boolean PAIR with the `ServiceKind` enum, because the pair could
+-- express combinations that mean nothing (a thing that both admits someone and
+-- is handed over) and the three real kinds are mutually exclusive. It
+-- deliberately did NOT drop the columns in the same migration, and said so:
+-- dropping them there would have broken the app that was running at that moment,
+-- since it still read them. Its exact words were "A later migration removes them
+-- once no reader references them."
+--
+-- This is that migration. It is nine days late, and the delay had a cost worth
+-- recording: because the columns existed in the DATABASE and in the migration
+-- history but not in schema.prisma, every `prisma migrate diff` run for any
+-- unrelated reason emitted these two DROPs and quietly attached them to whatever
+-- the author actually meant to change. `20260822140000_stage_schema_and_event_access`
+-- had to be hand-written for precisely that reason and says so in its header.
+-- The drift was intended; the trap it set for every subsequent migration was not.
+--
+-- No backfill and no data to preserve: `kind` was derived from these two columns
+-- on 2026-08-22 and has been NOT NULL and authoritative ever since.
+ALTER TABLE "service_types" DROP COLUMN "admits",
+DROP COLUMN "fulfillable";
+
+-- ── 2. The one foreign key that escaped the index sweep ──────────────────────
+--
+-- `20260822120000_index_foreign_keys` established the policy that every FK child
+-- column carries a covering index, and fixed thirteen of them. This one was
+-- added on a branch developed in parallel and merged afterwards, so it was never
+-- in that sweep's scope — the same pattern the sweep existed to remove,
+-- reintroduced within the same week.
+--
+-- It matters more than most, not less, because the edge is ON DELETE SET NULL:
+-- deleting a user must locate every event naming them as flag reviewer in order
+-- to null the column, and without an index it does that with a sequential scan
+-- of `events` while holding the lock on the `users` row. That is exactly the
+-- case the sweep's own rationale singles out.
+--
+-- A check in scripts/verify-storage.ts now asserts this property across the
+-- whole schema, so the next one is caught by CI rather than by a reader.
+CREATE INDEX "events_flagsReviewedById_idx" ON "events"("flagsReviewedById");

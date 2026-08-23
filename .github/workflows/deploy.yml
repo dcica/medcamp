@@ -22,6 +22,17 @@
 #                   connection_limit=1, &schema=<env>)
 #   DIRECT_URL    — Supabase direct (:5432, ?schema=<env>) — used by migrate deploy
 #
+# THAT RULE IS ENFORCED, NOT MERELY DOCUMENTED. The migrate steps below call
+# `npm run db:migrate:deploy` — the wrapper in prisma/migrate-deploy.ts — and not
+# `npx prisma migrate deploy` directly. The wrapper refuses a remote URL that
+# names no schema, and refuses a pair that names two different ones. Until
+# 2026-08-23 this workflow called the bare Prisma command, so the guard added in
+# PR #6 ran everywhere EXCEPT the only path that writes to a deployed database:
+# the paragraph above was the whole protection. That is how this project ended up
+# with four copies of itself in one Supabase instance, one of them holding 352
+# rows of real PII reachable by the browser-published `anon` role. Do not put the
+# bare command back.
+#
 # Jobs self-skip when their secrets are absent (clean no-op, not a failure).
 # Seeds are idempotent upserts, so re-running on every push is safe.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -62,7 +73,7 @@ jobs:
           cache: npm
       - run: npm ci
         if: steps.check.outputs.configured == 'true'
-      - run: npx prisma migrate deploy
+      - run: npm run db:migrate:deploy
         if: steps.check.outputs.configured == 'true'
       - run: npm run db:seed
         if: steps.check.outputs.configured == 'true'
@@ -99,7 +110,7 @@ jobs:
           cache: npm
       - run: npm ci
         if: steps.check.outputs.configured == 'true'
-      - run: npx prisma migrate deploy
+      - run: npm run db:migrate:deploy
         if: steps.check.outputs.configured == 'true'
       - run: npm run db:seed
         if: steps.check.outputs.configured == 'true'
@@ -134,7 +145,7 @@ jobs:
           cache: npm
       - run: npm ci
         if: steps.check.outputs.configured == 'true'
-      - run: npx prisma migrate deploy
+      - run: npm run db:migrate:deploy
         if: steps.check.outputs.configured == 'true'
       # Prod gets the dcica org + service menu, then the real public event
       # lineup. NEVER db:seed:test in prod — no fixtures, no fake orders.
