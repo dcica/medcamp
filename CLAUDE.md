@@ -140,17 +140,11 @@ Each of these was written after something broke. They are not style preferences.
 - **Migration folders can apply out of lexicographic order.** `migrate deploy` applies any
   unrecorded migration regardless of sort position. That is fine and expected when
   branches are authored in parallel — do not "fix" it by renaming folders.
-- **TEMPORARY — delete this bullet once the drift is resolved.** `service_types.admits`
-  and `service_types.fulfillable` exist in the database and in the migration history but
-  no longer in `schema.prisma`: `20260822040000_service_kind_and_capacity` replaced them
-  with `ServiceKind` and *deliberately* left the columns in place so the running app could
-  keep reading them, promising a later migration to drop them. No reader remains, and that
-  migration has not been written. Until it is, **every** `migrate diff` you run will emit
-  `ALTER TABLE "service_types" DROP COLUMN "admits", DROP COLUMN "fulfillable";` attached
-  to whatever you actually changed.
 - **Every FK child column gets a covering index.** Policy established by PR #6, which
   fixed 13 of them. An unindexed FK makes the parent delete scan the child table, and it
-  is worst on `ON DELETE SET NULL` edges.
+  is worst on `ON DELETE SET NULL` edges. Enforced by `npm run verify:schema`, which
+  checks index *prefix* coverage across the whole schema — a B-tree on `(a, b)` cannot
+  serve a lookup on `b`, so a set test would pass violations.
 
 ### Never write raw SQL against a named schema
 
