@@ -159,8 +159,19 @@ async function main() {
     ),
   );
 
-  /** A camp with everything done, minus whatever `gaps` names. */
-  async function fixture(suffix: string, gaps: Gap[], type: "CAMP" | "GENERAL" = "CAMP") {
+  /**
+   * A camp with everything done, minus whatever `gaps` names.
+   *
+   * `sells` is the `offersRegistration` flag and defaults to the schema's own
+   * default (true), so every fixture written before the services row learned
+   * about the public door keeps scoring exactly as it did.
+   */
+  async function fixture(
+    suffix: string,
+    gaps: Gap[],
+    type: "CAMP" | "GENERAL" = "CAMP",
+    opts: { sells?: boolean } = {},
+  ) {
     const missing = new Set(gaps);
     const event = await db.event.create({
       data: {
@@ -170,6 +181,7 @@ async function main() {
         status: missing.has("registration") ? "DRAFT" : "OPEN",
         code: `${CODE_PREFIX}-${suffix}`,
         name: `Readiness fixture ${suffix}`,
+        offersRegistration: opts.sells ?? true,
         // Relative, never literal: a hardcoded date turns the consequence copy
         // ("Camp day is in 12 days") into a lie the moment it passes.
         startsAt: new Date(Date.now() + 12 * DAY),
@@ -283,6 +295,46 @@ async function main() {
   check("nothing else ever claims to be broken in public",
     full.readiness.items.every((i) => !i.brokenInPublic) &&
       later.readiness.items.every((i) => !i.brokenInPublic));
+
+  // ── Priced but unreachable: the other half of the same question ──────────
+  //
+  // The prod defect of 2026-08-23. DCICA Festival of Lights carried a $30
+  // Competition Entry at capacity 25 while `offersRegistration` was false, so
+  // the home page linked neither Register nor Enter-a-performance and the
+  // offering could not be bought by anyone. The card scored the event green,
+  // because this row counted priced services and never asked whether a door
+  // existed. Both directions are pinned here.
+  console.log("\nPriced, but the public door is shut");
+  const shutWithPrices = await fixture("SHUTPRICED", [], "GENERAL", { sells: false });
+  const shutRow = item(shutWithPrices.readiness, "services");
+  check("a priced service behind a closed door is NOT done", shutRow?.done === false,
+    `done=${shutRow?.done} — ${shutRow?.label}`);
+  check("the label says the event is not selling",
+    (shutRow?.label ?? "").includes("not selling"), shutRow?.label);
+  check("the consequence names the flag, not the price list",
+    (shutRow?.consequence ?? "").includes("Sell to the public"), shutRow?.consequence);
+  check("flagged as broken in public — a guest cannot buy it today",
+    shutRow?.brokenInPublic === true);
+  check("the action points at the flag on camp detail, not back at /services",
+    shutRow?.href === `/admin/camps/${shutWithPrices.event.id}` &&
+      shutRow?.action === "Open the public door",
+    `${shutRow?.action} → ${shutRow?.href}`);
+
+  // The inverse. A free community night — vendors and volunteers only — is a
+  // FINISHED configuration. Scoring it "No services priced" put a blocker on it
+  // that nobody could ever clear, under a consequence describing a Register
+  // button the event does not have.
+  const freeNight = await fixture("FREENIGHT", ["services"], "GENERAL", { sells: false });
+  const freeRow = item(freeNight.readiness, "services");
+  check("an event that sells nothing on purpose is done, not blocked",
+    freeRow?.done === true, `done=${freeRow?.done} — ${freeRow?.label}`);
+  check("and it states that rather than counting to zero",
+    freeRow?.label === "Not selling anything (public registration is off)", freeRow?.label);
+  check("a done row still states no consequence", freeRow?.consequence === undefined,
+    freeRow?.consequence);
+  check("it is not painted as broken in public", freeRow?.brokenInPublic === false);
+  check("so a free public event has no services blocker at all",
+    freeNight.readiness.items.filter((i) => !i.done && i.key === "services").length === 0);
 
   // ── Volunteer fill: which signups count, and which zero matters ──────────
   console.log("\nVolunteer fill");

@@ -401,22 +401,67 @@ function score(
 
   const items: ReadinessItem[] = [];
 
-  // ── 1. Services priced, caps set ────────────────────────────────────────
+  // ── 1. Services priced, caps set — AND reachable ────────────────────────
+  //
+  // Two conditions, not one. A priced service menu is worth nothing if the
+  // event does not open a public door to it, and this row used to test only the
+  // first half: `done: caps > 0`. That scored DCICA Festival of Lights green
+  // while it carried a $30 Competition Entry, capacity 25, that no member of
+  // the public could reach, because `offersRegistration` was false and the home
+  // page hangs both its Register and its Enter-a-performance buttons off that
+  // flag. The offering was real, priced and capped for weeks; the card said the
+  // event was set up; nobody could buy it. Observed on prod 2026-08-23.
+  //
+  // The same omission ran the other way too. An event that deliberately sells
+  // NOTHING — a free community night taking only vendors and volunteers — was
+  // scored an unclearable blocker reading "No services priced", with the
+  // consequence "Anyone who taps Register reaches an empty form" underneath it.
+  // There is no Register button on such an event; the sentence described a
+  // screen that does not exist. That is precisely the permanent-blocker failure
+  // this function's own header warns teaches coordinators to ignore the card.
+  //
+  // So the row is scored against the door as well as the menu:
+  //
+  //   sells & priced    → done
+  //   sells & unpriced  → blocker: empty form (the original case)
+  //   closed & priced   → blocker: priced but unreachable (the prod case)
+  //   closed & unpriced → done. Not selling anything is a valid, finished
+  //                       configuration, not an unfinished one.
   {
     const n = e._count.caps;
+    const sells = e.offersRegistration;
+    const done = sells ? n > 0 : n === 0;
+    // Only the priced-but-shut case is something a guest hits TODAY: they come
+    // looking for the competition entry the flyer names and find no way in.
+    // The unpriced case is already covered by the original `brokenInPublic`.
+    const unreachable = !sells && n > 0;
+
     items.push({
       key: "services",
-      label: n > 0 ? plural(n, "service") + " priced, caps set" : "No services priced",
-      done: n > 0,
-      consequence:
-        n > 0
-          ? undefined
+      label: !sells
+        ? n > 0
+          ? plural(n, "service") + " priced, but this event is not selling"
+          : "Not selling anything (public registration is off)"
+        : n > 0
+          ? plural(n, "service") + " priced, caps set"
+          : "No services priced",
+      done,
+      consequence: done
+        ? undefined
+        : unreachable
+          ? plural(n, "service") +
+            " priced here, but “Sell to the public” is off, so nothing is linked from the home page. " +
+            (isPublic
+              ? "The event is listed publicly with no way to buy any of it."
+              : "Turn it on when this event goes public.")
           : isPublic
             ? "This event is on the public events page with nothing to sell. Anyone who taps Register reaches an empty form."
             : "Nothing can go on sale until at least one service has a price.",
-      action: "Price the services",
-      href: base + "/services",
-      brokenInPublic: n === 0 && isPublic,
+      // The fix for an unreachable menu is the flag on camp detail, not another
+      // trip to the services screen — the prices there are already correct.
+      action: unreachable ? "Open the public door" : "Price the services",
+      href: unreachable ? base : base + "/services",
+      brokenInPublic: !done && isPublic,
     });
   }
 
