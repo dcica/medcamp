@@ -6,9 +6,12 @@ import {
   type RegistrationInput,
 } from "@/server/registration";
 import { createCheckoutForOrder, confirmOrderPaid } from "@/server/payments";
+import { setResumeCookie } from "@/server/resumeCookie";
 
 export type SubmitResult =
-  | { ok: true; redirectUrl: string }
+  /** `orderId` is echoed back so the form can key its draft to this attempt —
+   *  see src/lib/checkoutDraft.ts and the cancel-return flow. */
+  | { ok: true; redirectUrl: string; orderId: string }
   | { ok: false; error: string };
 
 /**
@@ -56,11 +59,14 @@ export async function submitRegistration(
         method: "CASH",
         idempotencyKey: `free-${orderId}`,
       });
-      return { ok: true, redirectUrl: `/confirm/${orderId}` };
+      return { ok: true, redirectUrl: `/confirm/${orderId}`, orderId };
     }
 
-    const url = await createCheckoutForOrder(orderId);
-    return { ok: true, redirectUrl: url };
+    const { url, resumeProof } = await createCheckoutForOrder(orderId);
+    // Must be set on THIS response — it is what lets the buyer finish paying
+    // if they back out of Stripe, including from a tab they later close.
+    await setResumeCookie(resumeProof);
+    return { ok: true, redirectUrl: url, orderId };
   } catch (err) {
     return { ok: false, error: toBuyerMessage(err) };
   }

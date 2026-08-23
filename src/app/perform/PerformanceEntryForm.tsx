@@ -1,13 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ValidatedInput,
   validateEmail,
   validateName,
   validatePhone,
 } from "@/app/_components/ValidatedInput";
+import { CheckoutReturnNotice } from "@/app/_components/CheckoutReturnNotice";
 import { PERFORMANCE_AGE_BANDS } from "@/lib/performanceOptions";
+import {
+  clearDraft,
+  hasEdits,
+  loadDraft,
+  saveDraft,
+  snapshot,
+  DRAFT_KEY,
+} from "@/lib/checkoutDraft";
 import { formatCents } from "@/lib/money";
 import { submitPerformanceEntry } from "./actions";
 
@@ -38,6 +47,37 @@ type Props = {
   entries: Offering[];
   uploadsAvailable: boolean;
   maxUploadMb: number;
+  /** True when Stripe returned this entrant without payment (?cancelled=). */
+  returnedFromCheckout: boolean;
+  /** Set only when the server verified the resume cookie against that order. */
+  resumable: { orderId: string; amountCents: number } | null;
+};
+
+/**
+ * Everything the entrant typed, in one serialisable shape.
+ *
+ * This form has fifteen pieces of state and the longest fill in the product —
+ * group, choreographer, head count, age band, song, running time, two yes/nos
+ * and three contact fields. Losing it to a tap on Stripe's back link is the
+ * defect this type exists to fix, so anything added to the form above belongs
+ * in here too or it will silently stop surviving the round trip.
+ */
+type PerformDraft = {
+  serviceKey: string;
+  name: string;
+  email: string;
+  phone: string;
+  groupName: string;
+  choreographer: string;
+  participants: string;
+  ageRange: string;
+  songTitle: string;
+  mins: string;
+  secs: string;
+  usesProps: boolean | null;
+  needsStagePrep: boolean | null;
+  marketingConsent: boolean;
+  wantsUpload: boolean;
 };
 
 function describeSeconds(seconds: number): string {
@@ -52,6 +92,8 @@ export function PerformanceEntryForm({
   entries,
   uploadsAvailable,
   maxUploadMb,
+  returnedFromCheckout,
+  resumable,
 }: Props) {
   const [serviceKey, setServiceKey] = useState(entries[0]?.key ?? "");
   const offering = entries.find((e) => e.key === serviceKey) ?? entries[0];
@@ -75,6 +117,108 @@ export function PerformanceEntryForm({
 
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const values: PerformDraft = {
+    serviceKey,
+    name,
+    email,
+    phone,
+    groupName,
+    choreographer,
+    participants,
+    ageRange,
+    songTitle,
+    mins,
+    secs,
+    usesProps,
+    needsStagePrep,
+    marketingConsent,
+    wantsUpload,
+  };
+
+  /**
+   * Snapshot of the values as restored, so `dirty` below is a comparison rather
+   * than fifteen hand-maintained onChange hooks. Anything the entrant changes
+   * after landing here diverges from it; the restore itself does not.
+   */
+  const baseline = useRef<string | null>(null);
+  const restored = useRef(false);
+
+  /**
+   * The draft is applied in an effect, NOT in a lazy useState initialiser.
+   *
+   * sessionStorage does not exist during server rendering, so a lazy
+   * initialiser returns empty on the server and populated on the client — a
+   * hydration mismatch, which React resolves by discarding one of them, and the
+   * one it discards is not reliably the empty one. Correctness beats the single
+   * frame of empty fields, on a page the buyer has just navigated to from
+   * another origin anyway.
+   */
+  useEffect(() => {
+    if (restored.current) return;
+    restored.current = true;
+
+    if (!returnedFromCheckout) {
+      // A fresh visit starts fresh. Without this, a draft left over from a
+      // completed purchase would refill the form the next time someone entered
+      // a second group from the same tab.
+      clearDraft(DRAFT_KEY.perform);
+      return;
+    }
+
+    const draft = loadDraft<PerformDraft>(DRAFT_KEY.perform, eventId);
+    if (!draft) {
+      // No draft, but possibly still a resumable order — that is the tab-loss
+      // case the resume cookie exists for. The baseline must be set ANYWAY, or
+      // `dirty` below can never become true and the resume button would go on
+      // offering the old order's total under a form they have since filled in
+      // from scratch.
+      baseline.current = snapshot(values);
+      return;
+    }
+
+    const v = draft.values;
+    const applied: PerformDraft = {
+      ...v,
+      // Preserved as a tri-state. `null` means "skipped the question", which a
+      // coordinator planning stage changeovers reads differently from "No" —
+      // see the YesNo comment below. `?? null`, never `?? false`.
+      usesProps: v.usesProps ?? null,
+      needsStagePrep: v.needsStagePrep ?? null,
+      // Uploads may have been switched off since they typed this.
+      wantsUpload: v.wantsUpload && uploadsAvailable,
+    };
+
+    setServiceKey(applied.serviceKey);
+    setName(applied.name);
+    setEmail(applied.email);
+    setPhone(applied.phone);
+    setGroupName(applied.groupName);
+    setChoreographer(applied.choreographer);
+    setParticipants(applied.participants);
+    setAgeRange(applied.ageRange);
+    setSongTitle(applied.songTitle);
+    setMins(applied.mins);
+    setSecs(applied.secs);
+    setUsesProps(applied.usesProps);
+    setNeedsStagePrep(applied.needsStagePrep);
+    setMarketingConsent(applied.marketingConsent);
+    setWantsUpload(applied.wantsUpload);
+    // The APPLIED values, not the raw draft: if a coercion above changed
+    // anything, comparing against the raw draft would read as an edit the
+    // entrant never made and would retract the resume button on arrival.
+    baseline.current = snapshot(applied);
+    // `values` is read once, on mount, and the effect is guarded by
+    // `restored` — it must not re-run when the entrant types.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [returnedFromCheckout, eventId, uploadsAvailable]);
+
+  /**
+   * Has the entrant changed anything since landing back here? Drives whether
+   * the resume button survives — see CheckoutReturnNotice for why editing the
+   * form must retract an offer to pay the old order's total.
+   */
+  const dirty = hasEdits(baseline.current, values);
 
   const durationSeconds =
     mins.trim() === "" && secs.trim() === ""
@@ -167,6 +311,15 @@ export function PerformanceEntryForm({
       setError(result.error);
       return;
     }
+    // Written immediately before the hop, because that hop is a full document
+    // navigation to another origin — every useState above is about to cease to
+    // exist. Keyed to the order just created so the return page can tell this
+    // draft from a stale one.
+    saveDraft<PerformDraft>(DRAFT_KEY.perform, {
+      eventId,
+      orderId: result.orderId,
+      values,
+    });
     window.location.href = result.redirectUrl;
   }
 
@@ -189,6 +342,19 @@ export function PerformanceEntryForm({
 
   return (
     <div className="mt-6 space-y-6">
+      {returnedFromCheckout && (
+        <CheckoutReturnNotice
+          resumable={resumable}
+          dirty={dirty}
+          routes={{
+            successPath: resumable
+              ? `/perform/after-payment/${resumable.orderId}`
+              : undefined,
+            cancelPath: "/perform",
+          }}
+        />
+      )}
+
       {entries.length > 1 && (
         <Section title="Which category">
           <div className="space-y-2">

@@ -4,6 +4,8 @@ import { resolvePrice } from "@/lib/pricing";
 import { isRegistrationOpen } from "@/server/registration";
 import { uploadsEnabled, SONG_MAX_BYTES } from "@/lib/storage";
 import { PageHelp } from "@/app/_components/PageHelp";
+import { getResumableCheckout } from "@/server/payments";
+import { readResumeCookie } from "@/server/resumeCookie";
 import { PerformanceEntryForm } from "./PerformanceEntryForm";
 
 export const dynamic = "force-dynamic";
@@ -18,13 +20,16 @@ export const dynamic = "force-dynamic";
  *
  * Honours ?event=<id> from the events listing; with no id it falls back to the
  * soonest-ending open event that actually offers an entry fee.
+ *
+ * ?cancelled=<orderId> means Stripe just sent an entrant back without payment.
+ * See getResumableCheckout for why that id is worthless without the cookie.
  */
 export default async function PerformPage({
   searchParams,
 }: {
-  searchParams: Promise<{ event?: string }>;
+  searchParams: Promise<{ event?: string; cancelled?: string }>;
 }) {
-  const { event: eventId } = await searchParams;
+  const { event: eventId, cancelled } = await searchParams;
 
   // ONE clock for the whole render — the candidate query, the open/closed
   // predicate and the displayed price all answer to this instant. Same reasoning
@@ -107,6 +112,13 @@ export default async function PerformPage({
   const maxMb = Math.round(SONG_MAX_BYTES / (1024 * 1024));
   const canUpload = uploadsEnabled();
 
+  // Server-resolved, so the amount on the resume button is the ORDER's current
+  // total and not a number the browser has been carrying around. Gated on the
+  // signed cookie: a bare ?cancelled= triggers no lookup at all.
+  const resumable = cancelled
+    ? await getResumableCheckout(cancelled, await readResumeCookie())
+    : null;
+
   return (
     <main className="mx-auto max-w-screen-sm px-4 py-6">
       <PageHelp
@@ -141,6 +153,8 @@ export default async function PerformPage({
         entries={entries}
         uploadsAvailable={canUpload}
         maxUploadMb={maxMb}
+        returnedFromCheckout={Boolean(cancelled)}
+        resumable={resumable}
       />
 
       <p className="mt-6 text-center text-sm">

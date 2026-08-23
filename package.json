@@ -27,7 +27,8 @@
     "verify:performance": "tsx scripts/verify-performance.ts",
     "verify:gate": "tsx scripts/verify-gate.ts",
     "verify:readiness": "tsx scripts/verify-readiness.ts",
-    "verify": "npm run verify:schema && npm run verify:pricing && npm run verify:validation && npm run verify:storage && npm run verify:branding && npm run verify:performance && npm run verify:gate && npm run verify:readiness"
+    "verify:checkout": "tsx scripts/verify-checkout.ts",
+    "verify": "npm run verify:schema && npm run verify:pricing && npm run verify:validation && npm run verify:storage && npm run verify:branding && npm run verify:performance && npm run verify:gate && npm run verify:readiness && npm run verify:checkout"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

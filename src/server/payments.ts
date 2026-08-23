@@ -1,6 +1,11 @@
 import { db } from "@/lib/db";
 import { stripe } from "@/lib/stripe";
 import { env } from "@/lib/env";
+import {
+  buildCheckoutReturn,
+  type CheckoutRoutes,
+} from "@/lib/checkoutReturn";
+import { signResumeProof, verifyResumeProof } from "@/lib/checkoutResume";
 import { sendConfirmationEmail } from "@/lib/email";
 import { newCampId } from "@/lib/campId";
 import { log } from "@/lib/logger";
@@ -37,20 +42,41 @@ export class MissingCapError extends Error {
 }
 
 /**
+ * What a caller must do with a freshly-minted Checkout session.
+ *
+ * `resumeProof` is not optional housekeeping. It is the cookie value that lets
+ * this buyer come back and finish paying after backing out, and the only place
+ * it can be set is the request that is about to redirect them. Every caller
+ * hands it to setResumeCookie(). Returning it as part of a required shape is
+ * what makes forgetting it visible at the call site rather than six weeks later
+ * in a support thread.
+ */
+export type CheckoutHandoff = {
+  url: string;
+  resumeProof: string | null;
+};
+
+/** Line-item total, quantity-aware. Must match what confirmOrderPaid records. */
+function orderTotalCents(
+  lineItems: { amountCents: number; quantity: number }[],
+): number {
+  return lineItems.reduce((s, li) => s + li.amountCents * li.quantity, 0);
+}
+
+/**
  * Create a Stripe hosted Checkout session for a PENDING order (decision #7:
- * hosted Checkout, no native build). Returns the redirect URL. For a $0 order
- * there's nothing to charge — caller should confirm directly instead.
+ * hosted Checkout, no native build). For a $0 order there's nothing to charge —
+ * caller should confirm directly instead.
+ *
+ * Callers pass BASE PATHS only. The return-URL query contract — always
+ * `cancelled=<orderId>`, plus `event=` when the order has one — belongs to
+ * buildCheckoutReturn, so that no payment flow can ship without it. See
+ * src/lib/checkoutReturn.ts for why that was worth centralising.
  */
 export async function createCheckoutForOrder(
   orderId: string,
-  /**
-   * Where Stripe returns the browser. Defaults suit /register. The performance
-   * flow overrides both so the entrant lands on the song-upload step first and
-   * a cancelled entry returns to the entry form rather than to /register, which
-   * cannot sell a competition entry at all.
-   */
-  routes?: { successPath?: string; cancelPath?: string },
-): Promise<string> {
+  routes?: CheckoutRoutes,
+): Promise<CheckoutHandoff> {
   const order = await db.order.findUniqueOrThrow({
     where: { id: orderId },
     include: { lineItems: true, event: true },
@@ -59,10 +85,7 @@ export async function createCheckoutForOrder(
   // Quantity-aware: a qty-5 merch line costs 5 × the unit price. Must match the
   // total confirmOrderPaid records, or Stripe under-collects and the ledger and
   // the charge disagree (only bites quantity-mode events — camps are all qty 1).
-  const totalCents = order.lineItems.reduce(
-    (s, li) => s + li.amountCents * li.quantity,
-    0,
-  );
+  const totalCents = orderTotalCents(order.lineItems);
   if (totalCents === 0) {
     throw new Error("Order total is $0 — confirm directly, no checkout needed.");
   }
@@ -70,17 +93,230 @@ export async function createCheckoutForOrder(
     throw new Error("Stripe is not configured (STRIPE_SECRET_KEY missing).");
   }
 
+  const session = await openCheckoutSession(order, totalCents, routes);
+  return { url: session.url, resumeProof: signResumeProof(order.id) };
+}
+
+export type ResumeOutcome =
+  | { ok: true; url: string; alreadyConfirmed: boolean; resumeProof: string | null }
+  | { ok: false; reason: "not-authorised" | "not-resumable" };
+
+/**
+ * Re-open Checkout on an order the buyer already created, so backing out of
+ * Stripe costs them a tap rather than the whole form.
+ *
+ * `proof` is the checkout_resume cookie value, passed in rather than read from
+ * next/headers here — that keeps this callable from scripts/verify-checkout.ts
+ * and keeps request plumbing in the action layer.
+ *
+ * CAPACITY IS NOT RE-CHECKED, matching the rest of the system: caps decrement
+ * atomically at confirmation, never at checkout creation (see confirmOrderPaid
+ * below). An hour-long resume window does make "sold out while you were away"
+ * more likely than it was, and it lands in the state that is already accepted
+ * elsewhere — the buyer pays, OverCapacityError is logged, the webhook 200s,
+ * and staff refunds. Do not bolt a capacity check on here without deciding what
+ * the buyer sees, because refusing at this point strands an order they can
+ * neither pay for nor walk away from.
+ */
+export async function resumeCheckoutForOrder(
+  orderId: string,
+  proof: string | null | undefined,
+  routes?: CheckoutRoutes,
+): Promise<ResumeOutcome> {
+  // Authorisation BEFORE any database read. This ordering is the whole defence
+  // against ?cancelled= becoming a PII oracle: an unauthorised caller must not
+  // be able to distinguish a real order id from a fabricated one, and the only
+  // way to guarantee that is to not look one up.
+  if (!verifyResumeProof(orderId, proof)) {
+    return { ok: false, reason: "not-authorised" };
+  }
+
+  const order = await db.order.findUnique({
+    where: { id: orderId },
+    include: { lineItems: true, event: true },
+  });
+  // A valid MAC for an id that no longer exists is still nothing this caller
+  // may learn about, so it gets the same answer as a bad MAC.
+  if (!order) return { ok: false, reason: "not-authorised" };
+
+  const { successUrl } = buildCheckoutReturn(order, env.NEXT_PUBLIC_APP_URL, routes);
+
+  // Confirmed while they were away. The sequence is ordinary: back out of
+  // Checkout, pay in the tab that is still open, come back, tap "finish
+  // paying". That is a success, not an error, and the honest answer is their
+  // receipt. The session_id placeholder is stripped because Stripe is not the
+  // one substituting it on this path.
+  if (order.status === "CONFIRMED") {
+    return {
+      ok: true,
+      alreadyConfirmed: true,
+      url: successUrl.replace("?session_id={CHECKOUT_SESSION_ID}", ""),
+      resumeProof: null,
+    };
+  }
+  if (order.status !== "PENDING") {
+    return { ok: false, reason: "not-resumable" };
+  }
+
+  const totalCents = orderTotalCents(order.lineItems);
+  if (totalCents === 0) return { ok: false, reason: "not-resumable" };
+  if (!stripe) return { ok: false, reason: "not-resumable" };
+
+  const session = await openCheckoutSession(order, totalCents, routes);
+
+  // ── ORDERING IS LOAD-BEARING: create the new session, THEN expire the old ──
+  //
+  // The webhook's checkout.session.expired handler cancels an order only when
+  // no PENDING payment row remains. Expiring first would open a window in which
+  // the old session's `expired` event arrives, finds no live session, and
+  // CANCELS an order the buyer is at that moment paying for — and because
+  // confirmOrderPaid claims on `status: "PENDING"`, that cancellation would
+  // make the subsequent payment confirm nothing while the charge is captured.
+  // This order guarantees at least one live PENDING payment row at all times.
+  //
+  // THE COST, STATED PLAINLY: between these two calls both sessions are
+  // payable. confirmOrderPaid guarantees one CONFIRMATION, not one CAPTURE, so
+  // a buyer who pays in both tabs is charged twice and needs a manual refund.
+  // The window is small and this is the better trade — the reverse ordering
+  // turns a rare double charge into a routine dead order — but it is real and
+  // it is not closed. Do not describe it as fixed.
+  await expireOtherPendingSessions(order.id, session.id);
+
+  return {
+    ok: true,
+    alreadyConfirmed: false,
+    url: session.url,
+    resumeProof: signResumeProof(order.id),
+  };
+}
+
+/**
+ * What the cancel-return page may safely show about the order Stripe just sent
+ * the buyer back from.
+ *
+ * Returns null for anything the caller has not proved it owns, and — crucially —
+ * returns null identically for "bad proof" and "no such order", so the page
+ * cannot be used to test whether an order id exists.
+ *
+ * Only the total is exposed. The page has no need for the registrant's name,
+ * email or phone, so they are not selected: the buyer's own draft refills the
+ * form, and the amount is the one fact that must come from the server because a
+ * stale one would misprice a payment button.
+ */
+export async function getResumableCheckout(
+  orderId: string | undefined,
+  proof: string | null | undefined,
+): Promise<{ orderId: string; amountCents: number } | null> {
+  if (!orderId) return null;
+  if (!verifyResumeProof(orderId, proof)) return null;
+
+  const order = await db.order.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      status: true,
+      lineItems: { select: { amountCents: true, quantity: true } },
+    },
+  });
+  if (!order || order.status !== "PENDING") return null;
+
+  return { orderId: order.id, amountCents: orderTotalCents(order.lineItems) };
+}
+
+/**
+ * An abandoned checkout has run out of time. Retire the dead session and, if
+ * this order has nothing else in flight, retire the order with it.
+ *
+ * Returns true when the ORDER was cancelled (as opposed to just the payment row
+ * being retired), which is what the webhook reports back to Stripe.
+ *
+ * ── THE GUARD ON STEP 2 IS THE WHOLE FUNCTION ──
+ * An order can legitimately have more than one Stripe session: resuming mints a
+ * fresh one while the abandoned one is still winding down
+ * (resumeCheckoutForOrder, above). The `expired` event for the OLD session then
+ * arrives while the buyer is mid-payment on the NEW one. Cancelling on that
+ * event alone would kill their order underneath them — and worse, silently:
+ * confirmOrderPaid claims on `status: "PENDING"`, so their payment would land,
+ * match zero rows, report `alreadyConfirmed`, and leave a captured charge
+ * attached to a cancelled order with no campId, no QR and no email.
+ *
+ * So the order is cancelled only when NO live session remains. "Live" is read
+ * off the Payment rows, which is why expireOtherPendingSessions is careful to
+ * mark superseded rows FAILED rather than leaving them PENDING.
+ *
+ * Idempotent: a Stripe retry re-runs it, finds the payment already FAILED and
+ * the order already CANCELLED, and changes nothing.
+ */
+export async function reapExpiredCheckout(
+  orderId: string,
+  checkoutSessionId: string,
+): Promise<boolean> {
+  return db.$transaction(async (tx) => {
+    // 1. This session is dead. Retire its payment row first, so the liveness
+    //    test below cannot count the very session that just expired.
+    await tx.payment.updateMany({
+      where: { orderId, stripeCheckoutId: checkoutSessionId, status: "PENDING" },
+      data: { status: "FAILED" },
+    });
+
+    // 2. Anything else still payable on this order? A resumed order has one.
+    const live = await tx.payment.count({
+      where: { orderId, status: "PENDING" },
+    });
+    if (live > 0) return false;
+
+    // Conditional UPDATE, matching the atomic-claim idiom confirmOrderPaid
+    // uses: PENDING is re-checked at write time, so an order confirmed by a
+    // concurrent webhook between the count above and this statement is not
+    // clobbered. This is the statement that must never win a race with a
+    // payment, hence the belt of the status filter and the braces of step 2.
+    const cancelled = await tx.order.updateMany({
+      where: { id: orderId, status: "PENDING" },
+      data: { status: "CANCELLED" },
+    });
+    if (cancelled.count > 0) {
+      // VOID rather than delete: the line items are what a coordinator reads to
+      // understand what someone tried to buy and did not.
+      await tx.lineItem.updateMany({
+        where: { orderId, status: "PENDING_PAYMENT" },
+        data: { status: "VOID" },
+      });
+    }
+    return cancelled.count > 0;
+  });
+}
+
+/** Mint the Stripe session and record its PENDING Payment row. Shared by create and resume. */
+async function openCheckoutSession(
+  order: {
+    id: string;
+    orgId: string;
+    eventId: string;
+    registrantEmail: string;
+    lineItems: { description: string; amountCents: number; quantity: number }[];
+  },
+  totalCents: number,
+  routes?: CheckoutRoutes,
+): Promise<{ id: string; url: string }> {
+  if (!stripe) {
+    throw new Error("Stripe is not configured (STRIPE_SECRET_KEY missing).");
+  }
+
+  const { successUrl, cancelUrl, expiresAt } = buildCheckoutReturn(
+    order,
+    env.NEXT_PUBLIC_APP_URL,
+    routes,
+  );
+
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
-    success_url: `${env.NEXT_PUBLIC_APP_URL}${
-      routes?.successPath ?? `/confirm/${order.id}`
-    }?session_id={CHECKOUT_SESSION_ID}`,
-    // Carries the event back. Without ?event= a cancelling buyer landed on bare
-    // /register and got whatever the fallback pool picked — a cancelled Diwali
-    // buyer dropped onto Navratri's checkout. Read off the order, not threaded in.
-    cancel_url: `${env.NEXT_PUBLIC_APP_URL}${
-      routes?.cancelPath ?? `/register?event=${order.eventId}&cancelled=${order.id}`
-    }`,
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+    // Without this a session lives 24 hours, which is why abandoned orders
+    // accumulated without bound: checkout.session.expired is what reaps them
+    // and it never fired inside any window anyone was looking at. See
+    // CHECKOUT_TTL_SECONDS for why this is an hour, not Stripe's 30-minute floor.
+    expires_at: expiresAt,
     customer_email: order.registrantEmail,
     // Webhook reads this to confirm the right order (decision #2).
     metadata: { orderId: order.id, orgId: order.orgId },
@@ -111,7 +347,53 @@ export async function createCheckoutForOrder(
   });
 
   if (!session.url) throw new Error("Stripe did not return a checkout URL.");
-  return session.url;
+  return { id: session.id, url: session.url };
+}
+
+/**
+ * Close every other still-open session on this order, so only the newest can be
+ * paid, and drop its Payment row to FAILED.
+ *
+ * Best-effort by design: Stripe throws when a session is already complete or
+ * already expired, and neither is a reason to fail the resume a buyer is
+ * waiting on. The expires_at ceiling is the backstop for anything missed here.
+ *
+ * Marking the row FAILED is not cosmetic — the webhook's reaper reads exactly
+ * this set to decide whether an order still has a live session, so a row left
+ * PENDING against a dead session would keep an abandoned order alive forever.
+ */
+async function expireOtherPendingSessions(
+  orderId: string,
+  keepSessionId: string,
+): Promise<void> {
+  const stale = await db.payment.findMany({
+    where: {
+      orderId,
+      status: "PENDING",
+      method: "STRIPE",
+      stripeCheckoutId: { not: null },
+      NOT: { stripeCheckoutId: keepSessionId },
+    },
+    select: { id: true, stripeCheckoutId: true },
+  });
+
+  for (const payment of stale) {
+    try {
+      if (stripe && payment.stripeCheckoutId) {
+        await stripe.checkout.sessions.expire(payment.stripeCheckoutId);
+      }
+    } catch (err) {
+      log.warn("resume: could not expire superseded checkout session", {
+        orderId,
+        checkoutId: payment.stripeCheckoutId,
+        err,
+      });
+    }
+    await db.payment.update({
+      where: { id: payment.id },
+      data: { status: "FAILED" },
+    });
+  }
 }
 
 /**

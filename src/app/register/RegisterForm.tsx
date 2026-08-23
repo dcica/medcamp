@@ -2,9 +2,18 @@
 
 import type { ServiceKind } from "@prisma/client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { formatCents } from "@/lib/money";
+import {
+  clearDraft,
+  hasEdits,
+  loadDraft,
+  saveDraft,
+  snapshot,
+  DRAFT_KEY,
+} from "@/lib/checkoutDraft";
 import { AddressInput } from "@/app/_components/AddressInput";
+import { CheckoutReturnNotice } from "@/app/_components/CheckoutReturnNotice";
 import {
   ValidatedInput,
   validateEmail,
@@ -42,6 +51,27 @@ const emptyAttendee = (): AttendeeForm => ({
 });
 
 /**
+ * Everything the buyer typed, in one serialisable shape, so that backing out of
+ * Stripe Checkout does not throw it away.
+ *
+ * `attendees` and `quantities` are the two that matter and the two most likely
+ * to be quietly dropped by a restore: one is an array of objects with a nested
+ * string array, the other a sparse record keyed by service. A restore that
+ * brings back the contact fields and silently loses six attendees and their
+ * addresses is worse than no restore at all, because the buyer will not notice
+ * until the badges print.
+ */
+type RegisterDraft = {
+  registrant: { name: string; email: string; phone: string };
+  iAmAttending: boolean;
+  marketingConsent: boolean;
+  attendees: AttendeeForm[];
+  quantities: Record<string, number>;
+  planId: string | null;
+  donation: string;
+};
+
+/**
  * Phone-first registration form. Two modes (collectsAttendeeDetails), plus an
  * optional donation, an optional family-membership add-on, and — on events that
  * honor membership — a compare where buying membership comps admission. Pricing
@@ -55,6 +85,8 @@ export function RegisterForm({
   honorsMembership,
   allowsRefunds,
   plans,
+  returnedFromCheckout,
+  resumable,
 }: {
   eventId: string;
   services: Service[];
@@ -63,6 +95,10 @@ export function RegisterForm({
   honorsMembership: boolean;
   allowsRefunds: boolean;
   plans: Plan[];
+  /** True when Stripe returned this buyer without payment (?cancelled=). */
+  returnedFromCheckout: boolean;
+  /** Set only when the server verified the resume cookie against that order. */
+  resumable: { orderId: string; amountCents: number } | null;
 }) {
   const [registrant, setRegistrant] = useState({ name: "", email: "", phone: "" });
   const [iAmAttending, setIAmAttending] = useState(false);
@@ -73,6 +109,84 @@ export function RegisterForm({
   const [donation, setDonation] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  const values: RegisterDraft = {
+    registrant,
+    iAmAttending,
+    marketingConsent,
+    attendees,
+    quantities,
+    planId,
+    donation,
+  };
+
+  /** Snapshot as restored, so `dirty` is a comparison rather than a flag
+   *  threaded through every onChange in this file. */
+  const baseline = useRef<string | null>(null);
+  const restored = useRef(false);
+
+  /**
+   * Applied in an effect, NOT in a lazy useState initialiser: sessionStorage
+   * does not exist during server rendering, so a lazy initialiser would render
+   * empty on the server and populated on the client and React would resolve the
+   * hydration mismatch by throwing one of them away. One frame of empty fields
+   * is the cost, on a page just navigated to from another origin.
+   */
+  useEffect(() => {
+    if (restored.current) return;
+    restored.current = true;
+
+    if (!returnedFromCheckout) {
+      // A fresh visit starts fresh, so a draft left behind by a completed
+      // purchase cannot refill the form for the next buyer on this tab.
+      clearDraft(DRAFT_KEY.register);
+      return;
+    }
+
+    const draft = loadDraft<RegisterDraft>(DRAFT_KEY.register, eventId);
+    if (!draft) {
+      // No draft, but possibly still a resumable order — that is the tab-loss
+      // case the resume cookie exists for. The baseline must be set ANYWAY, or
+      // `dirty` below can never become true and the resume button would go on
+      // offering the old order's total under a basket they have since rebuilt.
+      baseline.current = snapshot(values);
+      return;
+    }
+
+    const v = draft.values;
+    // Guard the shapes rather than trusting them: this is JSON out of a browser
+    // store, and an empty attendee list would render a form with no rows and no
+    // way to add the first one.
+    const applied: RegisterDraft = {
+      ...v,
+      attendees:
+        Array.isArray(v.attendees) && v.attendees.length > 0
+          ? v.attendees
+          : [emptyAttendee()],
+      quantities: v.quantities ?? {},
+      planId: v.planId ?? null,
+      donation: v.donation ?? "",
+    };
+
+    setRegistrant(applied.registrant);
+    setIAmAttending(applied.iAmAttending);
+    setMarketingConsent(applied.marketingConsent);
+    setAttendees(applied.attendees);
+    setQuantities(applied.quantities);
+    setPlanId(applied.planId);
+    setDonation(applied.donation);
+    // The APPLIED values, not the raw draft: if a guard above substituted
+    // anything, comparing against the raw draft would read as an edit the buyer
+    // never made and would retract the resume button on arrival.
+    baseline.current = snapshot(applied);
+    // `values` is read once, on mount, and the effect is guarded by
+    // `restored` — it must not re-run when the buyer types.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [returnedFromCheckout, eventId]);
+
+  /** Changed anything since landing back here? Retracts the resume offer — see
+   *  CheckoutReturnNotice for why an edited form must not offer the old total. */
+  const dirty = hasEdits(baseline.current, values);
 
   const priceOf = (key: string) =>
     services.find((s) => s.key === key)?.priceCents ?? 0;
@@ -163,6 +277,15 @@ export function RegisterForm({
               .filter((q) => q.quantity > 0),
       });
       if (res.ok) {
+        // Written immediately before the hop, because that hop is a full
+        // document navigation to another origin — every useState above is about
+        // to cease to exist. Keyed to the order just created so the return page
+        // can tell this draft from a stale one.
+        saveDraft<RegisterDraft>(DRAFT_KEY.register, {
+          eventId,
+          orderId: res.orderId,
+          values,
+        });
         window.location.href = res.redirectUrl;
       } else {
         setError(res.error);
@@ -175,6 +298,17 @@ export function RegisterForm({
 
   return (
     <div className="mt-6 space-y-6">
+      {returnedFromCheckout && (
+        <CheckoutReturnNotice
+          resumable={resumable}
+          dirty={dirty}
+          routes={{
+            successPath: resumable ? `/confirm/${resumable.orderId}` : undefined,
+            cancelPath: "/register",
+          }}
+        />
+      )}
+
       {/* Registrant */}
       <section className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">

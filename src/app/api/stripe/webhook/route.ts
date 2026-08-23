@@ -4,6 +4,7 @@ import { stripe } from "@/lib/stripe";
 import { env } from "@/lib/env";
 import {
   confirmOrderPaid,
+  reapExpiredCheckout,
   MissingCapError,
   OverCapacityError,
 } from "@/server/payments";
@@ -94,6 +95,31 @@ export async function POST(req: NextRequest) {
       // the part that matters. Rethrowing lets the framework print it. Next
       // still answers an uncaught throw with a 500, so Stripe retries.
       log.error("stripe webhook: confirmation failed", { orderId, err });
+      throw err;
+    }
+  }
+
+  // The other half of the story: a buyer who never came back. Without this the
+  // session simply went quiet, the order sat PENDING forever, and reconciliation
+  // could not tell an abandoned checkout from one still in flight. Stripe emits
+  // this only for a session that can NO LONGER be paid, which is what makes
+  // cancelling here safe — confirmOrderPaid claims on `status: "PENDING"`, so
+  // cancelling an order that later gets paid would swallow the confirmation
+  // while the charge was captured.
+  if (event.type === "checkout.session.expired") {
+    const session = event.data.object as Stripe.Checkout.Session;
+    const orderId = session.metadata?.orderId;
+    if (!orderId) {
+      return NextResponse.json({ received: true, note: "no orderId" });
+    }
+    try {
+      const cancelled = await reapExpiredCheckout(orderId, session.id);
+      return NextResponse.json({ received: true, cancelled });
+    } catch (err) {
+      // Same reasoning as the 5xx branch above: a silent failure here leaves a
+      // dead order looking live, and Stripe retrying is harmless because
+      // reapExpiredCheckout is idempotent.
+      log.error("stripe webhook: expiry reap failed", { orderId, err });
       throw err;
     }
   }

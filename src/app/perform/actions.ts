@@ -1,9 +1,9 @@
 "use server";
 
-import { headers } from "next/headers";
 import { ZodError } from "zod";
-import { rateLimit } from "@/lib/rateLimit";
 import { createCheckoutForOrder, confirmOrderPaid } from "@/server/payments";
+import { setResumeCookie } from "@/server/resumeCookie";
+import { guard } from "@/server/requestGuard";
 import {
   beginSongUpload,
   chooseOfflineDelivery,
@@ -22,7 +22,9 @@ import {
  */
 
 export type EntryResult =
-  | { ok: true; redirectUrl: string }
+  /** `orderId` is echoed back so the form can key its draft to this attempt —
+   *  see src/lib/checkoutDraft.ts and the cancel-return flow. */
+  | { ok: true; redirectUrl: string; orderId: string }
   | { ok: false; error: string };
 
 export type UploadResult =
@@ -49,37 +51,6 @@ function toEntrantMessage(err: unknown): string {
 }
 
 /**
- * Best-effort client identity for rate limiting. `x-forwarded-for` is
- * attacker-controlled in general, but on Vercel the platform overwrites it, and
- * the fallback shares one bucket rather than failing open per-request — a
- * spoofed header therefore buys a bigger bucket, never an unlimited one.
- */
-async function clientKey(): Promise<string> {
-  const h = await headers();
-  const fwd = h.get("x-forwarded-for");
-  const ip = fwd?.split(",")[0]?.trim();
-  return ip && ip.length > 0 ? ip : "unknown";
-}
-
-/**
- * Rate limit gate shared by every code-addressed action below.
- *
- * The code is a 40-bit CSPRNG token, so guessing is ~10^12 attempts — this
- * exists so that arithmetic cannot be turned into a database DoS, not as the
- * access control itself. See src/lib/rateLimit.ts on why per-instance counters
- * are adequate for that job.
- */
-async function guard(action: string, limit: number, windowSeconds: number) {
-  const key = `${action}:${await clientKey()}`;
-  const result = rateLimit(key, limit, windowSeconds);
-  if (!result.ok) {
-    throw new Error(
-      `Too many attempts — wait ${result.retryAfterSeconds}s and try again.`,
-    );
-  }
-}
-
-/**
  * Submit an entry. Creates a PENDING order, then hands off to hosted Checkout.
  * The webhook — not this action — is what confirms the entry (decision #2), so
  * nothing downstream sees the group until the fee lands.
@@ -99,18 +70,24 @@ export async function submitPerformanceEntry(
         idempotencyKey: `free-${orderId}`,
       });
       // Free entry: no Stripe hop, but the song step still comes first.
-      return { ok: true, redirectUrl: `/perform/after-payment/${orderId}` };
+      return { ok: true, redirectUrl: `/perform/after-payment/${orderId}`, orderId };
     }
 
     // Land on the song step first, then the confirmation — see
     // src/app/perform/after-payment/[orderId]/page.tsx for why that ordering.
     // The receipt code does not exist yet (confirmOrder assigns it), so the
     // return URL is keyed on the order id.
-    const url = await createCheckoutForOrder(orderId, {
+    // Base paths only — buildCheckoutReturn appends `event=` and `cancelled=`.
+    // This used to hand-write the cancel query, which is how the app ended up
+    // with a `cancelled` param that two call sites produced and nobody read.
+    const { url, resumeProof } = await createCheckoutForOrder(orderId, {
       successPath: `/perform/after-payment/${orderId}`,
-      cancelPath: `/perform?event=${input.eventId}&cancelled=${orderId}`,
+      cancelPath: "/perform",
     });
-    return { ok: true, redirectUrl: url };
+    // Must be set on THIS response — it is what lets the entrant finish paying
+    // if they back out of Stripe, including from a tab they later close.
+    await setResumeCookie(resumeProof);
+    return { ok: true, redirectUrl: url, orderId };
   } catch (err) {
     return { ok: false, error: toEntrantMessage(err) };
   }

@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { RegisterForm } from "./RegisterForm";
+import { getResumableCheckout } from "@/server/payments";
+import { readResumeCookie } from "@/server/resumeCookie";
 import { resolvePrice } from "@/lib/pricing";
 import { isRegistrationOpen } from "@/server/registration";
 
@@ -12,13 +14,16 @@ export const dynamic = "force-dynamic";
  * server-side, then hands off to the phone-first form. Honours ?event=<id> from
  * the events listing for multi-event selection; with no id it falls back to the
  * next open event — the one ending soonest.
+ *
+ * ?cancelled=<orderId> means Stripe just sent a buyer back without payment.
+ * See getResumableCheckout for why that id is worthless without the cookie.
  */
 export default async function RegisterPage({
   searchParams,
 }: {
-  searchParams: Promise<{ event?: string }>;
+  searchParams: Promise<{ event?: string; cancelled?: string }>;
 }) {
-  const { event: eventId } = await searchParams;
+  const { event: eventId, cancelled } = await searchParams;
 
   // ONE clock for the whole render: the candidate query, the predicate and the
   // displayed prices all answer to this instant. A single request must not hold
@@ -189,6 +194,13 @@ export default async function RegisterPage({
     },
   ];
 
+  // Server-resolved, so the amount on the resume button is the ORDER's current
+  // total and not a number the browser has been carrying around. Gated on the
+  // signed cookie: a bare ?cancelled= triggers no lookup at all.
+  const resumable = cancelled
+    ? await getResumableCheckout(cancelled, await readResumeCookie())
+    : null;
+
   return (
     <main className="mx-auto max-w-screen-sm px-4 py-8">
       <PageHelp
@@ -205,6 +217,8 @@ export default async function RegisterPage({
         honorsMembership={event.honorsMembership}
         allowsRefunds={event.allowsRefunds}
         plans={plans}
+        returnedFromCheckout={Boolean(cancelled)}
+        resumable={resumable}
       />
     </main>
   );

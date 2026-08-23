@@ -56,6 +56,14 @@ const schema = z.object({
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().optional(),
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  /**
+   * HMAC key for the checkout-resume cookie (src/lib/checkoutResume.ts), which
+   * is what lets a buyer who backed out of Stripe finish paying without
+   * retyping. Optional: falls back to NEXTAUTH_SECRET, then STRIPE_SECRET_KEY,
+   * so resume works out of the box wherever checkout does. Set it explicitly to
+   * rotate resume proofs without touching auth sessions or Stripe keys.
+   */
+  CHECKOUT_RESUME_SECRET: z.string().optional(),
 
   // Email
   EMAIL_PROVIDER: z.enum(["resend", "sendgrid", "smtp", "ses"]).default("resend"),
