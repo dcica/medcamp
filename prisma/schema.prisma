@@ -103,6 +103,7 @@ model Membership {
   @@unique([orgId, userId])
   @@index([orgId])
   @@map("memberships")
+  @@index([userId])
 }
 
 // NextAuth.js adapter tables (OIDC-first; email/password fallback later).
@@ -123,6 +124,7 @@ model Account {
 
   @@unique([provider, providerAccountId])
   @@map("accounts")
+  @@index([userId])
 }
 
 model Session {
@@ -133,6 +135,7 @@ model Session {
   expires      DateTime
 
   @@map("sessions")
+  @@index([userId])
 }
 
 model VerificationToken {
@@ -342,6 +345,7 @@ model ServiceCap {
   @@unique([eventId, serviceTypeId])
   @@index([eventId])
   @@map("service_caps")
+  @@index([serviceTypeId])
 }
 
 // ── Family membership (platform-level — NOT camp-scoped, NOT PHI) ────────────
@@ -391,6 +395,7 @@ model Member {
   @@unique([orgId, email])
   @@index([orgId])
   @@map("members")
+  @@index([planId])
 }
 
 // ── Orders / Attendees ───────────────────────────────────────────────────────
@@ -477,6 +482,7 @@ model Attendee {
   @@index([orgId, eventId])
   @@index([eventId])
   @@map("attendees")
+  @@index([orderId])
 }
 
 // ── Billing: every billable thing is a LineItem ──────────────────────────────
@@ -536,6 +542,8 @@ model LineItem {
   @@index([orderId])
   @@index([attendeeId])
   @@map("line_items")
+  @@index([serviceTypeId])
+  @@index([membershipPlanId])
 }
 
 // ── Competition / showcase entries ───────────────────────────────────────────
@@ -688,6 +696,8 @@ model LedgerEntry {
 
   @@index([orgId, createdAt])
   @@map("ledger_entries")
+  @@index([paymentId])
+  @@index([lineItemId])
 }
 
 // ── Stations & routing (one stored route per attendee — decision #5) ─────────
@@ -713,6 +723,7 @@ model Station {
   @@unique([eventId, key])
   @@index([eventId])
   @@map("stations")
+  @@index([orgId])
 }
 
 enum VisitStatus {
@@ -933,6 +944,7 @@ model VolunteerSignup {
   @@index([roleId])
   @@index([eventId, status])
   @@map("volunteer_signups")
+  @@index([counselorId])
 }
 
 // ── Operations checklist (Module 7) ──────────────────────────────────────────
@@ -976,6 +988,7 @@ model ChecklistItem {
 
   @@index([eventId, phase])
   @@map("checklist_items")
+  @@index([orgId])
 }
 
 // ── Member invites (admin portal) ────────────────────────────────────────────
