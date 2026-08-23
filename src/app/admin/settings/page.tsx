@@ -1,5 +1,6 @@
 import { requireCoordinator } from "@/server/admin";
-import { getActiveOrg } from "@/lib/tenant";
+import { getActiveOrg, getActiveBranding } from "@/lib/tenant";
+import { DEFAULT_THEME } from "@/lib/branding";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { SettingsForm } from "./SettingsForm";
 
@@ -8,8 +9,7 @@ export const dynamic = "force-dynamic";
 /** Branding & org settings — coordinator-only (config-over-code). */
 export default async function SettingsPage() {
   await requireCoordinator();
-  const org = await getActiveOrg();
-  const settings = (org?.settings ?? {}) as { brand?: string };
+  const [org, branding] = await Promise.all([getActiveOrg(), getActiveBranding()]);
 
   return (
     <div>
@@ -25,14 +25,19 @@ export default async function SettingsPage() {
           },
           {
             label: "Brand color",
-            body: "Sets the accent color across every screen. This is config-over-code — no redeploy needed.",
+            body: "Buttons, headings and links across every screen. Saving takes effect immediately — no redeploy. The text color on top is picked for you, and a color too pale to carry readable text is refused rather than saved.",
           },
         ]}
       />
       <div className="mt-4" />
+      {/* The field is seeded from the colour the site IS RENDERING, not from the
+          legacy `settings.brand` value — which stores a teal that has never been
+          on screen. Seeding from the stale value would mean a coordinator who
+          opens this page to fix a typo in the org name and presses Save would
+          repaint the whole site teal without ever touching the colour input. */}
       <SettingsForm
         initialName={org?.name ?? ""}
-        initialBrand={settings.brand ?? "#0d6e6e"}
+        initialBrand={branding.theme?.brand ?? DEFAULT_THEME.brand}
       />
     </div>
   );

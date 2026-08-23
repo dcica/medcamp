@@ -21,7 +21,24 @@ async function main() {
     create: {
       slug: "dcica",
       name: "DCICA",
-      settings: { brand: "#0d6e6e", locale: "en" },
+      // The palette the app actually renders (globals.css `:root`), under the
+      // namespaced `theme` key the layout reads. The old value here was a single
+      // top-level `brand: "#0d6e6e"` teal that disagreed with the navy on every
+      // screen; nothing read it, so nobody noticed for as long as it existed.
+      // Written in full because a theme is validated as three colour PAIRS — a
+      // half-theme is refused, not merged. Locale is unrelated config, kept.
+      settings: {
+        theme: {
+          brand: "#0c3543", // deep navy — DCICA wordmark
+          brandFg: "#ffffff",
+          accent: "#f9a200", // saffron — dcica.org nav bar
+          accentFg: "#16201f", // dark: saffron cannot carry white text at 4.5:1
+          accent2: "#138808", // India-flag green — dcica.org footer band
+          accent2Fg: "#ffffff",
+          wordmark: "DCICA",
+        },
+        locale: "en",
+      },
     },
   });
 
