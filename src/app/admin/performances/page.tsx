@@ -2,9 +2,11 @@ import Link from "next/link";
 import { requireAdmin } from "@/server/admin";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
-import { listEntries, offeringKindsByEvent } from "@/server/performance";
+import { eventRoster, offeringKindsByEvent } from "@/server/performance";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { EntryRoster } from "./EntryRoster";
+import { EventPicker } from "./EventPicker";
+import { RosterSummaryPanel } from "./RosterSummaryPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +17,12 @@ export const dynamic = "force-dynamic";
  * details were landing in the database with nothing in the back office to show
  * them. Ordered so the work comes first — entries without a prepared track at
  * the top — because that ordering IS the job until a running order exists.
+ *
+ * Every number shown here is computed in src/server/performance.ts from exactly
+ * the rows rendered below it, and every music count on the page (summary tile,
+ * detail split, filter chip, card badge) resolves through the one `musicState`
+ * function. The page used to derive "music outstanding" here with a different
+ * rule from the badges, and the two disagreed on screen.
  */
 export default async function PerformancesPage({
   searchParams,
@@ -53,13 +61,10 @@ export default async function PerformancesPage({
     null;
   const selected = candidates.find((c) => c.id === eventId) ?? defaultEvent;
 
-  const entries = selected ? await listEntries(selected.id) : [];
+  const roster = selected ? await eventRoster(selected) : null;
   const kinds = selected
     ? (await offeringKindsByEvent([selected.id])).get(selected.id)
     : undefined;
-
-  const awaitingMusic = entries.filter((e) => e.songReadyAt === null).length;
-  const dancers = entries.reduce((n, e) => n + e.participantCount, 0);
 
   return (
     <div className="space-y-6">
@@ -75,8 +80,16 @@ export default async function PerformancesPage({
             body: "Groups without a confirmed track sort to the top. Mark 'Track ready' once you have a playable, prepared cut in hand — not just when a file arrives.",
           },
           {
-            label: "Needs contact",
-            body: "A group that chose to send their music another way shows as Offline. Those need a human to chase.",
+            label: "The four music chips",
+            body: "Each one is a different job. Offline needs a phone call. Not sent yet needs a reminder email. Received, unchecked needs someone to actually listen to the file. Confirmed is done.",
+          },
+          {
+            label: "Copy and export follow the chip",
+            body: "With a chip active, 'Copy emails' and 'Export CSV' cover only the groups on screen — that is the list you are chasing.",
+          },
+          {
+            label: "Show estimate",
+            body: "Declared lengths plus an assumed 60-second changeover between acts. Entries with no declared length add changeover but no runtime, so the estimate is short by however long they run.",
           },
         ]}
       />
@@ -92,51 +105,24 @@ export default async function PerformancesPage({
         </p>
       ) : (
         <>
-          {candidates.length > 1 && (
-            <div className="flex flex-wrap gap-2">
-              {candidates.map((c) => (
-                <Link
-                  key={c.id}
-                  href={`/admin/performances?event=${c.id}`}
-                  className={`flex min-h-tap items-center rounded-lg border px-3 text-sm font-medium ${
-                    c.id === selected?.id
-                      ? "border-brand bg-brand text-brand-fg"
-                      : "border-gray-300 text-gray-700"
-                  }`}
-                >
-                  {c.name}
-                </Link>
-              ))}
-            </div>
-          )}
+          <EventPicker events={candidates} selectedId={selected?.id ?? null} />
 
-          <div className="grid grid-cols-3 gap-3">
-            <Stat label="Groups" value={entries.length} />
-            <Stat label="Dancers" value={dancers} />
-            <Stat label="Music outstanding" value={awaitingMusic} />
-          </div>
+          {roster && <RosterSummaryPanel summary={roster.summary} />}
 
           {selected && (
             <p className="text-xs text-gray-500">
               {selected.name} · {selected.code}
               {kinds?.hasOther
-                ? " · this event also sells admission, which is not shown here"
+                ? " · this event also sells admission, which is not counted in the entry capacity above"
                 : ""}
             </p>
           )}
 
-          <EntryRoster entries={entries} />
+          {selected && roster && (
+            <EntryRoster entries={roster.entries} eventId={selected.id} />
+          )}
         </>
       )}
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
-      <div className="text-2xl font-bold text-brand">{value}</div>
-      <div className="text-xs text-gray-500">{label}</div>
     </div>
   );
 }

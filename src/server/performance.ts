@@ -1,7 +1,14 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { normalizeCampId } from "@/lib/campId";
-import { isKnownAgeBand } from "@/lib/performanceOptions";
+import { isKnownAgeBand, PERFORMANCE_AGE_BANDS } from "@/lib/performanceOptions";
+import {
+  isMusicOutstanding,
+  musicState,
+  MUSIC_SLUG,
+  MUSIC_STATES,
+  type MusicState,
+} from "@/lib/musicState";
 import { log } from "@/lib/logger";
 import {
   getStorage,
@@ -455,6 +462,14 @@ export type RosterEntry = EntryView & {
   registrantName: string;
   registrantEmail: string;
   registrantPhone: string;
+  /**
+   * What this entry actually paid for its fee line, in cents — price frozen at
+   * line creation, not today's ServiceCap price. 0 once the line is refunded or
+   * voided, and 0 when lineItemId is null (SetNull keeps the entry's record of
+   * having been made after its line is destroyed). Fee only: a donation on the
+   * same order is a separate line and is NOT entry revenue.
+   */
+  feeCents: number;
   createdAt: Date;
 };
 
@@ -468,6 +483,7 @@ export async function listEntries(eventId: string): Promise<RosterEntry[]> {
     where: { eventId, order: { status: "CONFIRMED" } },
     include: {
       event: { select: { name: true } },
+      lineItem: { select: { amountCents: true, quantity: true, status: true } },
       order: {
         select: {
           registrantName: true,
@@ -506,6 +522,10 @@ export async function listEntries(eventId: string): Promise<RosterEntry[]> {
     registrantName: r.order.registrantName,
     registrantEmail: r.order.registrantEmail,
     registrantPhone: r.order.registrantPhone,
+    feeCents:
+      r.lineItem && r.lineItem.status !== "REFUNDED" && r.lineItem.status !== "VOID"
+        ? r.lineItem.amountCents * r.lineItem.quantity
+        : 0,
     createdAt: r.createdAt,
   }));
 }
@@ -627,4 +647,247 @@ export async function offeringKindsByEvent(
     out.set(cap.eventId, kinds);
   }
   return out;
+}
+
+// ── Roster summary ───────────────────────────────────────────────────────────
+
+/**
+ * Assumed gap between acts when estimating how long the show runs.
+ *
+ * An ASSUMPTION, not a measurement — nothing in the schema records how long a
+ * group takes to clear the stage, and there is no column for a per-event value.
+ * The UI says so out loud next to the estimate, because a coordinator planning
+ * a running order against a fixed venue slot needs to know which part of the
+ * number is data and which part is arithmetic.
+ */
+export const CHANGEOVER_SECONDS = 60;
+
+/**
+ * A Boolean? counted honestly.
+ *
+ * `usesProps` and `needsStagePrep` are three-state: yes, no, and NEVER ASKED —
+ * the entry form leaves them optional and older entries predate them. Reporting
+ * "4 use props" over 12 entries when 7 of them never answered is a false claim
+ * about the show: the true figure is somewhere between 4 and 11, and the stage
+ * crew is the party who finds out. So `unanswered` is a first-class number
+ * here, not a silent remainder.
+ */
+export type ThreeState = { yes: number; no: number; unanswered: number };
+
+export type AgeBandTally = { band: string; entries: number; dancers: number };
+
+export type RosterSummary = {
+  entries: number;
+  /** Sum of FEE-kind capacities. Null = uncapped (no fee offering declares one). */
+  capacity: number | null;
+  dancers: number;
+  /** Sum of DECLARED lengths only. Entries with no length contribute nothing. */
+  declaredRuntimeSeconds: number;
+  /** How many entries never declared a length — the error bar on the estimate. */
+  entriesMissingDuration: number;
+  changeoverPerActSeconds: number;
+  changeoverSeconds: number;
+  /** declaredRuntimeSeconds + changeoverSeconds. Understated by the missing lengths. */
+  showEstimateSeconds: number;
+  /** The event's booked slot, for comparison. Null if the event has no span. */
+  slotSeconds: number | null;
+  music: Record<MusicState, number>;
+  /** Entries in any state but CONFIRMED. Same derivation as every chip and badge. */
+  musicOutstanding: number;
+  ageBands: AgeBandTally[];
+  props: ThreeState;
+  stagePrep: ThreeState;
+  /** Entry-fee revenue, cents. Excludes donations and any refunded/void line. */
+  entryFeeCents: number;
+};
+
+function tallyThreeState(values: (boolean | null)[]): ThreeState {
+  return {
+    yes: values.filter((v) => v === true).length,
+    no: values.filter((v) => v === false).length,
+    unanswered: values.filter((v) => v === null).length,
+  };
+}
+
+/**
+ * Every number the coordinator screen shows, from the rows it already has.
+ *
+ * PURE — no database, no clock — so the verification script can assert the
+ * arithmetic against hand-built rows instead of against whatever happens to be
+ * seeded. The music tallies come from the same `musicState` the chips and the
+ * card badges use; that shared call is the whole anti-drift mechanism.
+ */
+export function rosterSummary(
+  entries: RosterEntry[],
+  opts: { capacity: number | null; slotSeconds: number | null },
+): RosterSummary {
+  const music = Object.fromEntries(MUSIC_STATES.map((s) => [s, 0])) as Record<
+    MusicState,
+    number
+  >;
+  for (const e of entries) music[musicState(e)]++;
+
+  const declaredRuntimeSeconds = entries.reduce(
+    (n, e) => n + (e.durationSeconds ?? 0),
+    0,
+  );
+  // One gap BETWEEN acts, so n-1 — nothing changes over after the last act.
+  // Entries with no declared length still occupy a slot and still need a
+  // changeover, so they count here even though they add no runtime.
+  const changeoverSeconds = Math.max(0, entries.length - 1) * CHANGEOVER_SECONDS;
+
+  // Known bands first and in the published order (they are age-ordered, which is
+  // how a running order gets grouped), then anything else a legacy row carries,
+  // so an off-list value shows up rather than vanishing.
+  const byBand = new Map<string, AgeBandTally>();
+  for (const e of entries) {
+    const row = byBand.get(e.ageRange) ?? { band: e.ageRange, entries: 0, dancers: 0 };
+    row.entries++;
+    row.dancers += e.participantCount;
+    byBand.set(e.ageRange, row);
+  }
+  const known = PERFORMANCE_AGE_BANDS.filter((b) => byBand.has(b)).map(
+    (b) => byBand.get(b)!,
+  );
+  const unknown = [...byBand.values()]
+    .filter((r) => !(PERFORMANCE_AGE_BANDS as readonly string[]).includes(r.band))
+    .sort((a, b) => a.band.localeCompare(b.band));
+
+  return {
+    entries: entries.length,
+    capacity: opts.capacity,
+    dancers: entries.reduce((n, e) => n + e.participantCount, 0),
+    declaredRuntimeSeconds,
+    entriesMissingDuration: entries.filter((e) => e.durationSeconds === null).length,
+    changeoverPerActSeconds: CHANGEOVER_SECONDS,
+    changeoverSeconds,
+    showEstimateSeconds: declaredRuntimeSeconds + changeoverSeconds,
+    slotSeconds: opts.slotSeconds,
+    music,
+    musicOutstanding: entries.filter(isMusicOutstanding).length,
+    ageBands: [...known, ...unknown],
+    props: tallyThreeState(entries.map((e) => e.usesProps)),
+    stagePrep: tallyThreeState(entries.map((e) => e.needsStagePrep)),
+    entryFeeCents: entries.reduce((n, e) => n + e.feeCents, 0),
+  };
+}
+
+/**
+ * How many entries this event can take — FEE-kind offerings ONLY.
+ *
+ * Summing every ServiceCap on the event is wrong by design, not by data
+ * hygiene. Rhythms of Navratri carries a stale `floor-admission` cap beside its
+ * competition entry, and a naive sum reads "of 540" where the truth is "of 40".
+ * More importantly a genuinely mixed event — a competition plus floor tickets
+ * sold on the same event — is an expected shape, not a mistake to clean up, and
+ * there the door capacity has nothing to do with how many groups can dance.
+ * Same rule as createPerformanceEntry's kind check and the event picker.
+ *
+ * Null when no fee offering declares a capacity: uncapped is not zero, and
+ * printing "12 of 0" would read as oversold.
+ */
+export async function feeCapacity(eventId: string): Promise<number | null> {
+  const caps = await db.serviceCap.findMany({
+    where: { eventId, serviceType: { active: true, kind: "FEE" } },
+    select: { capacity: true },
+  });
+  const declared = caps.filter((c) => c.capacity !== null);
+  if (declared.length === 0) return null;
+  return declared.reduce((n, c) => n + (c.capacity ?? 0), 0);
+}
+
+/**
+ * The whole coordinator view for one event: rows in the needs-a-human order,
+ * plus every summary number derived from exactly those rows.
+ */
+export async function eventRoster(event: {
+  id: string;
+  startsAt: Date;
+  endsAt: Date;
+}): Promise<{ entries: RosterEntry[]; summary: RosterSummary }> {
+  const [entries, capacity] = await Promise.all([
+    listEntries(event.id),
+    feeCapacity(event.id),
+  ]);
+  const span = Math.round(
+    (event.endsAt.getTime() - event.startsAt.getTime()) / 1000,
+  );
+  return {
+    entries,
+    summary: rosterSummary(entries, {
+      capacity,
+      slotSeconds: span > 0 ? span : null,
+    }),
+  };
+}
+
+// ── CSV export ───────────────────────────────────────────────────────────────
+
+export type PerformanceReportRow = Record<
+  (typeof PERFORMANCE_REPORT_HEADER)[number],
+  string
+>;
+
+/** Column order of the roster CSV. Exported so the check can pin it. */
+export const PERFORMANCE_REPORT_HEADER = [
+  "receipt_code",
+  "group_name",
+  "choreographer",
+  "participants",
+  "age_band",
+  "category",
+  "song_title",
+  "duration_seconds",
+  "music_state",
+  "song_delivery",
+  "song_ready_at",
+  "uses_props",
+  "needs_stage_prep",
+  "registrant_name",
+  "registrant_email",
+  "registrant_phone",
+  "fee_usd",
+  "entered_at",
+] as const;
+
+/**
+ * A Boolean? for a spreadsheet. Empty for never-answered — NOT "no". Writing
+ * "no" here would launder an unanswered question into a negative answer the
+ * moment the file leaves the app, which is the exact failure the three-state
+ * counts exist to prevent.
+ */
+function csvBool(v: boolean | null): string {
+  return v === null ? "" : v ? "yes" : "no";
+}
+
+/**
+ * Roster rows for the CSV, optionally narrowed to one music state so an export
+ * matches the chip the coordinator is looking at.
+ */
+export async function performanceReportRows(
+  eventId: string,
+  filter: MusicState | null = null,
+): Promise<PerformanceReportRow[]> {
+  const entries = await listEntries(eventId);
+  const rows = filter ? entries.filter((e) => musicState(e) === filter) : entries;
+  return rows.map((e) => ({
+    receipt_code: e.campId,
+    group_name: e.groupName,
+    choreographer: e.choreographerName,
+    participants: String(e.participantCount),
+    age_band: e.ageRange,
+    category: e.category ?? "",
+    song_title: e.songTitle,
+    duration_seconds: e.durationSeconds === null ? "" : String(e.durationSeconds),
+    music_state: MUSIC_SLUG[musicState(e)],
+    song_delivery: e.songDelivery,
+    song_ready_at: e.songReadyAt ? e.songReadyAt.toISOString() : "",
+    uses_props: csvBool(e.usesProps),
+    needs_stage_prep: csvBool(e.needsStagePrep),
+    registrant_name: e.registrantName,
+    registrant_email: e.registrantEmail,
+    registrant_phone: e.registrantPhone,
+    fee_usd: (e.feeCents / 100).toFixed(2),
+    entered_at: e.createdAt.toISOString(),
+  }));
 }
