@@ -11,6 +11,7 @@ import { BannerUpload } from "./BannerUpload";
 import { CampControls } from "./CampControls";
 import { EditEventForm } from "./EditEventForm";
 import { EventFlags } from "./EventFlags";
+import { PublicDoors } from "./PublicDoors";
 
 export const dynamic = "force-dynamic";
 
@@ -136,6 +137,23 @@ export default async function CampDetailPage({
         >
           Volunteer roles →
         </Link>
+      </div>
+
+      {/* Which public doors this event opens. Above "Registration & policy"
+          on purpose: whether the public can reach the form at all is the
+          question that comes before how the form behaves. */}
+      <div>
+        <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
+          Public doors
+        </h3>
+        <PublicDoors
+          id={camp.id}
+          initial={{
+            offersRegistration: camp.offersRegistration,
+            offersVolunteers: camp.offersVolunteers,
+            offersVendors: camp.offersVendors,
+          }}
+        />
       </div>
 
       {/* Registration & policy flags */}

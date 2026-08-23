@@ -219,6 +219,39 @@ export async function setEventFlags(
   return { ok: true };
 }
 
+/**
+ * The `offers*` triple — which public doors this event opens.
+ *
+ * Separate from setEventFlags because it revalidates `/` as well: these three
+ * columns are the only event settings the PUBLIC landing page reads, and that
+ * page is the whole point of changing them. Leaving it out is how a coordinator
+ * ticks the box, reloads the home page, sees no change and ticks it back.
+ */
+export async function setEventDoors(
+  id: string,
+  doors: {
+    offersRegistration: boolean;
+    offersVolunteers: boolean;
+    offersVendors: boolean;
+  },
+): Promise<ActionResult> {
+  await requireAdmin();
+  const org = await getActiveOrg();
+  if (!org) return { ok: false, error: "No active org." };
+  const res = await db.event.updateMany({
+    where: { id, orgId: org.id },
+    data: {
+      offersRegistration: doors.offersRegistration,
+      offersVolunteers: doors.offersVolunteers,
+      offersVendors: doors.offersVendors,
+    },
+  });
+  if (res.count === 0) return { ok: false, error: "Camp not found." };
+  revalidatePath(`/admin/camps/${id}`);
+  revalidatePath("/");
+  return { ok: true };
+}
+
 export async function setWalkIn(
   id: string,
   open: boolean,
