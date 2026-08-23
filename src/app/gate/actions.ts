@@ -4,6 +4,7 @@ import { requireRole, requireTill } from "@/server/session";
 import {
   getGateView,
   admitAttendee,
+  admitOrderAttendees,
   fulfillLineItems,
   fulfillOrder,
   compAdmit,
@@ -88,8 +89,10 @@ export async function sellAndAdmit(
   const m = await requireTill();
   try {
     const { orderId } = await sellAtGate(eventId, serviceTypeIds, { buyerName });
-    const { attendeeIds } = await confirmGateCash(orderId);
-    for (const id of attendeeIds) await admitAttendee(id);
+    await confirmGateCash(orderId);
+    // Admits whoever this sale actually bought entry for — nobody, for a
+    // competition fee. The sale still succeeds; see admitOrderAttendees.
+    await admitOrderAttendees(orderId);
     await fulfillOrder(orderId, m.userId);
     return { ok: true, data: await getEventHeadcount(eventId) };
   } catch (err) {

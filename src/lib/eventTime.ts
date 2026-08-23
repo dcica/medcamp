@@ -41,6 +41,20 @@ const VENUE_TIME = new Intl.DateTimeFormat("en-US", {
 });
 
 /**
+ * Clock time for one instant, in the venue's zone.
+ *
+ * The gate prints this beside "already admitted ✓" — the volunteer reading it is
+ * standing at the door and will compare it against the clock on the wall, so it
+ * must be venue time and never the device's. Locale is left to the reader's
+ * device (that is only digits and AM/PM); the ZONE is not negotiable, which is
+ * the whole reason this is a named function rather than an inline
+ * `toLocaleTimeString` a redesign can drop the options off.
+ */
+export function formatVenueTime(instant: Date): string {
+  return instant.toLocaleTimeString(undefined, { timeZone: VENUE_TIME_ZONE });
+}
+
+/**
  * An event's when-line: one day plus a time range, or a date range if it really
  * spans days.
  *

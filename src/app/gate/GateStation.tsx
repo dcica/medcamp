@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { formatCents } from "@/lib/money";
-import { VENUE_TIME_ZONE } from "@/lib/eventTime";
+import { formatVenueTime } from "@/lib/eventTime";
+import { expandTicketCode } from "@/lib/ticketCode";
 import { QrScanner } from "@/app/checkin/QrScanner";
 import type { GateView } from "@/server/gate";
 import {
@@ -189,11 +190,7 @@ export function GateStation({
                 <span className="text-green-700">
                   {/* Venue time: the volunteer reading this is standing at the
                       door and will compare it against the clock on the wall. */}
-                  (
-                  {new Date(view.admittedAt).toLocaleTimeString(undefined, {
-                    timeZone: VENUE_TIME_ZONE,
-                  })}
-                  )
+                  ({formatVenueTime(new Date(view.admittedAt))})
                 </span>
               )}{" "}
               — wristband issued.
@@ -367,6 +364,9 @@ export function GateStation({
  * happens: someone arrives at the Dandiya door holding a Garba ticket. Blindly
  * prefixing would turn that into a "not found", when what staff need to see is
  * the ticket resolving against the wrong event so they can say so.
+ *
+ * The rule itself is `expandTicketCode` in `@/lib/ticketCode` — it outlives any
+ * particular arrangement of this form and is pinned by scripts/verify-gate.ts.
  */
 function ManualEntry({
   eventCode,
@@ -382,9 +382,9 @@ function ManualEntry({
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        const v = token.trim().toUpperCase();
-        if (!v) return;
-        onSubmit(v.includes("-") ? v : `${eventCode}-${v}`);
+        const code = expandTicketCode(eventCode, token);
+        if (!code) return;
+        onSubmit(code);
         setToken("");
       }}
       className="flex gap-2"

@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { isDuplicateDecode, type LastDecode } from "@/lib/scanDebounce";
+
 /**
  * Camera QR scanner (progressive enhancement). Uses html5-qrcode, loaded only
  * when the volunteer opts in (camera permission prompt on start). Manual entry
@@ -28,7 +30,7 @@ export function QrScanner({
   const onScanRef = useRef(onScan);
   onScanRef.current = onScan;
   // Debounce duplicate decodes in continuous mode.
-  const lastRef = useRef<{ text: string; at: number }>({ text: "", at: 0 });
+  const lastRef = useRef<LastDecode>({ text: "", at: 0 });
 
   useEffect(() => {
     if (!active) return;
@@ -46,9 +48,10 @@ export function QrScanner({
             if (stopped) return;
             if (continuous) {
               const now = Date.now();
-              const last = lastRef.current;
-              // Ignore the same code seen again within 3s (still in frame).
-              if (decoded === last.text && now - last.at < 3000) return;
+              // Ignore the same code seen again within the window (still in
+              // frame). The rule itself lives in @/lib/scanDebounce so it can be
+              // tested without a camera.
+              if (isDuplicateDecode(lastRef.current, decoded, now)) return;
               lastRef.current = { text: decoded, at: now };
               beep();
               onScanRef.current(decoded);
