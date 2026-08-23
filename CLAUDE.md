@@ -116,3 +116,80 @@ src/     — application code (Next.js project root goes here)
 - **Google Workspace:** OAuth login only — no Google Forms, no Sheets, no Drive sync. Those are the systems being replaced.
 - **Google Address Validation (optional):** standardizes mailing addresses for lab labels. Off unless `GOOGLE_MAPS_API_KEY` is set; called server-side once per address on field blur (never per-keystroke, never from the browser). Free under 5,000 calls/mo (~500/camp). Sends one address line to Google at submit time — disclosed in the Privacy Policy.
 - **Email:** Confirmation email with QR code sent post-payment (provider TBD; Resend or SendGrid).
+
+## Engineering guardrails
+
+Each of these was written after something broke. They are not style preferences.
+
+### Migrations
+
+- **Author with `prisma migrate diff`; apply with `npm run db:migrate:deploy`** — the repo
+  wrapper, never bare `prisma migrate deploy`. The wrapper refuses a remote `DATABASE_URL`
+  or `DIRECT_URL` that names no schema, or where the two name different ones (localhost is
+  exempt). A schema-less URL silently migrates into `public`, which is how the project
+  once accumulated four full copies of itself in one Supabase instance.
+- **Never `migrate dev`, `migrate reset`, or `db push`.**
+- **Additive-first ordering.** A migration must be safe to apply *before* the deploy that
+  reads it: Prisma selects every declared column, so code deployed ahead of its migration
+  faults with `P2022`. Constraint *tightening* is the reverse — it must land *after* the
+  deploy that stops writing the old shape. This rule exists because of the `/register`
+  outage on 2026-08-21.
+- **Read every generated migration before committing it** and strip anything you did not
+  intend. `migrate diff` diffs the whole schema, so it will happily attach an unrelated
+  `DROP COLUMN` to the change you actually meant to make.
+- **Migration folders can apply out of lexicographic order.** `migrate deploy` applies any
+  unrecorded migration regardless of sort position. That is fine and expected when
+  branches are authored in parallel — do not "fix" it by renaming folders.
+- **TEMPORARY — delete this bullet once the drift is resolved.** `service_types.admits`
+  and `service_types.fulfillable` exist in the database and in the migration history but
+  no longer in `schema.prisma`: `20260822040000_service_kind_and_capacity` replaced them
+  with `ServiceKind` and *deliberately* left the columns in place so the running app could
+  keep reading them, promising a later migration to drop them. No reader remains, and that
+  migration has not been written. Until it is, **every** `migrate diff` you run will emit
+  `ALTER TABLE "service_types" DROP COLUMN "admits", DROP COLUMN "fulfillable";` attached
+  to whatever you actually changed.
+- **Every FK child column gets a covering index.** Policy established by PR #6, which
+  fixed 13 of them. An unindexed FK makes the parent delete scan the child table, and it
+  is worst on `ON DELETE SET NULL` edges.
+
+### Never write raw SQL against a named schema
+
+`$executeRaw` / `$queryRaw` with an unqualified table name resolves through the session's
+`search_path`, and Supabase's transaction pooler does **not** reliably apply the connection
+string's `?schema=` to every pooled backend — measured on the deployed test DB, 5 of 24
+pooled sessions had no `test` in their `search_path`. A raw `UPDATE service_caps` then hit
+`public.service_caps`, matched nothing, and rolled back the confirmation, so a **paid order
+silently reverted to PENDING with the charge captured** (~1 in 5 confirmations). `prod` is a
+named schema too, so the same coin flip applied to real money.
+
+Prisma *model* operations always emit the schema explicitly (`UPDATE "test"."service_caps"`)
+and are safe. The forbidding comment at `src/server/payments.ts:242-260` stays.
+
+### Verification
+
+- `npx tsc --noEmit` after every task, then `npm run verify` — 7 suites, ~750 assertions.
+- **Never make the chain green by weakening a check.** Report before/after assertion counts.
+- New checks must be **mutation-tested**: name the one-line source edit that makes the check
+  fail, and make it once to prove it does. A check that cannot fail is worse than none.
+- There is deliberately no test framework yet; coverage is hand-rolled `tsx` scripts under
+  `scripts/`. Several connect to a live database and self-clean.
+- Seed order is load-bearing: `db:seed` → `db:seed:events` → `db:seed:test`.
+
+### Branding and theming — settled, with one deliberate carve-out
+
+Tenant theming is complete and reviewed: `src/lib/branding.ts`, the root layout's style
+emission, `SiteHeader`/`SiteFooter`, `admin/settings/*`, `scripts/verify-branding.ts`.
+Themeable surface is exactly six colour tokens (`brand`, `accent`, `accent2` and their `-fg`
+pairs), a wordmark, and two asset URLs — validated as strict 6-digit hex on write **and
+again at render**, immediately before interpolation into the `<html>` style attribute,
+because `Organization.settings` is arbitrary JSON and an unvalidated value there is
+attacker-controlled CSS.
+
+**`STATUS_STYLE`, dashboard alert colours and per-service/per-station `colorHex` are
+deliberately outside the theme, and `scripts/verify-branding.ts` §8 enforces it.** Status
+colour is *meaning*, not identity: green=OPEN / amber=CLOSED / red=problem is a convention a
+volunteer reads at a door, in gym lighting, under time pressure. A brand-red "paid" chip
+would read as a safety signal. The theme validator also only checks each colour against its
+own foreground — nothing checks that six tenant colours stay mutually distinguishable, which
+is precisely the property a status palette needs. Don't "fix" this without replacing that
+validator first.
