@@ -4,6 +4,7 @@ import { requireAdmin } from "@/server/admin";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
 import { instantToVenueInput, VENUE_TIME_ZONE } from "@/lib/eventTime";
+import { STATUS_STYLE } from "@/lib/eventLifecycle";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { BANNER_MAX_BYTES, uploadsEnabled } from "@/lib/storage";
 import { BannerUpload } from "./BannerUpload";
@@ -12,15 +13,6 @@ import { EditEventForm } from "./EditEventForm";
 import { EventFlags } from "./EventFlags";
 
 export const dynamic = "force-dynamic";
-
-const STATUS_STYLE: Record<string, string> = {
-  DRAFT: "bg-gray-100 text-gray-600",
-  OPEN: "bg-green-100 text-green-700",
-  ACTIVE: "bg-blue-100 text-blue-700",
-  CLOSED: "bg-amber-100 text-amber-700",
-  PURGEABLE: "bg-orange-100 text-orange-700",
-  PURGED: "bg-gray-200 text-gray-500",
-};
 
 export default async function CampDetailPage({
   params,
