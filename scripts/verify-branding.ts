@@ -53,7 +53,7 @@
  *     composition it goes through (auto-foreground, then full validation) is
  *     part of the security boundary and not just convenience.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   DEFAULT_MARK_URL,
@@ -83,6 +83,59 @@ function check(label: string, ok: boolean, detail = "") {
 
 function readRepoFile(rel: string): string {
   return readFileSync(join(process.cwd(), rel), "utf8");
+}
+
+/** Every .ts/.tsx file under a repo-relative directory, recursively. */
+function sourceFilesUnder(rel: string): string[] {
+  const out: string[] = [];
+  const visit = (dir: string) => {
+    for (const entry of readdirSync(join(process.cwd(), dir), { withFileTypes: true })) {
+      const child = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) {
+        if (entry.name !== "node_modules") visit(child);
+      } else if (/\.tsx?$/.test(entry.name)) {
+        out.push(child);
+      }
+    }
+  };
+  visit(rel);
+  return out.sort();
+}
+
+/**
+ * Every DEFINITION of a status-pill table under `rel`, paired with the source
+ * text of its object literal.
+ *
+ * Two properties matter and neither is optional. It matches the DEFINITION
+ * keyword — `const STATUS_STYLE` — not the bare identifier, so a file that
+ * merely imports the table contributes nothing (matching the identifier made
+ * the old "has a table" check pass on any importing file). And it slices from
+ * that definition to the close of its own object literal by brace depth, so
+ * the scanned text is always the table and never an arbitrary run of unrelated
+ * code up to the next `};`.
+ */
+function statusStyleDefinitions(rel: string): { file: string; table: string }[] {
+  const found: { file: string; table: string }[] = [];
+  for (const file of sourceFilesUnder(rel)) {
+    const src = readRepoFile(file);
+    for (const m of src.matchAll(/(?:export\s+)?const\s+STATUS_STYLE\b/g)) {
+      const from = m.index ?? 0;
+      const eq = src.indexOf("=", from);
+      const open = eq === -1 ? -1 : src.indexOf("{", eq);
+      if (open === -1) continue;
+      let depth = 0;
+      let end = src.length;
+      for (let i = open; i < src.length; i++) {
+        if (src[i] === "{") depth++;
+        else if (src[i] === "}" && --depth === 0) {
+          end = i + 1;
+          break;
+        }
+      }
+      found.push({ file, table: src.slice(from, end) });
+    }
+  }
+  return found;
 }
 
 /** Every CSS custom property the layout can emit, in globals.css spelling. */
@@ -501,17 +554,17 @@ function main() {
 
   // ── §8 ────────────────────────────────────────────────────────────────────
   console.log("\n§8 status pills are NOT themeable");
-  const statusFiles = [
-    "src/app/admin/page.tsx",
-    "src/app/admin/camps/page.tsx",
-    "src/app/admin/camps/[id]/page.tsx",
-    "src/app/volunteers/RosterView.tsx",
-  ];
-  for (const file of statusFiles) {
-    const src = readRepoFile(file);
-    const start = src.indexOf("STATUS_STYLE");
-    const table = src.slice(start, src.indexOf("};", start));
-    check(`${file}: has a STATUS_STYLE table`, start !== -1);
+  // The table is DISCOVERED, not named by path: it has already moved once (out
+  // of the admin pages and into a shared lifecycle module), and hardcoding
+  // either location breaks the other. Discovery also means a future
+  // re-duplication of the table into a component is scanned automatically.
+  const statusDefs = statusStyleDefinitions("src");
+  // The load-bearing assertion. If the constant is renamed or deleted, this
+  // section must go RED — "no definitions found, therefore no violations" would
+  // silently retire the whole safety check.
+  check("at least one STATUS_STYLE definition exists under src/",
+    statusDefs.length > 0, `${statusDefs.length} definition(s) found`);
+  for (const { file, table } of statusDefs) {
     // A brand-red "paid" chip at a gate would read as a safety signal. Status
     // colour is meaning, not identity, so it must not follow a tenant's palette.
     check(`${file}: STATUS_STYLE uses no brand/accent token`,
