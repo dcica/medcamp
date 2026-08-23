@@ -37,6 +37,12 @@ export default async function CampDetailPage({
         include: {
           _count: { select: { caps: true, stations: true, attendees: true } },
         },
+        // THE ONE PLACE `internalNotes` IS READ BACK. It is omitted from every
+        // event query by default (see src/lib/db.ts) because the event row
+        // outlives the purge, so a screen that wants it has to say so. This is
+        // the edit form's own load — it needs the current value to put in the
+        // box — and the page is behind requireAdmin.
+        omit: { internalNotes: false },
       })
     : null;
 
@@ -89,6 +95,10 @@ export default async function CampDetailPage({
           startsAt: instantToVenueInput(camp.startsAt),
           endsAt: instantToVenueInput(camp.endsAt),
           location: camp.location ?? "",
+          // Null renders as an empty field, which is exactly what null means
+          // here: no stated limit. Do not substitute a 0.
+          venueCapacity: camp.venueCapacity?.toString() ?? "",
+          internalNotes: camp.internalNotes ?? "",
         }}
       />
 

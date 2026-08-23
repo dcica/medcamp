@@ -1,14 +1,24 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
+import {
+  INPUT_CLASS,
+  ValidatedInput,
+} from "@/app/_components/ValidatedInput";
 import { VENUE_TIME_ZONE } from "@/lib/eventTime";
+import {
+  INTERNAL_NOTES_MAX,
+  validateInternalNotes,
+  validateVenueCapacity,
+} from "@/lib/eventSetup";
 import { updateCamp } from "../actions";
 
-// Same field styling as CreateCampForm — the two are siblings and a coordinator
-// who has used one should recognise the other.
-const inputCls =
-  "w-full min-h-tap rounded-lg border border-gray-300 px-3 py-2 text-base";
+// Same field styling as CreateCampForm and as every ValidatedInput — the forms
+// are siblings and a coordinator who has used one should recognise the other.
+// Pointed at the shared constant so the capacity field below, which renders
+// through ValidatedInput, cannot drift from the fields around it.
+const inputCls = INPUT_CLASS;
 
 export function EditEventForm({
   id,
@@ -23,7 +33,20 @@ export function EditEventForm({
    * use the visitor's zone and show a coordinator in another state a time that
    * does not match the door.
    */
-  initial: { name: string; startsAt: string; endsAt: string; location: string };
+  initial: {
+    name: string;
+    startsAt: string;
+    endsAt: string;
+    location: string;
+    /**
+     * The stored capacity as a STRING, empty when the column is null. Kept as
+     * text end to end because "" and "0" must stay distinguishable: null means
+     * the venue has no stated limit, 0 is a number the database refuses.
+     */
+    venueCapacity: string;
+    /** Coordinator notes; empty string when the column is null. */
+    internalNotes: string;
+  };
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -31,13 +54,28 @@ export function EditEventForm({
   const [startsAt, setStartsAt] = useState(initial.startsAt);
   const [endsAt, setEndsAt] = useState(initial.endsAt);
   const [location, setLocation] = useState(initial.location);
+  const [venueCapacity, setVenueCapacity] = useState(initial.venueCapacity);
+  const [internalNotes, setInternalNotes] = useState(initial.internalNotes);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  // Computed, not stored on blur: a length ceiling is worth showing the moment
+  // it is crossed, unlike "required", which would nag a field nobody has
+  // engaged with yet. Same rule the server runs — never a stricter one.
+  const notesIssue = validateInternalNotes(internalNotes);
+  const notesErrorId = `${useId()}-notes-error`;
 
   function submit() {
     setError(null);
     startTransition(async () => {
-      const res = await updateCamp(id, { name, startsAt, endsAt, location });
+      const res = await updateCamp(id, {
+        name,
+        startsAt,
+        endsAt,
+        location,
+        venueCapacity,
+        internalNotes,
+      });
       if (res.ok) {
         setOpen(false);
         router.refresh();
@@ -105,6 +143,59 @@ export function EditEventForm({
           onChange={(e) => setLocation(e.target.value)}
         />
       </label>
+      <label className="block text-sm text-gray-600">
+        Floor capacity
+        <ValidatedInput
+          value={venueCapacity}
+          onChange={setVenueCapacity}
+          validate={validateVenueCapacity}
+          inputMode="numeric"
+          placeholder="e.g. 400"
+          aria-label="Floor capacity"
+        />
+      </label>
+      {/* Named and explained for what it does at the door, not for the column it
+          writes. Blank is a real answer here and the hint has to say so, or a
+          coordinator with no stated limit will invent a number. */}
+      <p className="text-xs text-gray-500">
+        How many people the venue holds. The door screen counts admissions
+        against this figure. Leave it blank if there is no limit — the door then
+        shows a plain headcount with no bar.
+      </p>
+
+      <label className="block text-sm text-gray-600">
+        Notes for the team
+        <textarea
+          className={`${inputCls} min-h-[7rem]`}
+          placeholder="Load-in 4pm, sound desk Ravi 555-0134, park behind the hall, key with the temple office"
+          value={internalNotes}
+          onChange={(e) => setInternalNotes(e.target.value)}
+          aria-label="Notes for the team"
+          aria-invalid={notesIssue ? true : undefined}
+          aria-describedby={notesIssue ? notesErrorId : undefined}
+        />
+      </label>
+      {/* The No-PHI rule in a coordinator's words, on the screen, not behind a
+          help panel — because this is the moment someone would type the thing we
+          promise never to store, and the event row is never purged. */}
+      <p className="text-xs text-gray-500">
+        Only your team sees this — it is never on the public page or in an
+        email. Venue and logistics only: nothing about a patient or an
+        attendee, not even a name. These notes are kept after the event, when
+        attendee details have already been deleted.
+      </p>
+      {notesIssue ? (
+        <p id={notesErrorId} role="alert" className="text-xs text-red-700">
+          {notesIssue}
+        </p>
+      ) : (
+        internalNotes.length > INTERNAL_NOTES_MAX - 300 && (
+          <p className="text-xs text-gray-500">
+            {INTERNAL_NOTES_MAX - internalNotes.length} characters left.
+          </p>
+        )
+      )}
+
       {/* The code is not offered here on purpose — it is the prefix of every
           ticket already issued. See the comment on `updateCamp`. */}
       {error && <p className="text-sm text-red-600">{error}</p>}
@@ -124,6 +215,8 @@ export function EditEventForm({
             setStartsAt(initial.startsAt);
             setEndsAt(initial.endsAt);
             setLocation(initial.location);
+            setVenueCapacity(initial.venueCapacity);
+            setInternalNotes(initial.internalNotes);
             setError(null);
             setOpen(false);
           }}

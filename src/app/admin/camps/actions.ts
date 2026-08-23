@@ -5,6 +5,7 @@ import type { EventStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { NEXT_STATUS } from "@/lib/eventLifecycle";
 import { venueInputToInstant } from "@/lib/eventTime";
+import { parseInternalNotes, parseVenueCapacity } from "@/lib/eventSetup";
 import { getActiveOrg } from "@/lib/tenant";
 import { requireAdmin, requireCoordinator } from "@/server/admin";
 import {
@@ -72,7 +73,8 @@ export async function createCamp(input: {
 }
 
 /**
- * Edit an event's label and when/where.
+ * Edit an event's label, when/where, how many the floor holds, and the
+ * coordinator's own notes about running it.
  *
  * `code` is deliberately NOT patchable. It is identity, not a label: it is the
  * prefix `formatCampId` mints every ticket number from (`GARBA-2026-0015`), so
@@ -87,6 +89,22 @@ export async function updateCamp(
     startsAt: string;
     endsAt: string;
     location: string;
+    /**
+     * The floor-capacity field AS TYPED, not a number. A blank field and a zero
+     * are different answers — "no stated limit" versus a capacity nobody can be
+     * admitted against — and `Number("")` is 0, which would silently turn the
+     * first into the second and then fail the CHECK constraint with an error a
+     * coordinator cannot act on. The raw string keeps them distinguishable all
+     * the way to `parseVenueCapacity`.
+     */
+    venueCapacity: string;
+    /**
+     * Coordinator-only notes about the EVENT — venue and logistics. Never
+     * rendered publicly, and never a place for anything about an attendee: the
+     * event row survives PURGED, so a patient detail here outlives the purge
+     * meant to erase it. See the schema comment on `Event.internalNotes`.
+     */
+    internalNotes: string;
   },
 ): Promise<ActionResult> {
   await requireAdmin();
@@ -106,6 +124,12 @@ export async function updateCamp(
     return { ok: false, error: "End must be after the start." };
   }
   const location = patch.location.trim();
+  // Re-checked here even though the field checks it too: the field is a
+  // courtesy, this is the authority. The action is a POST anything can call.
+  const capacity = parseVenueCapacity(patch.venueCapacity);
+  if (!capacity.ok) return { ok: false, error: capacity.error };
+  const internalNotes = parseInternalNotes(patch.internalNotes);
+  if (!internalNotes.ok) return { ok: false, error: internalNotes.error };
 
   const res = await db.event.updateMany({
     where: { id, orgId: org.id },
@@ -116,6 +140,8 @@ export async function updateCamp(
       // Cleared back to NULL rather than "" so the public card's `e.location &&`
       // test keeps hiding the line instead of printing an empty separator.
       location: location || null,
+      venueCapacity: capacity.value,
+      internalNotes: internalNotes.value,
     },
   });
   if (res.count === 0) return { ok: false, error: "Camp not found." };

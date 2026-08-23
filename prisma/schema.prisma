@@ -61,15 +61,20 @@ model Organization {
 // ── Auth / RBAC (tenant-scoped) ──────────────────────────────────────────────
 
 model User {
-  id            String       @id @default(cuid())
-  email         String       @unique
-  name          String?
-  image         String?
-  emailVerified DateTime?
-  accounts      Account[]
-  sessions      Session[]
-  memberships   Membership[]
-  createdAt     DateTime     @default(now())
+  id               String            @id @default(cuid())
+  email            String            @unique
+  name             String?
+  image            String?
+  emailVerified    DateTime?
+  accounts         Account[]
+  sessions         Session[]
+  memberships      Membership[]
+  /// Per-event role/capability overrides — see EventAssignment.
+  eventAssignments EventAssignment[]
+  /// Back-relation for Event.flagsReviewedBy. Named because it is not the only
+  /// User edge Event could grow.
+  flagsReviewed    Event[]           @relation("EventFlagsReviewer")
+  createdAt        DateTime          @default(now())
 
   @@map("users")
 }
@@ -104,6 +109,44 @@ model Membership {
   @@index([orgId])
   @@map("memberships")
   @@index([userId])
+}
+
+/// A per-EVENT override of a person's role and capabilities, for one event.
+///
+/// WHY IT EXISTS. Membership is @@unique([orgId, userId]) — one role per person
+/// per org, permanently — but CLAUDE.md says "Till holders are assigned by the
+/// coordinator before camp." The domain has always been per-event; the schema
+/// never was. Today, making someone a till holder for the medical camp also
+/// makes them one at the Diwali gate, and keeps them one until somebody
+/// remembers to take it back. Same for role: the person running a station at
+/// the camp is not thereby a station volunteer at the dance night.
+///
+/// Membership is NOT replaced. It stays the org-level default and the answer for
+/// every screen that is not about one event. A row here overrides it for one
+/// event only; absence means "use the org default". That is the whole
+/// resolution rule — see requireEventRole in src/server/session.ts.
+///
+/// No orgId column: the event owns the tenancy, and adding one would let a row
+/// disagree with its own event about which tenant it belongs to. ServiceCap and
+/// StationVisit scope through their parent the same way.
+model EventAssignment {
+  id                String   @id @default(cuid())
+  eventId           String
+  event             Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role              Role
+  /// Capability flags, mirroring Membership's. Absent a row, the org-level
+  /// values apply; present, these are authoritative FOR THIS EVENT — including
+  /// when they are false, which is how a standing till holder is stood down for
+  /// one night without touching their org membership.
+  canHoldTill       Boolean  @default(false)
+  canOverrideWaiver Boolean  @default(false)
+  createdAt         DateTime @default(now())
+
+  @@unique([eventId, userId])
+  @@index([userId])
+  @@map("event_assignments")
 }
 
 // NextAuth.js adapter tables (OIDC-first; email/password fallback later).
@@ -179,6 +222,16 @@ model Event {
   endsAt                  DateTime
   /// Venue layout selection + config (Clinic vs Open Space), per-event override.
   venueConfig             Json         @default("{}")
+  /// How many people the floor holds — the DENOMINATOR of the gate's fill bar.
+  /// Per-event because every venue has a different floor, and CLAUDE.md's rule
+  /// is configuration over code.
+  ///
+  /// Null is a legitimate answer meaning "no stated limit": the gate then shows
+  /// a plain admitted headcount and no bar. Zero is NOT — it would render
+  /// "312 of 0" and tell the door to stop admitting guests already inside — so a
+  /// CHECK refuses it, exactly as ServiceCap.capacity does and for the same
+  /// reason: the invalid state is unrepresentable rather than merely discouraged.
+  venueCapacity           Int?
   /// Optional hero image for the public events listing (one pic per event).
   imageUrl                String?
   /// Human-facing location line, shown on the public card + volunteer signup.
@@ -223,6 +276,38 @@ model Event {
   /// Monotonic per-event counter for volunteer signup codes (VOL-<code>-NNNN).
   nextVolSeq              Int          @default(1)
 
+  /// Coordinator notes about the EVENT: load-in time, the sound desk's number,
+  /// where the van parks, who has the venue key. Internal only — no public page
+  /// and no email renders it.
+  ///
+  /// NEVER PUT A PERSON IN HERE. Not "Mrs Patel needs a wheelchair at vitals",
+  /// not a phone number belonging to an attendee. The reason is specific rather
+  /// than squeamish: attendee PII is erased when an event reaches PURGED, but
+  /// THIS ROW IS NOT PURGED — `purgedAt` clears the attendees and the event
+  /// record survives indefinitely. A patient detail typed here therefore outlives
+  /// the very deletion that was meant to remove it, and CLAUDE.md's hard
+  /// constraint is that no such record exists at all. Hence the `internal`
+  /// prefix, which puts the rule at every call site, and the length cap in
+  /// src/lib/eventSetup.ts, which keeps the box a note field rather than a place
+  /// a shadow roster could accumulate.
+  ///
+  /// Named `internalNotes` and not `notes` because PerformanceEntry.notes exists
+  /// for a different job and the two would be confused on sight.
+  internalNotes String?
+
+  /// Readiness-flag acknowledgement: when a coordinator last said "yes, I have
+  /// seen this event's warnings", and who said it.
+  ///
+  /// NOTHING READS THESE YET, and that is deliberate — do not delete them as
+  /// dead columns. Every migration in this repo goes through a gated CI approval
+  /// that has deadlocked before, so additive nullable columns that are already
+  /// designed ride along with the migration in flight rather than costing
+  /// another round-trip through the gate. The flag-review screen lands later and
+  /// finds its columns already there.
+  flagsReviewedAt   DateTime?
+  flagsReviewedById String?
+  flagsReviewedBy   User?     @relation("EventFlagsReviewer", fields: [flagsReviewedById], references: [id], onDelete: SetNull)
+
   /// Computed when the camp closes; PII is purged but this survives.
   closedAt DateTime?
   purgedAt DateTime?
@@ -239,6 +324,7 @@ model Event {
   volunteerRoles     VolunteerRole[]
   volunteerSignups   VolunteerSignup[]
   performanceEntries PerformanceEntry[]
+  assignments        EventAssignment[]
 
   @@unique([orgId, code])
   @@index([orgId, status])
@@ -556,6 +642,21 @@ enum SongDelivery {
   OFFLINE // entrant arranges it directly; needs coordinator follow-up
 }
 
+/// Where a group is in the show, on the night. Linear and one-way: the states
+/// are the physical positions a group occupies, not a workflow someone invented
+/// — sitting in the hall, called over the PA, waiting in the wings, on stage,
+/// finished. A stage manager reads them off a phone and never has to translate.
+///
+/// PERFORMED is distinct from having a finishedAt: a group can be marked done
+/// without anyone having tapped a timer, and the show must still run.
+enum StageState {
+  WAITING // in the audience / green room, not yet called
+  CALLED // announced over the PA, on their way
+  BACKSTAGE // in the wings, next up
+  PERFORMING // on stage now
+  PERFORMED // done
+}
+
 /// One dance group entered into a competition or showcase (Rhythms of Navratri,
 /// the Diwali Dhamaka showcase). Replaces the Google Forms that collected these,
 /// where the fee was self-certified on the honour system and the stated group
@@ -613,14 +714,50 @@ model PerformanceEntry {
 
   /// Declared performance length — the only check there is on the 5–6 minute
   /// rule, since duration cannot be derived without decoding the file.
+  /// STAYS NULLABLE in this migration, on purpose. Making it NOT NULL is a
+  /// constraint TIGHTENING, so it must land AFTER the deploy that makes
+  /// performanceEntrySchema require it — the reverse of this repo's usual
+  /// migration-before-deploy rule. Tightening first would 500 every live
+  /// /perform submission in the window between the migration and the deploy.
+  /// A later Migration B does it, once the zod bound is already shipped.
   durationSeconds Int?
   usesProps       Boolean?
   needsStagePrep  Boolean?
   category        String?
 
+  // ── Show night ─────────────────────────────────────────────────────────────
+
+  /// Position in the running order. Null = entered but not yet placed in the
+  /// show, which is the state most entries sit in until the coordinator builds
+  /// the order — hence nullable rather than a 0 sentinel.
+  ///
+  /// THE UNIQUE BELOW IS THE POINT OF DOING THIS AT THE DATABASE. Two groups
+  /// holding slot 7 is precisely the failure the paper clipboard has today, and
+  /// a drag-to-reorder UI racing itself would reproduce it faithfully. Postgres
+  /// treats NULLs as distinct, so any number of unplaced entries coexist.
+  ///
+  /// IT FOLLOWS THAT REORDERING MUST BE TRANSACTIONAL. Writing new positions one
+  /// row at a time walks straight into the constraint the moment two rows swap —
+  /// there is no ordering of individual UPDATEs that avoids a collision on a
+  /// swap. Whoever builds the reorder UI: send the whole new order in one
+  /// db.$transaction, and inside it either clear the affected rows' positions
+  /// first or renumber via a temporary offset. Do not "fix" a violation by
+  /// dropping this constraint.
+  runningOrder Int?
+  stageState   StageState @default(WAITING)
+  /// Set when the group actually starts. Drives the elapsed timer and the
+  /// running schedule drift, so it is the real clock, not the planned one.
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  /// Coordinator-visible working notes ("needs 2 mics", "arriving late",
+  /// "swapped song, chasing new file"). Never shown to the entrant. Today this
+  /// lives in somebody's phone.
+  notes        String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([eventId, runningOrder])
   @@index([orgId])
   @@index([eventId])
   @@map("performance_entries")
