@@ -24,10 +24,10 @@ function createPrismaClient() {
      * outlives the deletion that is supposed to remove it. A field with that
      * property should not be one `select` away from a public page.
      *
-     * The public listings (src/app/page.tsx, src/app/events/page.tsx) already
-     * read whole event rows with no `select`. Nothing leaks today — both are
-     * server components and neither hands a whole row across a client boundary
-     * — but the guarantee rested entirely on that staying true, and on every
+     * The public listing (src/app/page.tsx) already reads whole event rows with
+     * no `select`. Nothing leaks today — it is a server component and hands no
+     * whole row across a client boundary — but the guarantee rested entirely on
+     * that staying true, and on every
      * future `db.event.findMany` being written by someone who knew. Omitting
      * per-query would have protected exactly the two call sites we happened to
      * notice; the next one would start unprotected again.

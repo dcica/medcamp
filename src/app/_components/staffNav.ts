@@ -59,9 +59,10 @@ export type StaffDestination = {
 export const STAFF_DESTINATIONS: StaffDestination[] = [
   // ── Working an event ──
   // Public, but kept in the menu: it left the header bar, and staff still
-  // need to reach the listing they send guests to.
+  // need to reach the listing they send guests to. That listing is the front
+  // door itself — the separate /events route is gone.
   {
-    href: "/events",
+    href: "/",
     name: "Public events page",
     roles: [
       "COMMITTEE_ADMIN",

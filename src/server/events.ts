@@ -396,7 +396,7 @@ function score(
   // "Camp day" for a camp; a dandiya night does not have one.
   const dayWord = e.type === "CAMP" ? "Camp day" : "Event day";
   const clock = dayWord + " is " + whenPhrase(daysUntil) + ".";
-  // Public in the sense that matters here: listed on /events, taking money.
+  // Public in the sense that matters here: listed on /, taking money.
   const isPublic = e.status === "OPEN" || e.status === "ACTIVE";
 
   const items: ReadinessItem[] = [];

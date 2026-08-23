@@ -70,7 +70,7 @@ export default async function PerformPage({
           No event is taking performance entries right now.
         </p>
         <p className="mt-6">
-          <Link href="/events" className="text-sm text-brand underline">
+          <Link href="/" className="text-sm text-brand underline">
             ← Back to events
           </Link>
         </p>
@@ -144,7 +144,7 @@ export default async function PerformPage({
       />
 
       <p className="mt-6 text-center text-sm">
-        <Link href="/events" className="text-brand underline">
+        <Link href="/" className="text-brand underline">
           ← Back to events
         </Link>
       </p>
