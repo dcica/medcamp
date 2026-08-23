@@ -393,15 +393,54 @@ const EVENTS: Seed[] = [
     location: "Gerault Park, Flower Mound, TX",
     description:
       "Free entry and free parking. High-rise fireworks, live entertainment, food and vendor booths. Presented with the Town of Flower Mound and D-SAW.",
-    // FREE ENTRY, in the flyer's own words — so this event sells nothing and
-    // takes no registration. That is why no `services` are declared: the org
-    // catalogue still holds floor-admission and dandiya-sticks from an earlier
-    // plan to ticket this night, and attaching them here would put a paid door
-    // on a free community festival. Vendors and volunteers are the two things
-    // this event does take.
-    offersRegistration: false,
+    // ADMISSION is free — the flyer's own words, and still true. The floor is
+    // not ticketed, which is why neither floor-admission nor dandiya-sticks is
+    // attached here even though the org catalogue still holds both from an
+    // earlier plan to ticket this night. Putting a paid door on a free
+    // community festival remains wrong.
+    //
+    // But free entry is NOT the same as selling nothing, and this entry used to
+    // conflate the two. The festival runs a dance competition with a $30 entry
+    // fee per group, priced against this event on the admin services screen on
+    // 2026-08-23 — a FEE buys a slot and admits nobody, so it is exactly the
+    // offering a free-entry event can carry without contradicting its own
+    // flyer. Declared here so a fresh environment gets the same lineup the
+    // coordinator built by hand.
+    //
+    // `offersRegistration` MUST stay true while any service is priced against
+    // this event. It is the flag the public landing page hangs both its
+    // Register and its Enter-a-performance buttons off, so false with a live
+    // offering means the competition is paid for, capped, and reachable by
+    // nobody — which is precisely what happened on prod between the day the fee
+    // was priced and 2026-08-23. `eventFields` includes this column, so a
+    // SEED_FORCE_UPDATE=1 run reasserts whatever is written here: a stale
+    // `false` on this line is not a comment, it is a scheduled outage.
+    offersRegistration: true,
     offersVendors: true,
     offersVolunteers: true,
+    services: [
+      {
+        // Same org catalogue key as RON-2026 above, deliberately. One
+        // catalogue service, coded per event — the price and capacity that
+        // bind live on this event's own cap, which is the whole reason
+        // ServiceCap carries priceCents.
+        key: "competition-entry",
+        name: "Competition Entry",
+        colorHex: "#dc2626",
+        // $30 per GROUP, flat. NO early bird and no door price, unlike
+        // RON-2026: those three prices came off the Navratri committee pricing
+        // sheet and there is no equivalent sheet for this night. Mirrors what
+        // the coordinator actually entered rather than inventing a ladder.
+        priceCents: 3000,
+        kind: "FEE",
+        // 25 groups, as set on the services screen. No participant or duration
+        // rules were entered for this event — left unset rather than copied
+        // from Navratri's 3-10 dancers / 5-6 minutes, because those are that
+        // competition's rules and enforcing them here would reject entries
+        // nobody told the entrants were invalid.
+        capacity: 25,
+      },
+    ],
     volunteerRoles: COMMUNITY_VOL_ROLES,
   },
 ];
