@@ -40,6 +40,26 @@ const VENUE_TIME = new Intl.DateTimeFormat("en-US", {
   timeZone: VENUE_TIME_ZONE,
 });
 
+const VENUE_MONTH_DAY = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  timeZone: VENUE_TIME_ZONE,
+});
+
+/**
+ * Month and day for one instant, in the venue's zone — the poster date pill on
+ * the public rail, and the "through Sep 15" in an early-bird price line.
+ *
+ * A named function for the same reason `formatVenueTime` is one: this is the
+ * SHORT form, with no year and no time, so a reader has nothing to cross-check
+ * it against. An inline `toLocaleDateString({month,day})` reads the process
+ * zone, and Vercel runs UTC — a 7 PM Oct 10 event would print "Oct 11" on the
+ * pill and "Oct 10" in the when-line two lines below it, on the same card.
+ */
+export function formatVenueMonthDay(instant: Date): string {
+  return VENUE_MONTH_DAY.format(instant);
+}
+
 /**
  * Clock time for one instant, in the venue's zone.
  *
@@ -73,9 +93,44 @@ export function formatVenueTime(instant: Date): string {
 export function formatWhen(start: Date, end: Date): string {
   const startDay = VENUE_DATE.format(start);
   const endDay = VENUE_DATE.format(end);
-  return startDay === endDay
+  const oneEvening = startDay === endDay || spillsIntoTheSmallHours(start, end);
+  return oneEvening
     ? `${startDay} · ${VENUE_TIME.format(start)} – ${VENUE_TIME.format(end)}`
     : `${startDay} – ${endDay}`;
+}
+
+/**
+ * An event ending at or before this venue hour on the FOLLOWING venue day is
+ * still one evening, not a two-day event.
+ *
+ * Dandiya Night runs 7:00 PM to midnight. Midnight is the next venue day, so
+ * the same-day test above failed and the public card printed a bare
+ * "Oct 10, 2026 – Oct 11, 2026" — a card advertising a dance floor with no door
+ * time on it at all, which is the one fact a person reads it for. The zone fix
+ * documented above solved the *wrong day*; it did not solve the *missing time*,
+ * because 7 PM to midnight really is two venue days.
+ *
+ * 4 AM is late enough to cover any evening event that runs over, and early
+ * enough that no genuine multi-day event qualifies.
+ */
+const EVENING_SPILL_END_HOUR = 4;
+
+/**
+ * True when `end` lands in the small hours of the venue day right after `start`.
+ *
+ * `venueDaysUntil` rather than a millisecond difference, for the reason its own
+ * doc comment gives: it counts VENUE CALENDAR days, so it does not slip by one
+ * at a DST boundary. Requiring exactly 1 is what keeps a three-day festival out
+ * of this branch.
+ *
+ * Known, accepted edge: an 18-hour event running 9 AM to 3 AM the next day now
+ * prints as one evening. That reads correctly ("9:00 AM – 3:00 AM") and no such
+ * event exists in the domain; the alternative is a lower-bound hour test that
+ * would fail the 5 PM competition this was written for.
+ */
+function spillsIntoTheSmallHours(start: Date, end: Date): boolean {
+  if (venueDaysUntil(end, start) !== 1) return false;
+  return venueWallClock(end).hour < EVENING_SPILL_END_HOUR;
 }
 
 /* ------------------------------------------------------------------------- *

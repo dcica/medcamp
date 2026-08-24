@@ -162,10 +162,16 @@ and are safe. The forbidding comment at `src/server/payments.ts:242-260` stays.
 ### Verification
 
 - `npx tsc --noEmit` after every task, then `npm run verify`. Baseline as of 2026-08-23:
-  **9 suites, 889 assertions, all green** — schema 54, pricing 39, validation 62,
-  storage 31, branding 310, performance 125, gate 101, readiness 91, checkout 76.
-  (`pricing` and `validation` print `PASS`; the rest print `ok` — count both when
-  reporting totals.)
+  **10 suites, 973 assertions, all green** — schema 54, pricing 39, validation 62,
+  storage 31, branding 325, performance 125, gate 101, readiness 91, checkout 76,
+  home 69. (`pricing` and `validation` print `PASS`; the rest print `ok` — count
+  both when reporting totals. `verify-home` §2 prints a third status, `..`, for a
+  row a Central-time box cannot distinguish; it is not a failure.)
+  The previous figure said 9 suites / 889 and was already stale before `home` was
+  added: branding had grown from 310 to 325 on its own. A `verify:csv` suite is
+  in flight in a working tree but is NOT committed — it is deliberately absent
+  from the chain here, because a chain entry naming an uncommitted script fails on
+  a clean clone. Whoever lands it owns adding it back and re-counting.
 - **Never make the chain green by weakening a check.** Report before/after assertion counts.
 - New checks must be **mutation-tested**: name the one-line source edit that makes the check
   fail, and make it once to prove it does. A check that cannot fail is worse than none.
