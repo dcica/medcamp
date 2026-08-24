@@ -5,6 +5,26 @@ import Link from "next/link";
  * found") with chrome-wrapped content and a way home, so a lost visitor isn't
  * stranded. The root layout's header/footer wrap this automatically.
  */
+/**
+ * The one page in the app that is NOT force-dynamic by default, and therefore
+ * the only one Next prerenders at build time. That made it the single reason a
+ * build needed a live database: this component touches none, but the root layout
+ * wrapping it calls getActiveBranding() to resolve the tenant palette, so
+ * prerendering it opened a Prisma connection during `next build`.
+ *
+ * The consequence was not theoretical. Vercel Preview scope carries no
+ * DATABASE_URL, so EVERY preview build on both projects failed with
+ * "Environment variable not found: DATABASE_URL ... Error occurred prerendering
+ * page /_not-found" while the identical commit built fine on the production ref.
+ * Weeks of red builds on a page nothing serves, and it trained everyone to
+ * ignore deploy failure mail — which is the expensive part.
+ *
+ * A build should not require a database. Opting this route out of prerendering
+ * restores that, and costs nothing: the 404 renders per-request like the other
+ * 37 pages, and its own content is static anyway.
+ */
+export const dynamic = "force-dynamic";
+
 export default function NotFound() {
   return (
     <main className="mx-auto flex min-h-[60vh] max-w-screen-sm flex-col items-center justify-center px-4 text-center">
