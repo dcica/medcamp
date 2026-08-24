@@ -286,6 +286,31 @@ export async function reapExpiredCheckout(
   });
 }
 
+/**
+ * Does this deployment know this order at all?
+ *
+ * WHY THIS EXISTS. test.dcica.org and events.dcica.org have a webhook endpoint
+ * each, and both endpoints live on the SAME Stripe account. Stripe fans every
+ * event out to every endpoint on the account, so a purchase made on test is
+ * also delivered to prod — whose `prod` schema has never heard of that order.
+ * confirmOrderPaid then threw out of findUniqueOrThrow, the route answered 500,
+ * and Stripe retried on a schedule forever. Four events were wedged that way
+ * and Stripe threatened to disable the endpoint outright.
+ *
+ * THIS IS NOT MASKING A BUG. The id came from metadata WE set at session
+ * creation, and the order row is committed before the session exists, so there
+ * is no window where a legitimate order for THIS deployment is missing when its
+ * webhook lands. An id we minted that is absent here belongs to the other
+ * deployment, and no number of retries will conjure it up.
+ */
+export async function isKnownOrder(orderId: string): Promise<boolean> {
+  const hit = await db.order.findUnique({
+    where: { id: orderId },
+    select: { id: true },
+  });
+  return hit !== null;
+}
+
 /** Mint the Stripe session and record its PENDING Payment row. Shared by create and resume. */
 async function openCheckoutSession(
   order: {

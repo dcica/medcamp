@@ -31,6 +31,7 @@
  *   §6  delete the CONFIRMED branch of resumeCheckoutForOrder → receipt rows fail
  *   §7  key the resume action on IP alone             → per-order bucket row fails
  *   §8  return early instead of setting a no-draft baseline → tab-loss row fails
+ *   §9  drop the isKnownOrder guard from the webhook       → foreign-order row fails
  */
 import * as dotenv from "dotenv";
 import { readFileSync } from "node:fs";
@@ -80,7 +81,7 @@ async function main() {
   );
   const draftMod = await import("../src/lib/checkoutDraft");
   const { hasEdits, snapshot } = draftMod;
-  const { reapExpiredCheckout, resumeCheckoutForOrder, getResumableCheckout } =
+  const { reapExpiredCheckout, resumeCheckoutForOrder, getResumableCheckout, isKnownOrder } =
     await import("../src/server/payments");
   const { guardKey } = await import("../src/server/requestGuard");
   const { resetRateLimits } = await import("../src/lib/rateLimit");
@@ -467,6 +468,28 @@ async function main() {
       src.includes("baseline.current = snapshot(applied);"),
     );
   }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log("\n§9 a webhook for another deployment's order is acknowledged, not retried");
+
+  // test.dcica.org and events.dcica.org share ONE Stripe account, so each
+  // receives the other's events. Prod answered 5xx for orders it had never
+  // heard of, Stripe retried on a permanent schedule, and four events wedged
+  // until Stripe threatened to disable the endpoint (2026-08-21 → 08-24).
+  check("an order in this deployment is known", (await isKnownOrder(pending)) === true);
+  check("an order from another deployment is not", (await isKnownOrder("cmt0000notours0000000000")) === false);
+  check("a cancelled order is still OURS — the guard is about ownership, not status",
+    (await isKnownOrder(abandoned)) === true);
+
+  // Structural, same reasoning as §7: the predicate above cannot prove the
+  // route CONSULTS it. If the guard is dropped "because confirmOrderPaid throws
+  // anyway", the retry storm comes straight back.
+  const hookSrc = readFileSync("src/app/api/stripe/webhook/route.ts", "utf8");
+  check("the webhook consults isKnownOrder before acting",
+    /if\s*\(!\(await isKnownOrder\(orderId\)\)\)/.test(hookSrc));
+  check("…and answers 200 for a foreign order, never a 5xx",
+    /order not in this deployment/.test(hookSrc) &&
+      !/order not in this deployment[\s\S]{0,200}status:\s*5/.test(hookSrc));
 
   await cleanup(org.id);
 }
