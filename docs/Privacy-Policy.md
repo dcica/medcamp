@@ -5,7 +5,7 @@ nav_order: 9
 
 # Privacy & Data Use Policy
 
-*Last updated: June 2026*
+*Last updated: August 2026*
 
 This policy applies to all registrations, memberships, vendor applications, sponsorships, and volunteer signups processed through the dcica platform.
 
@@ -131,6 +131,7 @@ To exercise any of these rights, contact: **admin@dcica.org**
 | Stripe | Payment processing | stripe.com/privacy |
 | Google (OAuth) | Staff login | policies.google.com/privacy |
 | Google (Address Validation) | Standardizing your mailing address so lab results reach you (optional; only the address you enter is sent, once) | policies.google.com/privacy |
+| Google Analytics | Aggregate website traffic measurement (page views, referrers, device type). Sets cookies in your browser. No registration, payment, or patient data is sent to it. Only active when the organization has configured its own GA property | policies.google.com/privacy |
 | Vercel | Website hosting | vercel.com/legal/privacy-policy |
 
 ---

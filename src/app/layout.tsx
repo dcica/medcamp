@@ -4,11 +4,14 @@ import { IBM_Plex_Sans } from "next/font/google";
 import "./globals.css";
 import { SiteHeader } from "@/app/_components/SiteHeader";
 import { SiteFooter } from "@/app/_components/SiteFooter";
+import { Analytics } from "@/app/_components/Analytics";
 import { getActiveBranding } from "@/lib/tenant";
 import { brandingStyleVars } from "@/lib/branding";
 
 // dcica.org's typeface. next/font self-hosts it at build time — no runtime
-// request to Google, which keeps the no-external-calls posture intact.
+// request to Google for fonts, on any page. (The one deliberate third-party
+// call in the shell is gtag.js, and only when a tenant sets a measurement id —
+// see _components/Analytics.tsx.)
 const ibmPlexSans = IBM_Plex_Sans({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
@@ -68,6 +71,8 @@ export default async function RootLayout({
           <div className="flex-1">{children}</div>
           <SiteFooter />
         </div>
+        {/* No-ops unless the tenant has configured a GA measurement id. */}
+        <Analytics />
       </body>
     </html>
   );

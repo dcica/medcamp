@@ -1,6 +1,13 @@
 import { z } from "zod";
 
 /**
+ * The only accepted shape for a GA4 measurement id. Exported so
+ * scripts/verify-branding.ts §15 pins the SAME expression the schema uses —
+ * a copy in the test would pass while the real guard rotted.
+ */
+export const GA_MEASUREMENT_ID_RE = /^G-[A-Z0-9]{4,24}$/;
+
+/**
  * Validated environment. Import `env` anywhere instead of touching process.env.
  * Providers are pluggable (Platform-Mandate §6): a blank section disables that
  * provider rather than crashing — so most provider keys are optional and the app
@@ -88,6 +95,25 @@ const schema = z.object({
   // Logging. Min level emitted by lib/logger (debug | info | warn | error).
   // Unset ⇒ debug in dev, info in prod. (logger reads process.env directly.)
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).optional(),
+
+  /**
+   * Google Analytics 4 measurement ID (`G-XXXXXXXXXX`). Unset ⇒ no analytics
+   * script is emitted at all, which is the default for a self-hoster and for
+   * local dev — a tenant opts in, and its ID is its own (this is per-tenant
+   * config, never a hardcoded platform value).
+   *
+   * Shape-validated on purpose: this value is interpolated into an INLINE
+   * <script> in the document (gtag needs the id inside the snippet, not just
+   * in a URL). An unvalidated env string there is arbitrary JS execution on
+   * every page — same class of hole as an unvalidated branding colour landing
+   * in the <html> style attribute (see lib/branding.ts). The regex admits
+   * exactly what Google issues, so nothing that could close the script tag or
+   * inject a statement survives it. Do not relax it to z.string().
+   */
+  NEXT_PUBLIC_GA_MEASUREMENT_ID: z
+    .string()
+    .regex(GA_MEASUREMENT_ID_RE, "must look like G-XXXXXXXXXX")
+    .optional(),
 });
 
 // During `next build` without a real DB, fall back so the build doesn't crash.
@@ -114,3 +140,10 @@ export const enabledOidcProviders = {
 
 /** Address validation is offered only when a Google key is configured. */
 export const addressValidationEnabled = Boolean(env.GOOGLE_MAPS_API_KEY);
+
+/**
+ * Analytics is emitted only when the tenant has configured a valid measurement
+ * ID. A malformed ID fails the schema above, so it arrives here as undefined
+ * and the site renders with no tracking rather than with a broken snippet.
+ */
+export const analyticsEnabled = Boolean(env.NEXT_PUBLIC_GA_MEASUREMENT_ID);

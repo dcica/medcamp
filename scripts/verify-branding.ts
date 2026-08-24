@@ -52,6 +52,11 @@
  * §10 The coordinator's single colour field now writes a real theme, so the
  *     composition it goes through (auto-foreground, then full validation) is
  *     part of the security boundary and not just convenience.
+ *
+ * §15 The GA measurement id is the OTHER value that reaches the document from
+ *     configuration — and unlike a colour it lands in an inline <script>, where
+ *     a bad value is arbitrary JS rather than a bad pixel. Same boundary, same
+ *     suite. Also pins the default-off property: no id ⇒ no third-party call.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -73,6 +78,7 @@ import {
   type Theme,
 } from "../src/lib/branding";
 import { publicObjectPrefixFor } from "../src/lib/supabase";
+import { GA_MEASUREMENT_ID_RE } from "../src/lib/env";
 
 let failures = 0;
 
@@ -757,6 +763,48 @@ function main() {
     check(`${file}: does not read theme.markUrl / theme.lockupUrl`,
       !/theme\??\.(markUrl|lockupUrl)/.test(src));
   }
+
+  // ── §15 ───────────────────────────────────────────────────────────────────
+  console.log("\n§15 the GA measurement id cannot become script");
+  // Analytics.tsx interpolates the id into an INLINE script body, so the schema
+  // regex in lib/env.ts is the whole guard. These are the shapes an env file,
+  // a Vercel dashboard paste, or a copy/paste slip can actually produce.
+  check("accepts a real GA4 id — G-N37TVHFNTT",
+    GA_MEASUREMENT_ID_RE.test("G-N37TVHFNTT"));
+  for (const bad of [
+    "G-ABC');alert(1);//",          // closes the gtag call, appends a statement
+    "G-ABC</script><script>x()",    // breaks out of the script element entirely
+    "G-ABC' + document.cookie + '", // exfiltration by concatenation
+    "G-ABC\nalert(1)",              // newline: the snippet is multi-line
+    "g-abcdefgh",                   // lowercase is not what Google issues
+    "UA-12345-6",                   // Universal Analytics — retired, wrong shape
+    "G-AB",                         // too short to be an id
+    "",                             // empty string is not "unset"
+    "G-ABC DEF",                    // a space survived the paste
+  ]) {
+    check(`refuses ${JSON.stringify(bad)}`, !GA_MEASUREMENT_ID_RE.test(bad));
+  }
+  const envSrc = readRepoFile("src/lib/env.ts");
+  // The regex must be attached to THIS field. A future edit that widens it to a
+  // plain string would leave every check above passing while the guard is gone.
+  check("lib/env.ts gates NEXT_PUBLIC_GA_MEASUREMENT_ID on the regex",
+    /NEXT_PUBLIC_GA_MEASUREMENT_ID:\s*z\s*\.string\(\)\s*\.regex\(GA_MEASUREMENT_ID_RE/.test(envSrc));
+  const analyticsSrc = readRepoFile("src/app/_components/Analytics.tsx");
+  // Default-off is a privacy claim the Privacy Policy makes in writing, and the
+  // reason a self-hoster does not silently report to a tenant's GA property.
+  check("Analytics renders nothing without an id",
+    /if\s*\(!measurementId\)\s*return null;/.test(analyticsSrc));
+  check("Analytics reads the id from validated env, not process.env",
+    /env\.NEXT_PUBLIC_GA_MEASUREMENT_ID/.test(analyticsSrc) &&
+      !/process\.env/.test(analyticsSrc));
+  // Nothing else may be interpolated into the inline snippet.
+  const inline = analyticsSrc.slice(analyticsSrc.indexOf("window.dataLayer"));
+  const interpolations = inline.match(/\$\{[^}]*\}/g) ?? [];
+  check("the inline snippet interpolates only measurementId",
+    interpolations.length > 0 && interpolations.every((i) => i === "${measurementId}"),
+    interpolations.join(" "));
+  check("the Privacy Policy discloses Google Analytics",
+    /\|\s*Google Analytics\s*\|/.test(readRepoFile("docs/Privacy-Policy.md")));
 }
 
 try {
