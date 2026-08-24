@@ -23,6 +23,18 @@ const supabaseHost = (() => {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // The dev-only Next badge is OFF, and this is a phone-first consequence rather
+  // than a preference. Every screen here puts a 48px primary button at the
+  // bottom of the card or form, so a floating badge pinned to a bottom corner
+  // covers part of a real control at 375px: measured, it swallowed 2 of 9 probe
+  // points across the front door's first "Buy tickets", and moving it to
+  // bottom-right just handed the same dead corner to the last card in the rail.
+  // It cost a reviewer a "the CTA does nothing" bug report that was never in the
+  // app at all. Never rendered in a production build either way.
+  //
+  // To get it back for a session: delete this line, or run
+  // `NEXT_DEV_INDICATOR=1 npm run dev` after making it env-driven.
+  devIndicators: false,
   images: {
     remotePatterns: supabaseHost
       ? [{ protocol: "https", hostname: supabaseHost, pathname: "/storage/v1/object/public/**" }]

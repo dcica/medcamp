@@ -35,7 +35,7 @@ export const viewport: Viewport = {
 
 /**
  * Async because the active tenant's theme has to be resolved before the shell
- * renders. 37 of 38 pages already declare `force-dynamic`, so this changes
+ * renders. EVERY route declares `force-dynamic`, so this changes
  * nothing architecturally, and `getActiveBranding` is request-cached — the
  * layout, the header and the footer share one query.
  */
