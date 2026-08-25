@@ -7,7 +7,7 @@ import { SiteFooter } from "@/app/_components/SiteFooter";
 import { Analytics } from "@/app/_components/Analytics";
 import { getActiveBranding } from "@/lib/tenant";
 import { brandingStyleVars } from "@/lib/branding";
-import { siteUrl } from "@/lib/seo";
+import { siteUrl, searchIndexingEnabled } from "@/lib/seo";
 import { env } from "@/lib/env";
 
 // dcica.org's typeface. next/font self-hosts it at build time — no runtime
@@ -59,7 +59,14 @@ export async function generateMetadata(): Promise<Metadata> {
     // Stated rather than assumed. The pages that must NOT be indexed override
     // this with their own `robots` export; see src/app/robots.ts for why the
     // per-page directive is the control and robots.txt is not.
-    robots: { index: true, follow: true },
+    //
+    // On a deployment with SEARCH_INDEXING=off this flips for EVERY page, the
+    // public ones included — which is the point. `test.dcica.org` is a working
+    // copy of the storefront on test-mode Stripe, and it must never be a search
+    // result for the queries the real site is competing for.
+    robots: searchIndexingEnabled()
+      ? { index: true, follow: true }
+      : { index: false, follow: false },
     formatDetection: { telephone: false },
     // Emitted only when this deployment has a Search Console token configured;
     // `undefined` renders no tag at all. See the env schema for why this is an

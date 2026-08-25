@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { absoluteUrl, siteUrl } from "@/lib/seo";
+import { absoluteUrl, siteUrl, searchIndexingEnabled } from "@/lib/seo";
 
 /**
  * `/robots.txt`.
@@ -65,6 +65,14 @@ const DISALLOW = [
  */
 
 export default function robots(): MetadataRoute.Robots {
+  // A deployment that must not be indexed at all refuses everything and
+  // advertises no sitemap. Belt and braces with the sitewide `noindex` the root
+  // layout emits under the same flag: robots.txt stops the crawl, the meta tag
+  // handles anything already crawled. Neither alone is sufficient — see the
+  // capability-URL note above for why Disallow is not an indexing control.
+  if (!searchIndexingEnabled()) {
+    return { rules: [{ userAgent: "*", disallow: "/" }] };
+  }
   return {
     rules: [
       {

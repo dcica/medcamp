@@ -487,7 +487,42 @@ async function main(): Promise<void> {
   );
 
   // ───────────────────────────────────────────────────────────────────────────
-  console.log("\n§7  the real sitemap");
+  console.log("\n\u00a77  the deployment-wide indexing switch");
+
+  /**
+   * test.dcica.org is a fully public, fully working copy of the storefront on
+   * test-mode Stripe. Indexed, it competes with events.dcica.org for the exact
+   * local queries this whole change targets, and it can win: same content on a
+   * shorter host. The failure is not a ranking loss. It is a neighbour
+   * searching "dandiya night flower mound", landing on the test site, and
+   * completing a checkout that takes no money and issues no ticket.
+   *
+   * Structural, because the flag is read from env and re-importing the route
+   * modules under a mutated env inside one process fights both the dotenv
+   * preamble and the import cache.
+   */
+  const robotsFile = code(readFileSync("src/app/robots.ts", "utf8"));
+  check(
+    "robots.txt refuses every crawler when indexing is off",
+    /if \(!searchIndexingEnabled\(\)\)/.test(robotsFile) &&
+      /userAgent: "\*", disallow: "\/"/.test(robotsFile),
+    "a test storefront would invite the crawl",
+  );
+  check(
+    "the sitemap is empty when indexing is off",
+    /if \(!searchIndexingEnabled\(\)\) return \[\];/.test(
+      code(readFileSync("src/app/sitemap.ts", "utf8")),
+    ),
+    "a non-indexable deployment still advertised its urls",
+  );
+  check(
+    "\u2026and every page goes noindex, the public ones included",
+    /robots: searchIndexingEnabled\(\)/.test(code(readFileSync("src/app/layout.tsx", "utf8"))),
+    "robots.txt alone does not deindex anything already crawled",
+  );
+  eq("indexing defaults to ON so a lone self-hoster needs no config", seo.searchIndexingEnabled(), true);
+
+  console.log("\n\u00a78  the real sitemap");
 
   const sitemap = (await import("../src/app/sitemap")).default;
   const entries = await sitemap();
