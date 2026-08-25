@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentMember } from "@/server/session";
 import { getReconciliationRows } from "@/server/dashboard";
+import { csvEscape } from "@/lib/csv";
 
 /**
  * Reconciliation CSV export for the active camp. Coordinator / committee-admin
@@ -27,8 +28,6 @@ export async function GET() {
     "registrant_email",
     "stripe_payment_intent",
   ];
-  const escape = (v: string) =>
-    /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
   const lines = [
     header.join(","),
     ...rows.map((r) =>
@@ -42,7 +41,7 @@ export async function GET() {
         r.registrantEmail,
         r.stripePaymentIntentId,
       ]
-        .map((v) => escape(String(v)))
+        .map((v) => csvEscape(String(v)))
         .join(","),
     ),
   ];

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentMember } from "@/server/session";
 import { getVolunteerReportRows } from "@/server/volunteers";
+import { csvEscape } from "@/lib/csv";
 
 /**
  * Volunteer roster CSV for an event (?event=<id>, else the default volunteer
@@ -37,8 +38,6 @@ export async function GET(req: Request) {
     "source",
     "hours_served",
   ];
-  const escape = (v: string) =>
-    /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
   const lines = [
     header.join(","),
     ...rows.map((r) =>
@@ -57,7 +56,7 @@ export async function GET(req: Request) {
         r.source,
         String(r.hoursServed),
       ]
-        .map((v) => escape(String(v)))
+        .map((v) => csvEscape(String(v)))
         .join(","),
     ),
   ];

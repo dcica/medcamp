@@ -33,6 +33,17 @@
 # rows of real PII reachable by the browser-published `anon` role. Do not put the
 # bare command back.
 #
+# SECRETS ARE SCOPED PER STEP, NOT PER JOB, AND THAT IS DELIBERATE. A job-level
+# `env:` block puts DATABASE_URL and DIRECT_URL in the environment of every step
+# — including `npm ci`, which executes preinstall/install/postinstall scripts
+# from the entire dependency tree (132 packages in the production tree alone).
+# One compromised or typosquatted package would then read the PRODUCTION
+# database credentials straight out of process.env and post them anywhere, with
+# no access to GitHub or Vercel required. Because all three environments share
+# one Supabase project, that is every schema at once. Until 2026-08-24 this
+# workflow declared the secrets at job level; do not put them back there. Only
+# the `check` step and the migrate/seed steps get them.
+#
 # Jobs self-skip when their secrets are absent (clean no-op, not a failure).
 # Seeds are idempotent upserts, so re-running on every push is safe.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -53,12 +64,11 @@ jobs:
     if: github.ref == 'refs/heads/test'
     runs-on: ubuntu-latest
     environment: test
-    env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      DIRECT_URL: ${{ secrets.DIRECT_URL }}
     steps:
       - uses: actions/checkout@v4
       - id: check
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
         run: |
           if [ -z "$DIRECT_URL" ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
@@ -71,31 +81,46 @@ jobs:
         with:
           node-version: 20
           cache: npm
+      # NO env: HERE, DELIBERATELY. `npm ci` runs preinstall/install/postinstall
+      # from the whole dependency tree, so a job-level env: block would hand
+      # every one of those third-party scripts the production database
+      # credentials. Keep this step blind.
       - run: npm ci
         if: steps.check.outputs.configured == 'true'
       - run: npm run db:migrate:deploy
         if: steps.check.outputs.configured == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
       - run: npm run db:seed
         if: steps.check.outputs.configured == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
       # Real public event lineup FIRST (it replaces all events for the org)...
       - run: npm run db:seed:events
         if: steps.check.outputs.configured == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
       # ...then the test fixtures (sample ACTIVE camp + test users + orders) on
       # top — seed-test only touches its own camp, so the real events survive.
       # Net on test: real events for the public page + test data for staff QA.
       - run: npm run db:seed:test
         if: steps.check.outputs.configured == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
 
   staging:
     if: github.ref == 'refs/heads/staging'
     runs-on: ubuntu-latest
     environment: staging
-    env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      DIRECT_URL: ${{ secrets.DIRECT_URL }}
     steps:
       - uses: actions/checkout@v4
       - id: check
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
         run: |
           if [ -z "$DIRECT_URL" ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
@@ -108,16 +133,29 @@ jobs:
         with:
           node-version: 20
           cache: npm
+      # No env: here — see the note in the `test` job.
       - run: npm ci
         if: steps.check.outputs.configured == 'true'
       - run: npm run db:migrate:deploy
         if: steps.check.outputs.configured == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
       - run: npm run db:seed
         if: steps.check.outputs.configured == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
       - run: npm run db:seed:events
         if: steps.check.outputs.configured == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
       - run: npm run db:seed:test
         if: steps.check.outputs.configured == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
 
   production:
     if: github.ref == 'refs/heads/main'
@@ -125,12 +163,11 @@ jobs:
     # Add a required reviewer to this Environment in repo settings to gate prod
     # migrations behind a manual approval.
     environment: production
-    env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      DIRECT_URL: ${{ secrets.DIRECT_URL }}
     steps:
       - uses: actions/checkout@v4
       - id: check
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
         run: |
           if [ -z "$DIRECT_URL" ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
@@ -143,13 +180,25 @@ jobs:
         with:
           node-version: 20
           cache: npm
+      # No env: here — see the note in the `test` job. This is the job where it
+      # matters most: these are the production credentials, and per the header
+      # above they reach a Supabase project shared with test and staging.
       - run: npm ci
         if: steps.check.outputs.configured == 'true'
       - run: npm run db:migrate:deploy
         if: steps.check.outputs.configured == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
       # Prod gets the dcica org + service menu, then the real public event
       # lineup. NEVER db:seed:test in prod — no fixtures, no fake orders.
       - run: npm run db:seed
         if: steps.check.outputs.configured == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
       - run: npm run db:seed:events
         if: steps.check.outputs.configured == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}

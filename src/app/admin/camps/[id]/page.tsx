@@ -28,7 +28,22 @@ export default async function CampDetailPage({
     ? await db.event.findFirst({
         where: { id, orgId: org.id },
         include: {
-          _count: { select: { caps: true, stations: true, attendees: true } },
+          _count: {
+            select: {
+              caps: true,
+              stations: true,
+              // PAID ONLY. Attendee rows are minted at CART creation on a
+              // PENDING order (src/server/registration.ts) and nothing reaps
+              // the abandoned ones, so the unfiltered count included carts
+              // nobody paid for — and, on a quantity-mode event, one row per
+              // admitted head rather than per purchase. `campId` is assigned
+              // inside confirmOrderPaid's transaction and nowhere else, which
+              // makes it the one durable marker that money changed hands. Same
+              // filter /dashboard uses, so the two screens can no longer
+              // disagree about the word "registered".
+              attendees: { where: { campId: { not: null } } },
+            },
+          },
         },
         // THE ONE PLACE `internalNotes` IS READ BACK. It is omitted from every
         // event query by default (see src/lib/db.ts) because the event row
@@ -71,11 +86,54 @@ export default async function CampDetailPage({
         {camp.location && (
           <p className="mt-1 text-sm text-gray-500">{camp.location}</p>
         )}
-        <p className="mt-1 text-xs text-gray-400">
-          {camp._count.caps} services · {camp._count.stations} stations ·{" "}
-          {camp._count.attendees} registered
-          {camp.walkInOpensAt ? " · walk-in OPEN" : ""}
-        </p>
+        {/*
+          THE COUNTS ARE DOORS, NOT DECORATION. This line was three numbers in
+          12px grey with nowhere to go: a coordinator who read "6 registered"
+          and wanted to know WHO had no next tap on the screen. Each count now
+          opens the screen that owns it, sized to the 48px tap minimum the
+          platform mandates — as bare inline links these would be 14px targets.
+
+          STATIONS ARE OMITTED AT ZERO rather than printed as "0 stations". A
+          garba night has no patient routing and never will, which is the same
+          ruling getEventReadiness already makes (src/server/events.ts: the
+          stations row is CAMP-only). "0 stations" on a dance class reads as an
+          unfinished setup step and is not one.
+        */}
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs">
+          {[
+            {
+              href: `/admin/camps/${camp.id}/services`,
+              label: `${camp._count.caps} services`,
+            },
+            ...(camp._count.stations > 0
+              ? [
+                  {
+                    href: `/admin/camps/${camp.id}/stations`,
+                    label: `${camp._count.stations} stations`,
+                  },
+                ]
+              : []),
+            {
+              href: `/admin/camps/${camp.id}/registrations`,
+              label: `${camp._count.attendees} registered`,
+            },
+          ].map((c, i) => (
+            <span key={c.href} className="flex items-center gap-x-2">
+              {i > 0 && <span className="text-gray-300">·</span>}
+              <Link
+                href={c.href}
+                className="inline-flex min-h-tap items-center text-brand underline"
+              >
+                {c.label}
+              </Link>
+            </span>
+          ))}
+          {camp.walkInOpensAt && (
+            <span className="flex items-center gap-x-2 text-gray-500">
+              <span className="text-gray-300">·</span>walk-in OPEN
+            </span>
+          )}
+        </div>
       </div>
 
       {/* The dates and the location are converted to venue wall clock *here*, on
