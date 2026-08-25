@@ -23,6 +23,40 @@ const schema = z.object({
   DEFAULT_ORG_SLUG: z.string().default("dcica"),
   // Comma-separated emails auto-granted COORDINATOR on first login (bootstrap).
   BOOTSTRAP_ADMIN_EMAILS: z.string().optional(),
+  /**
+   * Whether THIS deployment may be indexed by search engines.
+   *
+   * `off` makes robots.txt refuse every crawler, empties the sitemap, and puts
+   * `noindex` on every page including the public ones.
+   *
+   * It exists because `test.dcica.org` is a fully public, fully working copy of
+   * the storefront — same posters, same prices, same copy — running Stripe in
+   * TEST MODE. Indexed, it competes with `events.dcica.org` for the exact local
+   * queries the rest of this change is aimed at, and it can win: it is the same
+   * content on a shorter path. The failure mode is not a ranking loss, it is a
+   * neighbour finding "dandiya night flower mound", landing on the test site,
+   * and completing a checkout that takes no money and issues no ticket.
+   *
+   * Defaults to `on`, so a self-hoster with one environment is indexable
+   * without configuring anything, and only a deliberately-secondary deployment
+   * has to say so. Set `SEARCH_INDEXING=off` on medcamp-test.
+   */
+  SEARCH_INDEXING: z.enum(["on", "off"]).default("on"),
+
+  /**
+   * Google Search Console's HTML-tag verification token — the opaque string
+   * from `<meta name="google-site-verification" content="...">`.
+   *
+   * Env rather than a tenant setting because it identifies a DEPLOYMENT to
+   * Google, not an organisation: test and prod are two separate Search Console
+   * properties with two different tokens, and they share one database. A
+   * tenant-settings value would give both environments the same token and
+   * verify neither.
+   *
+   * Unset means no tag is emitted, which is correct for a self-hoster who has
+   * not claimed the property. DNS-record verification needs nothing here.
+   */
+  NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION: z.string().min(8).max(200).optional(),
 
   // Database
   DATABASE_URL: z.string().min(1),

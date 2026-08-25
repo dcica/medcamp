@@ -190,8 +190,14 @@ function venueWallClock(instant: Date): WallClock {
 }
 
 /**
- * The venue zone's offset from UTC, in ms, *at a given instant* — positive west
- * of Greenwich (CST = 21_600_000).
+ * The venue zone's offset from UTC, in ms, *at a given instant* — NEGATIVE west
+ * of Greenwich (CST = -21_600_000), the same sign an ISO-8601 offset uses.
+ *
+ * This comment said "positive west" until 2026-08-24 and had done since the
+ * function was written. Nothing read the sign — `venueInputToInstant` subtracts
+ * the value and cancels the question out — so the error sat harmlessly until
+ * `formatVenueIso` became the first caller that had to PRINT it, trusted the
+ * comment over the arithmetic, and emitted +06:00 for Texas.
  *
  * Reading the instant's venue wall clock and re-interpreting those same digits
  * as UTC gives an instant that is exactly one offset away from the real one.
@@ -278,4 +284,40 @@ export function venueInputToInstant(value: string): Date | null {
 export function venueDaysUntil(target: Date, now: Date = new Date()): number {
   const day = (d: Date) => Date.parse(`${instantToVenueInput(d).slice(0, 10)}T00:00:00Z`);
   return Math.round((day(target) - day(now)) / 86_400_000);
+}
+
+/**
+ * An instant as an ISO-8601 string carrying the VENUE's UTC offset —
+ * `2026-10-10T19:00:00-05:00` rather than `2026-10-11T00:00:00Z`.
+ *
+ * Exists for schema.org `Event.startDate`/`endDate`. Google's Event
+ * documentation asks for an offset so the time is unambiguous, and `Z` does
+ * technically satisfy that — but it moves an evening event onto the following
+ * calendar day, and the date is what a person reads in a search result. Dandiya
+ * Night is the case: 7 PM on Oct 10 in Flower Mound serialises as `Oct 11` in
+ * UTC, so the same defect `formatWhen` was fixed for would have reappeared in
+ * the structured data, where nobody would have seen it.
+ *
+ * Built from `venueOffsetMs`, so it carries the DST rule in force AT THAT
+ * INSTANT — a June event says -05:00 and a December one -06:00, with no table
+ * and no date library. Seconds are always emitted because a bare `HH:mm` offset
+ * form is the shape most validators are fussiest about.
+ */
+export function formatVenueIso(instant: Date): string {
+  const w = venueWallClock(instant);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  // venueOffsetMs is already NEGATIVE west of Greenwich (CST = -21_600_000),
+  // which is the same sign convention an ISO offset uses — so this is a unit
+  // conversion and nothing more. Do not "correct" it with a negation: an
+  // earlier draft of this function had one, and it published every Flower Mound
+  // event at +06:00, i.e. Bangladesh. The offset is the only part of a
+  // timestamp no human proofreads.
+  const offsetMinutes = Math.round(venueOffsetMs(+instant) / 60_000);
+  const sign = offsetMinutes < 0 ? "-" : "+";
+  const abs = Math.abs(offsetMinutes);
+  return (
+    `${w.year}-${pad(w.month)}-${pad(w.day)}` +
+    `T${pad(w.hour)}:${pad(w.minute)}:${pad(w.second)}` +
+    `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
+  );
 }

@@ -1,10 +1,15 @@
 import Link from "next/link";
+import { PRIVATE_PAGE_METADATA } from "@/lib/seo";
 
 // Static content, but the root layout above it reads the tenant palette from the
 // database, so prerendering this at build time opens a Prisma connection during
 // `next build`. That is the whole reason preview builds needed a DATABASE_URL.
 // This page and not-found.tsx were the last two of 38 without the declaration.
 export const dynamic = "force-dynamic";
+
+// Never a search result. See PRIVATE_PAGE_METADATA for which of the two
+// reasons applies to this page.
+export const metadata = PRIVATE_PAGE_METADATA;
 
 export default function ForbiddenPage() {
   return (

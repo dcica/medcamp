@@ -6,8 +6,27 @@ import { getResumableCheckout } from "@/server/payments";
 import { readResumeCookie } from "@/server/resumeCookie";
 import { resolvePrice } from "@/lib/pricing";
 import { isRegistrationOpen } from "@/server/registration";
+import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * `canonical` points at the BARE path on purpose. This page is reached as
+ * `/register?event=<cuid>`, and without a canonical every event id in the
+ * database becomes a separate indexable URL showing near-identical form
+ * furniture — the classic parameter-driven duplicate-content split, and one
+ * that grows by one URL per event forever.
+ *
+ * The event's own indexable page is `/e/<slug>`, which is where the content
+ * and the structured data live. This is the checkout, and one copy of it is
+ * enough.
+ */
+export const metadata: Metadata = {
+  title: "Register or buy tickets",
+  description:
+    "Register for an upcoming event and pay securely online. Choose your services, add a donation, and get a QR confirmation by email.",
+  alternates: { canonical: "/register" },
+};
 
 /**
  * Public registration portal (Module 1). Loads the open camp + its service menu

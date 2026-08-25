@@ -2,8 +2,13 @@ import Link from "next/link";
 import { requireRole } from "@/server/session";
 import { getActiveCampStations } from "@/server/stations";
 import { PageHelp } from "@/app/_components/PageHelp";
+import { PRIVATE_PAGE_METADATA } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+
+// Never a search result. See PRIVATE_PAGE_METADATA for which of the two
+// reasons applies to this page.
+export const metadata = PRIVATE_PAGE_METADATA;
 
 /** Station picker — a volunteer chooses the station they're working. */
 export default async function StationPickerPage() {

@@ -1,8 +1,13 @@
 import { redirect } from "next/navigation";
 import { requireMember } from "@/server/session";
 import { landingRouteFor } from "@/app/_components/staffNav";
+import { PRIVATE_PAGE_METADATA } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+
+// Never a search result. See PRIVATE_PAGE_METADATA for which of the two
+// reasons applies to this page.
+export const metadata = PRIVATE_PAGE_METADATA;
 
 /**
  * Post-sign-in landing resolver. Renders nothing — it exists to answer "where

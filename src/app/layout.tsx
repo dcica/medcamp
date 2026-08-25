@@ -7,6 +7,8 @@ import { SiteFooter } from "@/app/_components/SiteFooter";
 import { Analytics } from "@/app/_components/Analytics";
 import { getActiveBranding } from "@/lib/tenant";
 import { brandingStyleVars } from "@/lib/branding";
+import { siteUrl, searchIndexingEnabled } from "@/lib/seo";
+import { env } from "@/lib/env";
 
 // dcica.org's typeface. next/font self-hosts it at build time — no runtime
 // request to Google for fonts, on any page. (The one deliberate third-party
@@ -18,11 +20,62 @@ const ibmPlexSans = IBM_Plex_Sans({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: "DCICA",
-  description:
-    "Open-source event management & commerce for non-profits. Medical camp module.",
-};
+/**
+ * Site-wide metadata defaults.
+ *
+ * A FUNCTION rather than the static `metadata` object it replaces, for the same
+ * reason the layout below is async: the title carried the literal string
+ * "DCICA" on every page of a product whose founding mandate is that dcica is
+ * one tenant among many. A self-hoster in Edison NJ should not have to edit
+ * source to stop their browser tab saying somebody else's name.
+ *
+ * `metadataBase` is the load-bearing line and it is easy to miss. Without it
+ * Next emits every `alternates.canonical` and every OG `url` as a RELATIVE
+ * path, which is not a valid canonical and not a resolvable OG target — the
+ * per-page canonicals added across this change would all have been silently
+ * inert. One URL, set once, and every relative reference below resolves
+ * against it.
+ *
+ * The default description is a real description of what a visitor can do here,
+ * not the repo's one-line pitch. "Open-source event management & commerce for
+ * non-profits. Medical camp module." described the SOFTWARE to a developer,
+ * which is the wrong audience for a page whose readers are looking for a garba
+ * night — and it was the description of every page on the site.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const branding = await getActiveBranding();
+  const name = branding.orgName;
+  return {
+    metadataBase: new URL(siteUrl()),
+    title: {
+      default: `${name} — events, tickets and volunteering`,
+      // Every page that sets a plain string title gets the org appended, so a
+      // browser tab and a search result both say whose event it is.
+      template: `%s · ${name}`,
+    },
+    description: `Upcoming ${name} events: buy tickets, register, enter a performance, or sign up to volunteer.`,
+    applicationName: name,
+    openGraph: { siteName: name, locale: "en_US", type: "website" },
+    // Stated rather than assumed. The pages that must NOT be indexed override
+    // this with their own `robots` export; see src/app/robots.ts for why the
+    // per-page directive is the control and robots.txt is not.
+    //
+    // On a deployment with SEARCH_INDEXING=off this flips for EVERY page, the
+    // public ones included — which is the point. `test.dcica.org` is a working
+    // copy of the storefront on test-mode Stripe, and it must never be a search
+    // result for the queries the real site is competing for.
+    robots: searchIndexingEnabled()
+      ? { index: true, follow: true }
+      : { index: false, follow: false },
+    formatDetection: { telephone: false },
+    // Emitted only when this deployment has a Search Console token configured;
+    // `undefined` renders no tag at all. See the env schema for why this is an
+    // env var and not a tenant setting.
+    verification: env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION
+      ? { google: env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION }
+      : undefined,
+  };
+}
 
 export const viewport: Viewport = {
   // Phone-first means volunteer screens never NEED pinch/zoom — it does not mean

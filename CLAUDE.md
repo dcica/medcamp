@@ -161,17 +161,28 @@ and are safe. The forbidding comment at `src/server/payments.ts:242-260` stays.
 
 ### Verification
 
-- `npx tsc --noEmit` after every task, then `npm run verify`. Baseline as of 2026-08-23:
-  **10 suites, 973 assertions, all green** — schema 54, pricing 39, validation 62,
-  storage 31, branding 325, performance 125, gate 101, readiness 91, checkout 76,
-  home 69. (`pricing` and `validation` print `PASS`; the rest print `ok` — count
-  both when reporting totals. `verify-home` §2 prints a third status, `..`, for a
-  row a Central-time box cannot distinguish; it is not a failure.)
-  The previous figure said 9 suites / 889 and was already stale before `home` was
-  added: branding had grown from 310 to 325 on its own. A `verify:csv` suite is
-  in flight in a working tree but is NOT committed — it is deliberately absent
-  from the chain here, because a chain entry naming an uncommitted script fails on
-  a clean clone. Whoever lands it owns adding it back and re-counting.
+- `npx tsc --noEmit` after every task, then `npm run verify`. Baseline as of 2026-08-24:
+  **11 suites, 1078 assertions, all green** — schema 54, pricing 39, validation 62,
+  storage 31, branding 325, performance 125, gate 101, readiness 91, checkout 81,
+  home 69, seo 100. (`pricing` and `validation` print `PASS`; the rest print `ok`
+  — count both when reporting totals. Four suites also print a third status,
+  `..`, for a row a Central-time box or a local-disk adapter cannot distinguish:
+  storage, performance, gate and home have one each. A `..` is a SKIP and is
+  excluded from the counts above — include them and every one of those four
+  reads one higher.)
+  `verify:seo` is new: sitemap, robots, canonicals, structured data, and the
+  `noindex` on every capability URL.
+  **`verify:csv` is STILL not committed** and is still deliberately absent from
+  the chain above, for the same reason as before — a chain entry naming an
+  uncommitted script fails on a clean clone. It exists in at least one working
+  tree, where `npm run verify` therefore reports 12 suites and 1100. If your
+  local count is 1100, that is why. Whoever lands it owns adding it back and
+  re-counting.
+  **Numbers here go stale on their own**, which is the recurring failure this
+  paragraph keeps having: checkout had grown 76 → 81 with nobody updating this
+  line, exactly as branding had grown 310 → 325 the time before. Re-count from
+  the runner rather than trusting the line above; if it disagrees with what you
+  measure, the line is what is wrong.
 - **Never make the chain green by weakening a check.** Report before/after assertion counts.
 - New checks must be **mutation-tested**: name the one-line source edit that makes the check
   fail, and make it once to prove it does. A check that cannot fail is worse than none.

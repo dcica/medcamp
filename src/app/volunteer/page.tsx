@@ -5,8 +5,27 @@ import { VENUE_TIME_ZONE } from "@/lib/eventTime";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { VolunteerSignupForm } from "./VolunteerSignupForm";
 import { GeneralInterestForm } from "./GeneralInterestForm";
+import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * `canonical` points at the BARE path on purpose. This page is reached as
+ * `/volunteer?event=<cuid>`, and without a canonical every event id in the
+ * database becomes a separate indexable URL showing near-identical form
+ * furniture — the classic parameter-driven duplicate-content split, and one
+ * that grows by one URL per event forever.
+ *
+ * The event's own indexable page is `/e/<slug>`, which is where the content
+ * and the structured data live. This is the checkout, and one copy of it is
+ * enough.
+ */
+export const metadata: Metadata = {
+  title: "Volunteer at an event",
+  description:
+    "Sign up to volunteer — setup, registration desk, greeting, food stalls and cleanup. Hours are tracked and a certificate is issued after the event.",
+  alternates: { canonical: "/volunteer" },
+};
 
 /**
  * Public volunteer signup (Module 9). No login. The tagged ?src= link records the

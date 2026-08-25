@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PRIVATE_PAGE_METADATA } from "@/lib/seo";
 
 /**
  * Branded 404. Replaces Next's bare default ("404 — This page could not be
@@ -24,6 +25,10 @@ import Link from "next/link";
  * 37 pages, and its own content is static anyway.
  */
 export const dynamic = "force-dynamic";
+
+// Never a search result. See PRIVATE_PAGE_METADATA for which of the two
+// reasons applies to this page.
+export const metadata = PRIVATE_PAGE_METADATA;
 
 export default function NotFound() {
   return (

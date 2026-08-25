@@ -4,8 +4,13 @@ import { requireRole } from "@/server/session";
 import { getBadge } from "@/server/checkin";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { PrintButton } from "./PrintButton";
+import { PRIVATE_PAGE_METADATA } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+
+// Never a search result. See PRIVATE_PAGE_METADATA for which of the two
+// reasons applies to this page.
+export const metadata = PRIVATE_PAGE_METADATA;
 
 /**
  * Printable patient badge (Module 2): QR (camp ID) + color-coded service dots +

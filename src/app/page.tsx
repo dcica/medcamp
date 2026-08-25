@@ -1,7 +1,12 @@
+import { cache } from "react";
+import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { offeringKindsByEvent } from "@/server/performance";
 import { saleSummaryByEvent } from "@/server/eventSales";
 import { getActiveOrg } from "@/lib/tenant";
+import { organizationLd, primaryLocality, resolveTenantSeo } from "@/lib/seo";
+import { formatVenueMonthDay } from "@/lib/eventTime";
+import { JsonLd } from "@/app/_components/JsonLd";
 import { EmptyEventsState } from "@/app/_components/EmptyEventsState";
 import { EventRail } from "@/app/_components/EventRail";
 import { EventExtras } from "@/app/_components/EventExtras";
@@ -30,7 +35,14 @@ export const dynamic = "force-dynamic";
 
 type EventRow = PosterEvent;
 
-export default async function Home() {
+/**
+ * The org and its listed events, resolved once per request.
+ *
+ * `cache` because `generateMetadata` and the component both need exactly this,
+ * and Next calls them separately — without it the front door, the single
+ * most-requested page on the site, would run its event query twice per hit.
+ */
+const loadHome = cache(async () => {
   const org = await getActiveOrg();
   const events: EventRow[] = org
     ? await db.event.findMany({
@@ -47,6 +59,55 @@ export default async function Home() {
         orderBy: { startsAt: "asc" },
       })
     : [];
+  return { org, events };
+});
+
+/**
+ * The front door's title and description, WRITTEN FROM THE DATA.
+ *
+ * The instinct is a hand-written line naming garba and Diwali, and it is the
+ * wrong instinct twice over. It would rot — the events change every season and
+ * the copy would not — and it would hardcode one tenant's festivals into a
+ * platform that is meant to be self-hosted by any non-profit.
+ *
+ * The events already ARE the keywords. Listing their real names and the town
+ * they are held in produces exactly the phrases a local searcher types
+ * ("dandiya night flower mound"), stays true by construction, and costs a
+ * second tenant nothing. An org with no events gets the plain form rather than
+ * a promise about events that do not exist.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const { org, events } = await loadHome();
+  const orgName = org?.name ?? "Community events";
+  const local = primaryLocality(events.map((e) => e.location));
+  const where = local ? `${local.locality}, ${local.region}` : null;
+
+  const title = where
+    ? `${orgName} events in ${where}`
+    : `${orgName} — upcoming events`;
+
+  const listed = events
+    .slice(0, 4)
+    .map((e) => `${e.name} (${formatVenueMonthDay(e.startsAt)})`)
+    .join(", ");
+
+  const description = events.length
+    ? `Upcoming ${orgName} events${where ? ` in ${where}` : ""}: ${listed}. ` +
+      `Buy tickets, enter a performance or sign up to volunteer.`
+    : `Tickets, registration and volunteer signup for ${orgName}${where ? ` in ${where}` : ""}.`;
+
+  return {
+    // `absolute` so the root layout's "%s · <org>" template does not append the
+    // org name to a title that already opens with it.
+    title: { absolute: title },
+    description,
+    alternates: { canonical: "/" },
+    openGraph: { type: "website", title, description, url: "/" },
+  };
+}
+
+export default async function Home() {
+  const { org, events } = await loadHome();
 
   // One `now` for the whole render, so two cards can never resolve opposite
   // sides of the same early-bird deadline.
@@ -57,13 +118,33 @@ export default async function Home() {
   ]);
 
   const orgName = org?.name ?? "DCICA platform";
+  const local = primaryLocality(events.map((e) => e.location));
 
   return (
     <main className="mx-auto max-w-screen-md px-4 py-4">
+      {/* The org itself, once, on its front door — the page every other page
+          and every external link points at, which is what makes it the right
+          host for the identity block rather than the layout. */}
+      <JsonLd
+        data={organizationLd({
+          orgName,
+          seo: resolveTenantSeo(org?.settings),
+          locality: local,
+          logoUrl: null,
+        })}
+      />
+
       {/* sr-only, not deleted: the visible wordmark is three lines above in
           SiteHeader, so showing it again was the same word twice on a 375px
-          screen. A page still needs one h1 for screen readers and search. */}
-      <h1 className="sr-only">{orgName} — upcoming events</h1>
+          screen. A page still needs one h1 for screen readers and search.
+          It names the TOWN when the events say what the town is — an h1 is the
+          page's strongest on-page subject signal and "upcoming events" alone
+          competes with every other org in the country for it. */}
+      <h1 className="sr-only">
+        {local
+          ? `${orgName} — upcoming events in ${local.locality}, ${local.region}`
+          : `${orgName} — upcoming events`}
+      </h1>
 
       {events.length > 0 ? (
         <>

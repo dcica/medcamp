@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { formatWhen, formatVenueMonthDay } from "@/lib/eventTime";
+import { eventSlug } from "@/lib/seo";
 import { eventActions, TYPE_LABEL, type ActionableEvent } from "@/lib/eventActions";
 import type { EventOfferingKinds } from "@/server/performance";
 import type { EventSale } from "@/server/eventSales";
@@ -17,6 +18,8 @@ import type { EventSale } from "@/server/eventSales";
 export type PosterEvent = ActionableEvent & {
   status: string;
   name: string;
+  /** Half of the event's public slug — see eventSlug(). */
+  code: string;
   startsAt: Date;
   endsAt: Date;
   imageUrl: string | null;
@@ -57,7 +60,21 @@ export function EventPosterCard({
           which discarded ~60% of a portrait poster's height — and what it
           discarded was the title, date and price, because these flyers bake
           those into the artwork. */}
-      <div className="relative aspect-[3/4] bg-gray-100">
+      {/* The poster is the link to this event's own page, and it is the only
+          link on the card besides the CTA.
+          WHY the poster and not the title: /e/<slug> has to be reachable by a
+          crawler for it to be indexed at all, and the sitemap alone is a weak
+          way to say so — an internal link is the strong one. The title would be
+          the obvious anchor, but a 16px line of text is a ~20px tap target and
+          this codebase's floor is 48px. The poster is 214x285. It is also what
+          a person actually aims at.
+          `block` because an <a> is inline by default and would collapse the
+          aspect ratio. */}
+      <Link
+        href={`/e/${eventSlug(e)}`}
+        aria-label={`${e.name} — event details`}
+        className="relative block aspect-[3/4] bg-gray-100"
+      >
         {e.imageUrl ? (
           <Image
             src={e.imageUrl}
@@ -82,7 +99,7 @@ export function EventPosterCard({
         <span className="absolute bottom-2 left-2 rounded-full bg-brand px-2.5 py-1 text-xs font-bold text-brand-fg">
           {formatVenueMonthDay(e.startsAt)}
         </span>
-      </div>
+      </Link>
 
       {/* Saffron title panel — mirrors dcica.org's events design. */}
       <div className="bg-accent px-3 py-2.5 text-accent-fg">
