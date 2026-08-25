@@ -34,7 +34,8 @@ quick-path + the gotchas that bite. Read the mental model before running anythin
 git push origin test          # → Vercel deploys app + CI migrates+seeds test schema
 # watch the "DB migrate + seed" workflow in GitHub Actions
 ```
-Verify: `GET https://medcamp-sigma.vercel.app/api/health` → ok, DB connected, event count.
+Verify: `GET https://medcamp-sigma.vercel.app/api/health` → `{ ok: true, db: "connected", seeded: true }`.
+`seeded: false` means you are pointed at an empty schema — see the footgun below.
 
 ## Schema separation — the #1 footgun
 
@@ -96,6 +97,7 @@ ENV_FILE=.env.test npm run db:seed:test
 
 ## Verify after deploy
 
-- `GET /api/health` — ok + DB connected + event count.
+- `GET /api/health` — `ok: true`, `db: "connected"`, `seeded: true`. No counts and
+  no error text by design (unauthenticated endpoint); failures land in the runtime log.
 - `/events` (public), `/gate` (dandia), `/test-login` (needs `TEST_LOGIN_ENABLED=true`
   in the env's Vercel vars for the deployed site).

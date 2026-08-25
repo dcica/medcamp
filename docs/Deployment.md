@@ -305,7 +305,12 @@ When the DCICA Stripe account is activated, flip in this order:
 
 ## Smoke tests (per live environment)
 
-1. `GET /api/health` → `200` with `{ ok: true, db: "connected", counts: {...} }`.
+1. `GET /api/health` → `200` with `{ ok: true, db: "connected", seeded: true }`.
+   `seeded` is what confirms the app is pointed at a populated schema rather
+   than an empty `public` — the schema-separation footgun. The endpoint returns
+   no row counts and no error text: it is unauthenticated, so anything it says
+   is public, and a Prisma failure message names the Supabase host. When it
+   answers `{ ok: false, db: "unreachable" }`, the reason is in the runtime log.
 2. Home / tenant page renders for dcica → proves seed + `DATABASE_URL`.
 3. Google login round-trips back to `<env-domain>`, session cookie set,
    `/dashboard` reachable → proves `NEXTAUTH_URL` + redirect URI + DB sessions +

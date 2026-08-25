@@ -28,9 +28,11 @@
     "verify:gate": "tsx scripts/verify-gate.ts",
     "verify:readiness": "tsx scripts/verify-readiness.ts",
     "verify:checkout": "tsx scripts/verify-checkout.ts",
+    "verify:csv": "tsx scripts/verify-csv.ts",
     "verify:home": "tsx scripts/verify-home.ts",
     "verify:seo": "tsx scripts/verify-seo.ts",
-    "verify": "npm run verify:schema && npm run verify:pricing && npm run verify:validation && npm run verify:storage && npm run verify:branding && npm run verify:performance && npm run verify:gate && npm run verify:readiness && npm run verify:checkout && npm run verify:home && npm run verify:seo"
+    "verify:registrations": "tsx scripts/verify-registrations.ts",
+    "verify": "npm run verify:schema && npm run verify:pricing && npm run verify:validation && npm run verify:storage && npm run verify:branding && npm run verify:performance && npm run verify:gate && npm run verify:readiness && npm run verify:checkout && npm run verify:csv && npm run verify:home && npm run verify:seo && npm run verify:registrations"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -42,8 +44,8 @@
     "@supabase/supabase-js": "^2.49.1",
     "dotenv": "^17.4.2",
     "html5-qrcode": "^2.3.8",
-    "next": "^15.3.0",
-    "next-auth": "^4.24.11",
+    "next": "^15.5.23",
+    "next-auth": "^4.24.15",
     "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -58,7 +60,7 @@
     "autoprefixer": "^10.4.20",
     "eslint": "^9.20.0",
     "eslint-config-next": "^15.3.0",
-    "postcss": "^8.5.1",
+    "postcss": "^8.5.26",
     "prisma": "^6.5.0",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.19.2",

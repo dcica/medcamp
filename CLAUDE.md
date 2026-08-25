@@ -162,22 +162,23 @@ and are safe. The forbidding comment at `src/server/payments.ts:242-260` stays.
 ### Verification
 
 - `npx tsc --noEmit` after every task, then `npm run verify`. Baseline as of 2026-08-24:
-  **11 suites, 1078 assertions, all green** — schema 54, pricing 39, validation 62,
+  **13 suites, 1129 assertions, all green** — schema 54, pricing 39, validation 62,
   storage 31, branding 325, performance 125, gate 101, readiness 91, checkout 81,
-  home 69, seo 100. (`pricing` and `validation` print `PASS`; the rest print `ok`
-  — count both when reporting totals. Four suites also print a third status,
-  `..`, for a row a Central-time box or a local-disk adapter cannot distinguish:
-  storage, performance, gate and home have one each. A `..` is a SKIP and is
-  excluded from the counts above — include them and every one of those four
-  reads one higher.)
-  `verify:seo` is new: sitemap, robots, canonicals, structured data, and the
-  `noindex` on every capability URL.
-  **`verify:csv` is STILL not committed** and is still deliberately absent from
-  the chain above, for the same reason as before — a chain entry naming an
-  uncommitted script fails on a clean clone. It exists in at least one working
-  tree, where `npm run verify` therefore reports 12 suites and 1100. If your
-  local count is 1100, that is why. Whoever lands it owns adding it back and
-  re-counting.
+  csv 26, home 69, seo 100, registrations 25. (`pricing` and `validation` print
+  `PASS`; the rest print `ok` — count both when reporting totals. Four suites also
+  print a third status, `..`, for a row a Central-time box or a local-disk adapter
+  cannot distinguish: storage, performance, gate and home have one each. A `..` is
+  a SKIP and is excluded from the counts above — include them and every one of
+  those four reads one higher.)
+  `verify:registrations` is new: what "N registered" is allowed to mean — an
+  abandoned cart is not a registration, collected money is `SUCCEEDED` payments
+  and not `Payment` rows, and a line total is `amountCents × quantity`.
+  **`verify:csv` and `verify:registrations` are BOTH in the chain and NEITHER is
+  committed yet.** A chain entry naming an uncommitted script fails on a clean
+  clone — which is exactly why csv was held out of the chain for two rounds
+  running. Both scripts exist in this working tree. Land them together with the
+  package.json change, or take both entries back out; do not commit the chain
+  without the files. Strip both and the count is 11 suites and 1078.
   **Numbers here go stale on their own**, which is the recurring failure this
   paragraph keeps having: checkout had grown 76 → 81 with nobody updating this
   line, exactly as branding had grown 310 → 325 the time before. Re-count from

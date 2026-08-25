@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentMember } from "@/server/session";
 import { getCounselorReportRows } from "@/server/volunteers";
+import { csvEscape } from "@/lib/csv";
 
 /**
  * Counselor contact + rollup CSV — the recruitment list. Lists every school
@@ -27,13 +28,11 @@ export async function GET() {
     "events",
     "total_hours",
   ];
-  const escape = (v: string) =>
-    /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
   const lines = [
     header.join(","),
     ...rows.map((r) =>
       [r.name, r.email, r.title, r.school, r.students, r.events, r.totalHours]
-        .map((v) => escape(String(v)))
+        .map((v) => csvEscape(String(v)))
         .join(","),
     ),
   ];

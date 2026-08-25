@@ -47,3 +47,7 @@ docs/sketches/
 
 # Local-disk object storage (dev storage adapter)
 .uploads/
+
+# Per-user Claude Code overrides (machine-local tooling state)
+CLAUDE.local.md
+.gbrain-source
