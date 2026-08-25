@@ -5,8 +5,13 @@ import { VENUE_TIME_ZONE } from "@/lib/eventTime";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { WaiverForm } from "./WaiverForm";
 import { CheckinActions } from "./CheckinActions";
+import { PRIVATE_PAGE_METADATA } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+
+// Never a search result. See PRIVATE_PAGE_METADATA for which of the two
+// reasons applies to this page.
+export const metadata = PRIVATE_PAGE_METADATA;
 
 /**
  * Attendee check-in screen. Verifies payment, captures the waiver, and checks

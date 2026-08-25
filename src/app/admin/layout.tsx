@@ -1,6 +1,11 @@
 import { requireAdmin } from "@/server/admin";
+import { PRIVATE_PAGE_METADATA } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+
+// Never a search result. See PRIVATE_PAGE_METADATA for which of the two
+// reasons applies to this page.
+export const metadata = PRIVATE_PAGE_METADATA;
 
 /**
  * Admin portal shell. Gates the whole /admin tree to coordinator/committee-admin
