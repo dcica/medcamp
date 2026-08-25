@@ -7,8 +7,27 @@ import { PageHelp } from "@/app/_components/PageHelp";
 import { getResumableCheckout } from "@/server/payments";
 import { readResumeCookie } from "@/server/resumeCookie";
 import { PerformanceEntryForm } from "./PerformanceEntryForm";
+import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * `canonical` points at the BARE path on purpose. This page is reached as
+ * `/perform?event=<cuid>`, and without a canonical every event id in the
+ * database becomes a separate indexable URL showing near-identical form
+ * furniture — the classic parameter-driven duplicate-content split, and one
+ * that grows by one URL per event forever.
+ *
+ * The event's own indexable page is `/e/<slug>`, which is where the content
+ * and the structured data live. This is the checkout, and one copy of it is
+ * enough.
+ */
+export const metadata: Metadata = {
+  title: "Enter a performance",
+  description:
+    "Enter your group in an upcoming dance or music competition. One per-group entry fee, song upload, and entry status you can check any time.",
+  alternates: { canonical: "/perform" },
+};
 
 /**
  * Public competition / showcase entry (Rhythms of Navratri, Diwali Dhamaka).

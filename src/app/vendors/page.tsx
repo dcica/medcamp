@@ -2,8 +2,27 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { CONTACT_EMAIL } from "@/lib/contact";
+import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * `canonical` points at the BARE path on purpose. This page is reached as
+ * `/vendors?event=<cuid>`, and without a canonical every event id in the
+ * database becomes a separate indexable URL showing near-identical form
+ * furniture — the classic parameter-driven duplicate-content split, and one
+ * that grows by one URL per event forever.
+ *
+ * The event's own indexable page is `/e/<slug>`, which is where the content
+ * and the structured data live. This is the checkout, and one copy of it is
+ * enough.
+ */
+export const metadata: Metadata = {
+  title: "Vendor and sponsor enquiries",
+  description:
+    "Book a booth or sponsor an upcoming event. Tell us what you sell or how you would like to support, and an organizer follows up with options and pricing.",
+  alternates: { canonical: "/vendors" },
+};
 
 // Where vendor enquiries go: the org's one public address, shared with the
 // footer and the empty calendar state. The per-tenant-settings note lives on the
@@ -48,6 +67,17 @@ export default async function VendorsPage({
 
   return (
     <main className="mx-auto max-w-screen-sm px-4 py-8">
+      {/* This page had NO h1 — the only public page on the site without one.
+          PageHelp's `title` prop renders inside a disclosure summary, which
+          reads as a control rather than as the page's subject, so it never
+          filled the gap. sr-only for the same reason the front door's is: the
+          visible "Become a vendor" heading is one line below, and printing the
+          words twice on a 375px screen helps nobody. */}
+      <h1 className="sr-only">
+        {event
+          ? `Vendor and sponsor enquiries — ${event.name}`
+          : "Vendor and sponsor enquiries"}
+      </h1>
       <PageHelp
         id="vendors"
         title="Become a vendor"

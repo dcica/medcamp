@@ -26,12 +26,37 @@ export type SameEvening = {
   openFloor: boolean;
 };
 
+/**
+ * The numeric form of the same offering the price line describes, for
+ * schema.org `Event.offers`.
+ *
+ * A SECOND field rather than parsing `priceLine`, because the two answer
+ * different questions and only one of them is prose: "$25 a group through Aug
+ * 31, then $30" is the right thing to show a person and an unusable thing to
+ * put in an `offers.price`. Deriving one from the other in either direction
+ * would be the classic display-string-as-data mistake.
+ *
+ * It is computed from the SAME resolved offering, so a card and its structured
+ * data cannot disagree about what an event costs — which matters here more than
+ * usual, since a price in a search result that differs from the price at
+ * checkout is a Google policy violation, not merely a bug.
+ */
+export type EventOffer = {
+  /** What the CTA's offering charges online right now. */
+  priceCents: number;
+  currency: string;
+  /** True when that offering has a real ceiling and has reached it. */
+  soldOut: boolean;
+};
+
 export type EventSale = {
   /** "$10 through Sep 15, then $12" — already resolved and worded. */
   priceLine: string | null;
   /** "8 spots left" / "Dandiya Entry is sold out". Null when it is not news. */
   capacityLine: string | null;
   sameEveningAs: SameEvening | null;
+  /** Null when the event sells nothing that sets an entry price. */
+  offer: EventOffer | null;
 };
 
 export type SaleEventInput = {
@@ -170,6 +195,18 @@ export async function saleSummaryByEvent(
           })
         : null,
       sameEveningAs: siblings.get(e.id) ?? null,
+      // The offering the ONE button sells is the one whose price belongs in the
+      // structured data — the same choice, and the same variable, the capacity
+      // line above is built from.
+      offer: ctaOffering
+        ? {
+            priceCents: ctaOffering.resolved.amountCents,
+            currency: "USD",
+            soldOut:
+              ctaOffering.cap.capacity !== null &&
+              ctaOffering.cap.sold >= ctaOffering.cap.capacity,
+          }
+        : null,
     });
   }
 

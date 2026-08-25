@@ -1,8 +1,13 @@
 import { notFound } from "next/navigation";
 import { testLoginEnabled, TEST_ACCOUNTS } from "@/lib/testAccounts";
 import { TestLoginForm } from "./TestLoginForm";
+import { PRIVATE_PAGE_METADATA } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+
+// Never a search result. See PRIVATE_PAGE_METADATA for which of the two
+// reasons applies to this page.
+export const metadata = PRIVATE_PAGE_METADATA;
 
 /**
  * TEST-ONLY login screen. 404s entirely unless TEST_LOGIN_ENABLED=true, so it

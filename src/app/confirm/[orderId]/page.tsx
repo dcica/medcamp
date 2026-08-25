@@ -10,8 +10,13 @@ import {
 } from "@/server/payments";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { SimulatePayButton } from "./SimulatePayButton";
+import { PRIVATE_PAGE_METADATA } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+
+// Never a search result. See PRIVATE_PAGE_METADATA for which of the two
+// reasons applies to this page.
+export const metadata = PRIVATE_PAGE_METADATA;
 
 const orderInclude = {
   event: true,

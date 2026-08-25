@@ -3,8 +3,13 @@ import { requireRole } from "@/server/session";
 import { getVolunteerByCode } from "@/server/volunteers";
 import { VENUE_TIME_ZONE } from "@/lib/eventTime";
 import { CheckinActions } from "./CheckinActions";
+import { PRIVATE_PAGE_METADATA } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+
+// Never a search result. See PRIVATE_PAGE_METADATA for which of the two
+// reasons applies to this page.
+export const metadata = PRIVATE_PAGE_METADATA;
 
 /**
  * A single volunteer's day-of sign in/out screen, reached from the scanner.

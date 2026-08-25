@@ -3,8 +3,13 @@ import Link from "next/link";
 import { getVolunteerConfirmation } from "@/server/volunteers";
 import { VENUE_TIME_ZONE } from "@/lib/eventTime";
 import { CancelButton } from "./CancelButton";
+import { PRIVATE_PAGE_METADATA } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+
+// Never a search result. See PRIVATE_PAGE_METADATA for which of the two
+// reasons applies to this page.
+export const metadata = PRIVATE_PAGE_METADATA;
 
 /**
  * Volunteer confirmation (Module 9 §2/§4). Public — no login. Shows the assigned

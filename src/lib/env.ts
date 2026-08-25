@@ -23,6 +23,20 @@ const schema = z.object({
   DEFAULT_ORG_SLUG: z.string().default("dcica"),
   // Comma-separated emails auto-granted COORDINATOR on first login (bootstrap).
   BOOTSTRAP_ADMIN_EMAILS: z.string().optional(),
+  /**
+   * Google Search Console's HTML-tag verification token — the opaque string
+   * from `<meta name="google-site-verification" content="...">`.
+   *
+   * Env rather than a tenant setting because it identifies a DEPLOYMENT to
+   * Google, not an organisation: test and prod are two separate Search Console
+   * properties with two different tokens, and they share one database. A
+   * tenant-settings value would give both environments the same token and
+   * verify neither.
+   *
+   * Unset means no tag is emitted, which is correct for a self-hoster who has
+   * not claimed the property. DNS-record verification needs nothing here.
+   */
+  NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION: z.string().min(8).max(200).optional(),
 
   // Database
   DATABASE_URL: z.string().min(1),

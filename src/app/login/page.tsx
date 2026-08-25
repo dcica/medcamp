@@ -3,8 +3,13 @@ import { enabledOidcProviders } from "@/lib/env";
 import { testLoginEnabled } from "@/lib/testAccounts";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { LoginButtons } from "./LoginButtons";
+import { PRIVATE_PAGE_METADATA } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+
+// Never a search result. See PRIVATE_PAGE_METADATA for which of the two
+// reasons applies to this page.
+export const metadata = PRIVATE_PAGE_METADATA;
 
 /**
  * Sign-in page. Only configured OIDC providers are offered (email/password
