@@ -24,6 +24,26 @@ const schema = z.object({
   // Comma-separated emails auto-granted COORDINATOR on first login (bootstrap).
   BOOTSTRAP_ADMIN_EMAILS: z.string().optional(),
   /**
+   * Whether THIS deployment may be indexed by search engines.
+   *
+   * `off` makes robots.txt refuse every crawler, empties the sitemap, and puts
+   * `noindex` on every page including the public ones.
+   *
+   * It exists because `test.dcica.org` is a fully public, fully working copy of
+   * the storefront — same posters, same prices, same copy — running Stripe in
+   * TEST MODE. Indexed, it competes with `events.dcica.org` for the exact local
+   * queries the rest of this change is aimed at, and it can win: it is the same
+   * content on a shorter path. The failure mode is not a ranking loss, it is a
+   * neighbour finding "dandiya night flower mound", landing on the test site,
+   * and completing a checkout that takes no money and issues no ticket.
+   *
+   * Defaults to `on`, so a self-hoster with one environment is indexable
+   * without configuring anything, and only a deliberately-secondary deployment
+   * has to say so. Set `SEARCH_INDEXING=off` on medcamp-test.
+   */
+  SEARCH_INDEXING: z.enum(["on", "off"]).default("on"),
+
+  /**
    * Google Search Console's HTML-tag verification token — the opaque string
    * from `<meta name="google-site-verification" content="...">`.
    *

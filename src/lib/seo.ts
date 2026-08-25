@@ -56,6 +56,17 @@ export function siteUrl(): string {
   return (env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/+$/, "");
 }
 
+/**
+ * Whether this deployment may appear in search results at all.
+ *
+ * A whole-deployment kill switch, distinct from the per-page directives below:
+ * those say "not this page", this says "not this copy of the site". See the
+ * `SEARCH_INDEXING` env schema for the test-storefront problem it solves.
+ */
+export function searchIndexingEnabled(): boolean {
+  return (env.SEARCH_INDEXING ?? "on") !== "off";
+}
+
 /** An absolute URL for a same-origin path (`/e/x` → `https://…/e/x`). */
 export function absoluteUrl(path: string): string {
   return `${siteUrl()}${path.startsWith("/") ? path : `/${path}`}`;

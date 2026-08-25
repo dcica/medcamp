@@ -162,9 +162,9 @@ and are safe. The forbidding comment at `src/server/payments.ts:242-260` stays.
 ### Verification
 
 - `npx tsc --noEmit` after every task, then `npm run verify`. Baseline as of 2026-08-24:
-  **11 suites, 1074 assertions, all green** — schema 54, pricing 39, validation 62,
+  **11 suites, 1078 assertions, all green** — schema 54, pricing 39, validation 62,
   storage 31, branding 325, performance 125, gate 101, readiness 91, checkout 81,
-  home 69, seo 96. (`pricing` and `validation` print `PASS`; the rest print `ok`
+  home 69, seo 100. (`pricing` and `validation` print `PASS`; the rest print `ok`
   — count both when reporting totals. Four suites also print a third status,
   `..`, for a row a Central-time box or a local-disk adapter cannot distinguish:
   storage, performance, gate and home have one each. A `..` is a SKIP and is

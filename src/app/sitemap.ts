@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
-import { absoluteUrl, eventSlug } from "@/lib/seo";
+import { absoluteUrl, eventSlug, searchIndexingEnabled } from "@/lib/seo";
 import { log } from "@/lib/logger";
 
 /**
@@ -45,6 +45,11 @@ const STATIC_PATHS: { path: string; priority: number; changeFrequency: "daily" |
 ];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  // An empty sitemap rather than a 404: the route still answers, so a sitemap
+  // submitted against this host by mistake reports "0 URLs" instead of an error
+  // somebody then spends an afternoon debugging.
+  if (!searchIndexingEnabled()) return [];
+
   const now = new Date();
   const staticEntries: MetadataRoute.Sitemap = STATIC_PATHS.map((s) => ({
     url: absoluteUrl(s.path),
