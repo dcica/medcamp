@@ -46,6 +46,11 @@ const VENUE_MONTH_DAY = new Intl.DateTimeFormat("en-US", {
   timeZone: VENUE_TIME_ZONE,
 });
 
+const VENUE_ZONE_NAME = new Intl.DateTimeFormat("en-US", {
+  timeZone: VENUE_TIME_ZONE,
+  timeZoneName: "short",
+});
+
 /**
  * Month and day for one instant, in the venue's zone — the poster date pill on
  * the public rail, and the "through Sep 15" in an early-bird price line.
@@ -58,6 +63,38 @@ const VENUE_MONTH_DAY = new Intl.DateTimeFormat("en-US", {
  */
 export function formatVenueMonthDay(instant: Date): string {
   return VENUE_MONTH_DAY.format(instant);
+}
+
+/**
+ * Medium date for one instant, in the venue's zone — "Mar 14, 2026".
+ *
+ * For a LIST of events, where a full when-line per row is noise but the year
+ * still has to be there because the list spans several. Exists for the same
+ * reason `formatVenueTime` does: the admin camps list called
+ * `toLocaleDateString(undefined, { timeZone })` inline and printed `3/14/2026`
+ * while the admin overview two taps away printed `Sep 19, 2026` for the same
+ * kind of row. One name, one rendering, and no options for a later edit to drop.
+ */
+export function formatVenueDate(instant: Date): string {
+  return VENUE_DATE.format(instant);
+}
+
+/**
+ * The venue zone's short name AT A GIVEN INSTANT — "CDT" in June, "CST" in
+ * December.
+ *
+ * Derived through `Intl`, never written as a constant: the whole reason
+ * `VENUE_TIME_ZONE` is an IANA name and not a fixed offset is that the label
+ * changes twice a year, and a hardcoded "Central" or "CST" would be wrong for
+ * half of it. Used on the one screen where the zone decides what DAY an event
+ * is on — the admin camp header, which a coordinator checks against a printed
+ * flyer.
+ */
+export function formatVenueZone(instant: Date): string {
+  const part = VENUE_ZONE_NAME.formatToParts(instant).find(
+    (p) => p.type === "timeZoneName",
+  );
+  return part?.value ?? "";
 }
 
 /**

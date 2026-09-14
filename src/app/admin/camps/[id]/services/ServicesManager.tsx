@@ -85,6 +85,19 @@ export function ServicesManager({
   const offeredIds = new Set(offerings.map((o) => o.serviceTypeId));
   const available = catalogue.filter((c) => !offeredIds.has(c.id));
 
+  // THE SAME CHECK THE ADD PICKER RUNS, ON THE LIST WHERE THE PRICE LIVES.
+  // `editDistance` was only ever consulted while ADDING a service. But the
+  // damage happens later: this event offers "Dandia Entry" at $25 and "Dandiya
+  // Entry" at $12 — one letter apart, thirteen dollars apart — and in the list
+  // they are two unremarkable rows with identical purple dots. The picker
+  // warned about that pair once, months ago, and then never again on the screen
+  // where someone prices, caps and sells them.
+  const collisions = offerings
+    .flatMap((a, i) =>
+      offerings.slice(i + 1).map((b) => ({ a, b })),
+    )
+    .filter(({ a, b }) => editDistance(a.name, b.name) <= 2);
+
   return (
     <div className="space-y-4">
       {error && (
@@ -92,6 +105,22 @@ export function ServicesManager({
           {error}
         </p>
       )}
+
+      {collisions.map(({ a, b }) => (
+        <p
+          key={`${a.serviceTypeId}:${b.serviceTypeId}`}
+          role="alert"
+          className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800"
+        >
+          <span className="font-semibold">
+            &ldquo;{a.name}&rdquo; and &ldquo;{b.name}&rdquo; are nearly the same
+            name
+          </span>{" "}
+          — {money(a.priceDollars)} and {money(b.priceDollars)}. Check the prices
+          and caps below are on the ones you mean, and rename one in the
+          catalogue if they are meant to be told apart.
+        </p>
+      ))}
 
       {offerings.length === 0 ? (
         <p className="rounded-xl border border-dashed border-gray-300 bg-white p-5 text-sm text-gray-600">
@@ -419,12 +448,20 @@ function OfferingEditor({
           disabled={pending || row.sold > 0}
           onClick={() => run(() => removeOffering(eventId, row.serviceTypeId))}
           className="min-h-tap rounded-lg border border-gray-300 px-3 text-sm text-gray-700 disabled:opacity-40"
-          title={row.sold > 0 ? "Already sold at this event" : undefined}
         >
           Remove
         </button>
+        {/* The reason lives in the layout, not in a `title`. A tooltip never
+            appears on a touch device, so on a phone the disabled Remove was a
+            greyed word with no reachable explanation. */}
+        {/* Dirty wins: unsaved work is the message you lose something by
+            missing. The sold note is static context and can wait for the save. */}
         <span className="flex-1 text-xs text-amber-700">
-          {dirty ? "Unsaved changes" : ""}
+          {dirty
+            ? "Unsaved changes"
+            : row.sold > 0
+              ? `${row.sold} already sold — can't remove`
+              : ""}
         </span>
         <button
           type="button"

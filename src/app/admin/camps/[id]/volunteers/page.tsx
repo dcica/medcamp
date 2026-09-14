@@ -51,7 +51,12 @@ export default async function CampVolunteerRolesPage({
 
   return (
     <div className="space-y-6">
-      <Link href={`/admin/camps/${id}`} className="text-sm text-brand underline">
+      {/* inline-flex + min-h-tap, matching the other sub-screens: as a bare
+          inline link this back-out measured 243×18 on a phone. */}
+      <Link
+        href={`/admin/camps/${id}`}
+        className="inline-flex min-h-tap items-center text-sm text-brand underline"
+      >
         ← {camp.name}
       </Link>
 
