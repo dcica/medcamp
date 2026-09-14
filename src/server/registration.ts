@@ -241,10 +241,44 @@ export async function createRegistration(
   // amountCents is frozen at creation; confirmation must not re-resolve it).
   const now = new Date();
 
+  /**
+   * A FEE-ONLY ORDER HAS NO ATTENDEES TO DESCRIBE, WHATEVER MODE THE EVENT IS IN.
+   *
+   * This guard closes a live outage. `createPerformanceEntry` always sends
+   * `quantities` and never `attendees` — its own comment says "createQuantityOrder
+   * mints a single receipt code for a fee-only order" — but the dispatch below
+   * routed purely on `collectsAttendeeDetails`. So on an ATTENDEE-mode event that
+   * also sells a competition entry, every entry landed in `createAttendeeOrder`,
+   * found an empty attendee list and threw "Add at least one attendee."
+   *
+   * The entrant saw that message on /perform, which has no attendee control at
+   * all — it collects a participant COUNT, because the fee buys a slot for a
+   * group. The form could not be submitted by anyone. Measured live on
+   * 2026-09-14: DIW-2026 (OPEN, $50 Competition Entry, collectsAttendeeDetails
+   * =true) on events.dcica.org was unenterable, and MC-2026W / MC-2027S were in
+   * the same state on test.
+   *
+   * A FEE admits nobody — kind FEE, not ADMISSION — so there is no person to
+   * collect details for. The group's details are written to `PerformanceEntry`
+   * in the same request.
+   *
+   * DERIVED FROM `byKey`, NOT FROM THE PAYLOAD. The kind comes from the
+   * ServiceType row this server just read, so a hand-rolled POST cannot dress an
+   * admission up as a fee to skip per-person collection. Attendee mode still
+   * wins for every order that sells anything admitting a human.
+   */
+  const paidQuantityLines = (data.quantities ?? []).filter((q) => q.quantity > 0);
+  const sellsOnlyFees =
+    paidQuantityLines.length > 0 &&
+    paidQuantityLines.every(
+      (q) => byKey.get(q.serviceKey)?.serviceType.kind === "FEE",
+    );
+
   // Mode-specific: create the order + attendees + service line items.
-  const { orderId, serviceTotalCents } = event.collectsAttendeeDetails
-    ? await createAttendeeOrder(event.orgId, event.id, baseOrder, data, byKey, compUnits, now)
-    : await createQuantityOrder(event.orgId, event.id, baseOrder, data, byKey, compUnits, now);
+  const { orderId, serviceTotalCents } =
+    event.collectsAttendeeDetails && !sellsOnlyFees
+      ? await createAttendeeOrder(event.orgId, event.id, baseOrder, data, byKey, compUnits, now)
+      : await createQuantityOrder(event.orgId, event.id, baseOrder, data, byKey, compUnits, now);
 
   let total = serviceTotalCents;
 

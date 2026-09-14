@@ -268,6 +268,60 @@ async function main(): Promise<void> {
   );
   // 2 admissions comped by the membership, 3 fees at $30 untouched, plan $50.
   check("the membership comps admission but not the fee", feeOrder.totalCents, 9000 + 5000);
+
+  /**
+   * THE ATTENDEE-MODE REGRESSION — this is the one that went live.
+   *
+   * `createPerformanceEntry` always sends `quantities` and never `attendees`.
+   * Before createRegistration carved out fee-only orders, an event with
+   * `collectsAttendeeDetails: true` routed this call into createAttendeeOrder,
+   * which found an empty attendee list and threw "Add at least one attendee."
+   * The entrant read that on /perform, a form with no attendee control at all —
+   * it collects a participant COUNT, because the fee buys a slot for a group.
+   *
+   * Measured on production 2026-09-14: DIW-2026 was OPEN, selling a $50
+   * Competition Entry, in ATTENDEE mode — so no one could enter the Diwali
+   * competition. MC-2026W and MC-2027S were the same on test.
+   *
+   * `camp` is the ATTENDEE-mode event above, which is the entire point of
+   * asserting here rather than against `event`.
+   *
+   * MUTATION TEST: drop `&& !sellsOnlyFees` from the dispatch in
+   * src/server/registration.ts and this section throws rather than failing a
+   * comparison — the throw is the defect, so that is the correct shape.
+   */
+  await db.serviceCap.create({
+    data: { eventId: camp.id, serviceTypeId: fee.id, priceCents: fee.priceCents, capacity: 1000 },
+  });
+  const campFeeOrder = await createRegistration(
+    {
+      eventId: camp.id,
+      registrant: { ...registrant, email: "verify-camp-fee@example.test" },
+      marketingConsent: false,
+      quantities: [{ serviceKey: "verify-fee", quantity: 1 }],
+    },
+    { allowFeeServices: true },
+  );
+  check(
+    "a fee-only order is accepted on an ATTENDEE-mode event",
+    campFeeOrder.totalCents,
+    3000,
+  );
+  // ONE, not zero. A fee admits nobody, but `createQuantityOrder` still mints a
+  // single code for a fee- or merch-only order "so the buyer has something to
+  // scan at the desk — a receipt, not an admission", which is the same single
+  // code src/server/performance.ts relies on to carry the entry's confirmation.
+  // Asserting 0 here would be asserting a bug.
+  check(
+    "and mints exactly one receipt code, not an admission",
+    await db.attendee.count({ where: { orderId: campFeeOrder.orderId } }),
+    1,
+  );
+  check(
+    "an ATTENDEE-mode order that sells an admission still collects people",
+    await db.attendee.count({ where: { orderId: campOrder.orderId } }),
+    2,
+  );
   check(
     "door price is stored separately from the online price",
     (await db.serviceCap.findFirstOrThrow({
