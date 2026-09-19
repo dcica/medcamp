@@ -2,7 +2,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { formatWhen, formatVenueMonthDay } from "@/lib/eventTime";
 import { eventSlug } from "@/lib/seo";
-import { eventActions, TYPE_LABEL, type ActionableEvent } from "@/lib/eventActions";
+import {
+  eventActions,
+  isPaidDoor,
+  TYPE_LABEL,
+  type ActionableEvent,
+} from "@/lib/eventActions";
 import type { EventOfferingKinds } from "@/server/performance";
 import type { EventSale } from "@/server/eventSales";
 
@@ -38,6 +43,10 @@ export function EventPosterCard({
   sale?: EventSale;
   priority: boolean;
 }) {
+  // NOT re-picked when the primary turns out to be unbuyable: EventExtras
+  // renders `eventActions(...).slice(1)`, so the two components split one list
+  // by index. Promoting a secondary here would make it appear in both places.
+  // Only the RENDERING of this primary changes below.
   const primary = eventActions(e, kinds)[0];
 
   // A price is only honest when there is a door to pay it at. DIW-2026 sits in
@@ -47,7 +56,26 @@ export function EventPosterCard({
   // above a card whose one button is Volunteer states a price nobody can pay.
   // The offering is still misconfigured and still needs fixing in the admin UI;
   // the front door just refuses to advertise it in the meantime.
-  const sellable = primary?.key === "register" || primary?.key === "perform";
+  const paidDoor = isPaidDoor(primary);
+
+  // THE SECOND WAY A PRICE STOPS BEING PAYABLE: the door is configured and open,
+  // and the thing behind it is gone. Same defect class as the comment above, and
+  // the case it did not cover — see isPaidDoor for what it cost.
+  const soldOut = sale?.offer?.soldOut === true;
+
+  // Something can actually be bought. Gates the PRICE only.
+  const sellable = paidDoor && !soldOut;
+
+  // The capacity line is gated on the door existing, NOT on `sellable` — "Class
+  // Entry is sold out" is precisely the news a sold-out card has to carry, and
+  // folding it into `sellable` would delete the one true sentence on it.
+  const showCapacity = paidDoor;
+
+  // Removed, never greyed out. This repo's rule, stated in staffNav.ts: "No
+  // disabled rows, no 'soon'. A greyed-out row spends the user's attention on
+  // work they cannot do." A non-paid primary (Volunteer on a sold-out event) is
+  // untouched.
+  const showPrimary = primary !== undefined && !(paidDoor && soldOut);
 
   return (
     <li
@@ -148,7 +176,7 @@ export function EventPosterCard({
             public status palette here would put a brand-adjacent colour on a
             safety signal, which is exactly what verify-branding §8 exists to
             stop. */}
-        {sellable && sale?.capacityLine && (
+        {showCapacity && sale?.capacityLine && (
           <p className="text-xs font-semibold leading-snug text-gray-700">
             {sale.capacityLine}
           </p>
@@ -158,7 +186,7 @@ export function EventPosterCard({
           <p className="text-xs leading-snug text-gray-600">Members get in free</p>
         )}
 
-        {primary && (
+        {showPrimary && (
           <Link
             href={primary.href}
             className="mt-auto flex min-h-tap items-center justify-center rounded-lg bg-brand px-3 text-center text-sm font-semibold text-brand-fg"

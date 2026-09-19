@@ -82,7 +82,7 @@ async function main(): Promise<void> {
   );
   const { priceLine, capacityLine } = await import("../src/lib/priceLine");
   const { resolvePrice } = await import("../src/lib/pricing");
-  const { eventActions } = await import("../src/lib/eventActions");
+  const { eventActions, isPaidDoor } = await import("../src/lib/eventActions");
   const { formatCentsCompact } = await import("../src/lib/money");
 
   // ───────────────────────────────────────────────────────────────────────
@@ -421,6 +421,57 @@ async function main(): Promise<void> {
   );
 
   // ───────────────────────────────────────────────────────────────────────
+  /**
+   * isPaidDoor — which doors a sell-out must close.
+   *
+   * THE DEFECT THIS PINS. On 2026-09-19, three hours before the class,
+   * GARBA-2026 sat on the front page at 50/50 sold showing "Class Entry is sold
+   * out" directly above a live "Buy tickets" button. eventActions builds doors
+   * from configuration and knows nothing about capacity; EventSale.offer.soldOut
+   * is the other half; the card rendered both and consulted neither against the
+   * other. Tapping it was not merely confusing - capacity is claimed at
+   * CONFIRMATION, never at checkout creation, so the buyer pays, the claim
+   * fails, and a human has to notice and refund. The structured data was already
+   * emitting schema.org/SoldOut; only the part a person reads was wrong.
+   *
+   * MUTATION TEST: add "volunteer" to PAID_DOOR_KEYS in src/lib/eventActions.ts
+   * and the "volunteer is NOT a paid door" assertion below fails.
+   */
+  console.log("");
+  console.log("§5b isPaidDoor - the doors a sell-out has to close");
+
+  const volOnly = { ...base, offersRegistration: false, offersVolunteers: true };
+  const bothDoors = { ...base, offersVolunteers: true };
+
+  check(
+    "the register door takes money",
+    isPaidDoor(eventActions(base, { hasFee: false, hasOther: true })[0]),
+    "register",
+  );
+  check(
+    "the perform door takes money",
+    isPaidDoor(eventActions(base, { hasFee: true, hasOther: false })[0]),
+    "perform",
+  );
+  check(
+    "volunteer is NOT a paid door - a sell-out must not silence it",
+    !isPaidDoor(eventActions(volOnly, { hasFee: false, hasOther: false })[0]),
+    JSON.stringify(eventActions(volOnly, { hasFee: false, hasOther: false }).map((a) => a.key)),
+  );
+  check(
+    "an event selling BOTH loses both money doors when sold out, keeping the rest",
+    eventActions(bothDoors, { hasFee: true, hasOther: true })
+      .filter((a) => !isPaidDoor(a))
+      .map((a) => a.key)
+      .join(",") === "volunteer",
+    JSON.stringify(eventActions(bothDoors, { hasFee: true, hasOther: true }).map((a) => a.key)),
+  );
+  check(
+    "undefined is not a paid door - an event offering nothing at all",
+    !isPaidDoor(undefined),
+    "undefined",
+  );
+
   console.log("\n§6  saleSummaryByEvent — one grouped read for the page");
 
   // Structural, read as text: the whole reason this function exists is ONE
@@ -456,11 +507,39 @@ async function main(): Promise<void> {
   const cardSrc = readFileSync("src/app/_components/EventPosterCard.tsx", "utf8");
   check(
     "the card gates its price line on an open sale door",
-    /const sellable =/.test(cardSrc) &&
-      /sellable && sale\?\.priceLine/.test(cardSrc) &&
-      /sellable && sale\?\.capacityLine/.test(cardSrc),
-    "price or capacity rendered without the sellable guard",
+    /const sellable = paidDoor && !soldOut/.test(cardSrc) &&
+      /sellable && sale\?\.priceLine/.test(cardSrc),
+    "price rendered without the sellable guard",
   );
+  // THREE gates now, not two, and they are deliberately different.
+  //
+  // `sellable` (door open AND stock left) hides the PRICE. Capacity is gated on
+  // the door alone, because "Class Entry is sold out" is exactly the sentence a
+  // sold-out card exists to carry — folding it into `sellable` would delete the
+  // one true line on it. And the BUTTON goes when a paid door has nothing left
+  // behind it: removed, not greyed, per staffNav.ts's rule.
+  //
+  // This assertion replaces a narrower one that required capacity to share the
+  // `sellable` guard. That was correct until 2026-09-19, when GARBA-2026 showed
+  // "Class Entry is sold out" above a live "Buy tickets" at 50/50 sold.
+  check(
+    "the card keeps the capacity line through a sell-out",
+    /const showCapacity = paidDoor/.test(cardSrc) &&
+      /showCapacity && sale\?\.capacityLine/.test(cardSrc),
+    "the sold-out sentence is gated on stock remaining",
+  );
+  check(
+    "the card removes a paid button once its offering is gone",
+    /const showPrimary = primary !== undefined && !\(paidDoor && soldOut\)/.test(cardSrc) &&
+      /\{showPrimary && \(/.test(cardSrc),
+    "the primary CTA renders without consulting soldOut",
+  );
+
+  // NOT ASSERTED YET: /e/[slug] gets the same treatment in the working tree —
+  // `visibleActions` filters every paid door out on a sell-out — but that file
+  // imports ./ViewItemTracker, which is untracked. A check reading its source
+  // would pass here and fail on a clean clone, which is the trap CLAUDE.md
+  // records for verify:analytics. Land the assertion with the GA4 work.
 
   // One event is not a rail, and zero events must still reach the untouched
   // empty state. Structural rather than rendered: exercising those two branches
