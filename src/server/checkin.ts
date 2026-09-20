@@ -68,7 +68,11 @@ export type BadgeData = {
 export async function getBadge(rawCampId: string): Promise<BadgeData | null> {
   const org = await getActiveOrg();
   if (!org) return null;
-  const campId = rawCampId.trim().toUpperCase();
+  // normalizeCampId, NOT trim().toUpperCase(). The read path
+  // (getAttendeeForCheckin) already decodes Crockford confusables, so typing
+  // O for 0 used to let a volunteer VIEW an attendee and then fail to print
+  // their badge — the same id resolving on one screen and not the next.
+  const campId = normalizeCampId(rawCampId);
 
   const attendee = await db.attendee.findFirst({
     where: { orgId: org.id, campId },
@@ -98,7 +102,10 @@ export async function getBadge(rawCampId: string): Promise<BadgeData | null> {
 async function findAttendeeOrThrow(campId: string) {
   const org = await getActiveOrg();
   if (!org) throw new Error("No active organization.");
-  const normalized = campId.trim().toUpperCase();
+  // Must match getAttendeeForCheckin exactly: this backs signWaiver and
+  // checkInAttendee, so a looser rule here means an attendee you can see but
+  // cannot check in.
+  const normalized = normalizeCampId(campId);
   const attendee = await db.attendee.findFirst({
     where: { orgId: org.id, campId: normalized },
     include: { order: true },

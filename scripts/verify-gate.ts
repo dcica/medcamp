@@ -46,7 +46,7 @@
 import type { Role } from "@prisma/client";
 import * as dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 // The machine has a global DATABASE_URL pointing at an unrelated project; dotenv
@@ -58,6 +58,8 @@ dotenv.config({ path: process.env.ENV_FILE ?? ".env", override: true });
 const db = new PrismaClient();
 
 const CODE = "VERIFY-GATE";
+// A second scratch door, so "wrong event" can be exercised for real (§5d).
+const CODE2 = "VERIFY-GATE2";
 const ADM_KEY = "vg-admission";
 const MERCH_KEY = "vg-merch";
 const FEE_KEY = "vg-fee";
@@ -77,6 +79,13 @@ const GATE_ROLES: Role[] = [
 ];
 
 let failures = 0;
+
+/**
+ * ONE place naming the action module, so moving it is a one-line edit here
+ * rather than a silent structural failure. §3c reads this file as text.
+ */
+const GATE_ACTIONS_REL = "src/app/gate/actions.ts";
+const GATE_ACTIONS_PATH = join(process.cwd(), GATE_ACTIONS_REL);
 
 function check(label: string, ok: boolean, detail = ""): void {
   console.log(`  ${ok ? "ok  " : "FAIL"}  ${label}${detail ? ` — ${detail}` : ""}`);
@@ -104,7 +113,12 @@ async function rejectsWith(
 }
 
 async function main(): Promise<void> {
-  const { expandTicketCode } = await import("../src/lib/ticketCode");
+  const { expandTicketCode, isBareToken, tokenPrefixFor, planTicketLookup } =
+    await import("../src/lib/ticketCode");
+  const { generateIdToken, ID_ALPHABET, ID_TOKEN_LENGTH } = await import(
+    "../src/lib/publicId"
+  );
+  const { normalizePublicId } = await import("../src/lib/idNormalize");
   const { isDuplicateDecode, DUPLICATE_SCAN_WINDOW_MS } = await import(
     "../src/lib/scanDebounce"
   );
@@ -142,6 +156,67 @@ async function main(): Promise<void> {
   eq("O and I are decoded in the token", normalizeCampId("ron-2026-k7m2xq9o"), "RON-2026-K7M2XQ90");
   eq("the event code is left alone", normalizeCampId("RON-2026-ABCD1234"), "RON-2026-ABCD1234");
   eq("legacy numeric ids are untouched", normalizeCampId("GB-2026W-0042"), "GB-2026W-0042");
+
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§1b a bare token resolves at any door, a bare SEQUENCE never does");
+  // A token typed with no prefix is matched by SUFFIX across events, so a guest
+  // at the wrong door sees their ticket resolve instead of reading "no match".
+  // Sound only for values that cannot collide.
+  eq("legacy Crockford token is bare-matchable", isBareToken("K7M2XQ9T"), true);
+  eq("current letters-only token is bare-matchable", isBareToken("KQMXWVPZH"), true);
+  // THE ROW. prisma/seed-test.ts mints `-0001` under TWO different event codes
+  // (:359 and :849), so a bare `0001` endsWith-matches two different people at
+  // two different events. Without the letter test the door picks one of them.
+  eq("a bare sequence is REFUSED, two events mint -0001", isBareToken("0001"), false);
+  eq("digits alone are refused at any length", isBareToken("00012026"), false);
+  // The floor is 8 because that is the SHORTEST TOKEN EVER MINTED (Crockford 8,
+  // letters-only 9), not a uniqueness guess. It was 6, which made every surname
+  // of six characters fire a cross-event scan once search and manual entry
+  // shared one input.
+  eq("KAPOOR is not a token", isBareToken("KAPOOR"), false);
+  eq("JOHNSON is not a token", isBareToken("JOHNSON"), false);
+  eq("too short to have been minted is refused", isBareToken("K7M2"), false);
+  eq("a whole id is not a bare token", isBareToken("RON-2026-K7M2XQ9T"), false);
+
+  // Predictive entry: type two characters, get every ticket whose token starts
+  // with them. The CALLER anchors it to the event code, which is what makes it
+  // both safe and index-eligible.
+  eq("two characters is a usable prefix", tokenPrefixFor("bv"), "BV");
+  eq("one character is not", tokenPrefixFor("b"), null);
+  // DELIBERATELY diverges from isBareToken: a prefix is anchored to ONE event's
+  // code, so the cross-event -0001 collision cannot arise and digits are fine.
+  eq("a digit prefix IS usable (anchored to one event)", tokenPrefixFor("00"), "00");
+  eq("a whole id is not a prefix", tokenPrefixFor("RON-2026-X"), null);
+  eq("a prefix is trimmed and upper-cased", tokenPrefixFor("  bvx "), "BVX");
+
+  eq("plan: a bare token gets both lookups", planTicketLookup("GB-2026W", "K7M2XQ9T"), {
+    exact: "GB-2026W-K7M2XQ9T",
+    tokenSuffix: "K7M2XQ9T",
+  });
+  eq("plan: a bare sequence gets NO suffix fallback", planTicketLookup("GB-2026W", "0001")?.tokenSuffix, null);
+  eq("plan: but it still gets an exact lookup", planTicketLookup("GB-2026W", "0001")?.exact, "GB-2026W-0001");
+  eq("plan: another event's whole id is left alone", planTicketLookup("GB-2026W", "RON-2026-K7M2XQ9T")?.exact, "RON-2026-K7M2XQ9T");
+  eq("plan: empty is not a lookup", planTicketLookup("GB-2026W", "   "), null);
+
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§1c the generator mints letters only");
+  // "Only mint alpha tokens so that we don't have to go to numbers while
+  // searching" -- a mixed token forces the phone keyboard between its letter
+  // and number planes on every digit run, at a door, with a queue waiting.
+  const draws = Array.from({ length: 1000 }, () => generateIdToken());
+  eq("alphabet is 22 symbols", ID_ALPHABET.length, 22);
+  eq("token length is 9", ID_TOKEN_LENGTH, 9);
+  eq("every token is 9 characters", draws.every((t) => t.length === 9), true);
+  // Over 1000 draws, a digit in the alphabet could not fail to appear.
+  eq("NO token contains a digit", draws.some((t) => /[0-9]/.test(t)), false);
+  eq("NO token contains I, L, O or U", draws.some((t) => /[ILOU]/.test(t)), false);
+  eq("every character comes from ALPHABET", draws.every((t) => [...t].every((c) => ID_ALPHABET.includes(c))), true);
+  // 22^9 is about 40.13 bits, holding the "40-bit token" claim that
+  // src/lib/rateLimit.ts leans on to argue the token IS the access control.
+  eq("the space is still at least 40 bits", Math.log2(Math.pow(ID_ALPHABET.length, ID_TOKEN_LENGTH)) >= 40, true);
+  // Confusable decoding is now a NO-OP on fresh tokens (no I/L/O is emitted)
+  // while staying correct for legacy ones, which is why it must stay.
+  eq("normalizing a fresh token changes nothing", draws.every((t) => normalizePublicId(t) === t), true);
 
   // ───────────────────────────────────────────────────────────────────────────
   console.log("\n§2 the continuous camera does not re-fire on one badge");
@@ -200,7 +275,19 @@ async function main(): Promise<void> {
   console.log("\n§3c every cash-recording action still calls requireTill");
   // Structural on purpose — see the file header. Reads the action module's
   // source, not the component's.
-  const actionsSrc = readFileSync(join(process.cwd(), "src/app/gate/actions.ts"), "utf8");
+  // GUARDED. This read used to be bare, and a missing file did not fail a row —
+  // it threw out of main(), so §4 through §7c never ran, no row printed for the
+  // failure, cleanup() never executed (leaving scratch User/Membership rows
+  // behind), and the && chain in package.json killed suites 8-15. An absent
+  // file must be ONE red row, like everything else here.
+  const actionsSrc = existsSync(GATE_ACTIONS_PATH)
+    ? readFileSync(GATE_ACTIONS_PATH, "utf8")
+    : "";
+  check(
+    `the gate action module is where this suite expects it (${GATE_ACTIONS_REL})`,
+    actionsSrc !== "",
+    "not found — move it back, or update GATE_ACTIONS_REL",
+  );
   const CASH_ACTIONS = ["sellAndAdmit", "confirmUnpaidAndAdmit", "sellMerch"];
   const OPEN_ACTIONS = ["resolveGate", "admit", "fulfill", "comp"];
   for (const name of CASH_ACTIONS) {
@@ -217,7 +304,15 @@ async function main(): Promise<void> {
   const declared = [...actionsSrc.matchAll(/export async function (\w+)\(/g)].map((m) => m[1]);
   eq("no unclassified gate action", declared.filter((n) => ![...CASH_ACTIONS, ...OPEN_ACTIONS].includes(n)), []);
   // And the role list itself, so a silently widened gate shows up here.
-  const rolesInSource = [...(/const GATE_ROLES = \[([^\]]+)\]/.exec(actionsSrc)?.[1] ?? "").matchAll(/"(\w+)"/g)].map((m) => m[1]);
+  // Tolerant of formatting, strict about content. The old pattern was
+  // /const GATE_ROLES = \[([^\]]+)\]/, which silently yields [] — a PASSING
+  // empty-vs-empty comparison is impossible only because GATE_ROLES is
+  // non-empty, so it would have failed loudly; but a `satisfies Role[]`
+  // annotation or a reformat would have made it fail for the wrong reason.
+  // [\s\S] spans newlines; the check below proves the match happened at all.
+  const rolesMatch = /const GATE_ROLES\s*=\s*\[([\s\S]*?)\]/.exec(actionsSrc);
+  check("the gate's role list is still parseable from source", rolesMatch !== null);
+  const rolesInSource = [...(rolesMatch?.[1] ?? "").matchAll(/"(\w+)"/g)].map((m) => m[1]);
   eq("the gate's role list is unchanged", rolesInSource, GATE_ROLES);
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -322,6 +417,71 @@ async function main(): Promise<void> {
   eq("an unknown token is null", await gate.getGateView(`${CODE}-ZZZZZZZZ`), null);
   eq("another event's ticket is null here", await gate.getGateView("GARBA-2026-ABCD1234"), null);
   eq("an empty lookup is null", await gate.getGateView(""), null);
+
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§5d three id shapes, one door, and the bare token that spans them");
+  // THE REGRESSION THIS SECTION EXISTS FOR: the alphabet changed, but ids
+  // already minted kept the characters they were minted with. On any given
+  // night a door resolves all three shapes at once, and all three must work.
+  const legacyId = `${CODE}-0007`;         // legacy per-event sequence
+  const alphaId = `${CODE}-KQMXWVPZH`;     // letters-only, 9
+  const adm: LineSpec[] = [
+    { serviceTypeId: admission.id, description: "Dandia Entry", amountCents: 2500, status: "PAID", perAttendee: true },
+  ];
+  await ticket(org.id, event.id, legacyId, "Legacy Sequence", "CONFIRMED", adm);
+  const alphaTicket = await ticket(org.id, event.id, alphaId, "Alpha Nine", "CONFIRMED", adm);
+  for (const [shape, id] of [
+    ["legacy sequential", legacyId],
+    ["Crockford base32", PAID_ID],
+    ["letters-only", alphaId],
+  ] as const) {
+    eq(`a ${shape} id still resolves at the door`, (await gate.getGateView(id))?.campId, id);
+  }
+
+  // The prefix is fixed text on screen, so only the token is typed.
+  eq("a bare Crockford token resolves with no prefix", (await gate.getGateView("K7M2XQ9T", CODE))?.campId, PAID_ID);
+  eq("a bare letters-only token resolves with no prefix", (await gate.getGateView("KQMXWVPZH", CODE))?.campId, alphaId);
+  eq("a bare sequence resolves by PREFIX, not by suffix", (await gate.getGateView("0007", CODE))?.campId, legacyId);
+  // End to end, not just as a pure function (§1 pins that): someone reading
+  // `0007` off a printed badge and typing the letter O must still land on the
+  // ticket. This is the whole reason applyConfusables cannot be deleted now
+  // that the generator no longer emits O — legacy ids are still in inboxes.
+  eq("a typed O resolves a legacy zero", (await gate.getGateView("OOO7", CODE))?.campId, legacyId);
+  eq("a code that matches nothing is still null", await gate.getGateView("K7M2XQ90", CODE), null);
+
+  // A SECOND door, so "wrong event" is a real state rather than a hypothetical.
+  const event2 = await db.event.create({
+    data: {
+      orgId: org.id, type: "GENERAL", status: "ACTIVE", code: CODE2,
+      name: "The Other Door", startsAt, endsAt: new Date(startsAt.getTime() + 3600_000),
+      offersRegistration: true,
+    },
+  });
+
+  // The whole point of matching a bare token ACROSS events: a guest at the
+  // wrong door must see their ticket resolve, naming the event it belongs to,
+  // instead of reading "no match" and being waved into the wrong queue.
+  const atWrongDoor = await gate.getGateView("K7M2XQ9T", CODE2);
+  check("a bare token from another event still RESOLVES at this door", atWrongDoor?.attendeeId === paid.attendeeId);
+  eq("…and it names the event it actually belongs to", atWrongDoor?.eventName, event.name);
+  check("…and the screen can tell it apart from this door", atWrongDoor?.eventId !== event2.id);
+
+  // …but resolving is not admitting. BEFORE the already-admitted early return:
+  // `paid` was admitted back in §5, and this must still refuse rather than
+  // reassure with "already in".
+  await rejectsWith("a ticket from another event is REFUSED admission", () => gate.admitAttendee(paid.attendeeId, event2.id), "Wrong event");
+  eq("a refused cross-event admit moves no headcount", await gate.getEventHeadcount(event2.id), 0);
+  await rejectsWith("…even for a guest who was never admitted anywhere", () => gate.admitAttendee(alphaTicket.attendeeId, event2.id), "Wrong event");
+  // The same call at the RIGHT door still works, so the guard is not a blanket refusal.
+  await gate.admitAttendee(alphaTicket.attendeeId, event.id);
+  eq("the same ticket admits at its own door", await gate.getEventHeadcount(event.id), 2);
+
+  // Two ids sharing a tail: refuse, never guess. isBareToken makes this
+  // vanishingly unlikely; "the door silently picked one of two people" is not a
+  // state worth leaving reachable on an access path.
+  await ticket(org.id, event.id, `${CODE}-QQQQQQQQ`, "Tail One", "CONFIRMED", adm);
+  await ticket(org.id, event.id, `ZZOTHER-QQQQQQQQ`, "Tail Two", "CONFIRMED", adm);
+  await rejectsWith("two ids sharing a tail are refused, not guessed", () => gate.getGateView("QQQQQQQQ", CODE2), "more than one ticket");
 
   // ───────────────────────────────────────────────────────────────────────────
   console.log("\n§6 will-call: handed over once, and only once");
@@ -495,7 +655,7 @@ function actionBody(src: string, name: string): string {
 
 /** Remove everything this script creates (cascades don't cover payments/ledger). */
 async function cleanup(orgId: string): Promise<void> {
-  const events = await db.event.findMany({ where: { orgId, code: CODE } });
+  const events = await db.event.findMany({ where: { orgId, code: { in: [CODE, CODE2] } } });
   for (const event of events) {
     const orders = await db.order.findMany({
       where: { eventId: event.id },

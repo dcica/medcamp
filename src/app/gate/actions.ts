@@ -4,6 +4,7 @@ import { requireRole, requireTill } from "@/server/session";
 import {
   getGateView,
   admitAttendee,
+  assertAttendeeAtEvent,
   admitOrderAttendees,
   fulfillLineItems,
   fulfillOrder,
@@ -50,7 +51,7 @@ export async function admit(
 ): Promise<Result<number>> {
   await requireRole(...GATE_ROLES);
   try {
-    await admitAttendee(attendeeId);
+    await admitAttendee(attendeeId, eventId);
     return { ok: true, data: await getEventHeadcount(eventId) };
   } catch (err) {
     return fail(err);
@@ -108,8 +109,11 @@ export async function confirmUnpaidAndAdmit(
 ): Promise<Result<number>> {
   const m = await requireTill();
   try {
+    // BEFORE the cash. A ticket for another event must be refused while the
+    // money is still in the guest's hand, not after it is recorded.
+    await assertAttendeeAtEvent(attendeeId, eventId);
     await confirmGateCash(orderId);
-    await admitAttendee(attendeeId);
+    await admitAttendee(attendeeId, eventId);
     await fulfillOrder(orderId, m.userId);
     return { ok: true, data: await getEventHeadcount(eventId) };
   } catch (err) {

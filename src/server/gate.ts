@@ -2,6 +2,7 @@ import type { ServiceKind } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
 import { normalizeCampId } from "@/lib/campId";
+import { planTicketLookup } from "@/lib/ticketCode";
 import { confirmOrderPaid } from "@/server/payments";
 import { resolvePrice } from "@/lib/pricing";
 
@@ -53,22 +54,43 @@ export async function getActiveGeneralEvent() {
   });
 }
 
-/** Resolve a scanned/typed code to a gate view within the active org. */
-export async function getGateView(rawCode: string): Promise<GateView | null> {
-  const org = await getActiveOrg();
-  if (!org) return null;
+/**
+ * Two different tickets end with the characters that were typed. Refused rather
+ * than guessed: `isBareToken` makes this astronomically unlikely, but "the door
+ * silently picked one of two people" is not a state worth leaving reachable on
+ * an access path.
+ */
+export const AMBIGUOUS_TOKEN =
+  "That code matches more than one ticket — scan it, or type the whole id.";
 
-  const campId = normalizeCampId(rawCode);
+/** A real ticket, for a different event than the one this door is staffing. */
+export function wrongEventMessage(ticketEventName: string): string {
+  return `Wrong event — this ticket is for ${ticketEventName}.`;
+}
 
-  const attendee = await db.attendee.findFirst({
-    where: { orgId: org.id, campId },
-    include: {
-      event: true,
-      order: { include: { lineItems: { include: { serviceType: true } } } },
-    },
-  });
-  if (!attendee) return null;
+const GATE_INCLUDE = {
+  event: true,
+  order: { include: { lineItems: { include: { serviceType: true } } } },
+} as const;
 
+/**
+ * Typed from the client rather than declared, the same trick src/lib/db.ts uses
+ * on its factory: the client `omit`s Event.internalNotes, so a hand-written
+ * Prisma.AttendeeGetPayload would silently widen the type back.
+ */
+function findGateAttendee(where: { orgId: string; campId: string }) {
+  return db.attendee.findFirst({ where, include: GATE_INCLUDE });
+}
+type GateAttendee = NonNullable<Awaited<ReturnType<typeof findGateAttendee>>>;
+
+/**
+ * Shape one attendee row into the door's view of them.
+ *
+ * Split out of getGateView because search has to produce the same thing from a
+ * name lookup: if the two diverged, a guest found by name would render with
+ * different rules than the same guest found by scanning.
+ */
+export function toGateView(attendee: GateAttendee): GateView {
   const amountOwedCents = attendee.order.lineItems
     .filter((li) => li.status === "PENDING_PAYMENT")
     .reduce((s, li) => s + li.amountCents * li.quantity, 0);
@@ -105,6 +127,53 @@ export async function getGateView(rawCode: string): Promise<GateView | null> {
 }
 
 /**
+ * Resolve a scanned/typed code to a gate view within the active org.
+ *
+ * Pass `eventCode` — the event this door is staffing — and a volunteer may type
+ * the bare token with no prefix. Two lookups, in order:
+ *
+ *   1. EXACT, on the canonical id. Unchanged from before, and still the only
+ *      lookup when no eventCode is supplied, so every existing caller behaves
+ *      identically.
+ *   2. TOKEN SUFFIX, only when the typed value passes `isBareToken`. This is
+ *      what lets a bare token resolve at ANY door — deliberately, because the
+ *      case that happens is someone presenting a Garba ticket at the Dandiya
+ *      gate, and staff need to SEE it resolve against the wrong event rather
+ *      than read "no match" and wave them through a different queue.
+ *
+ * The suffix scan cannot use a B-tree, but @@index([orgId, eventId]) narrows to
+ * one org first and an event's whole order book is small (src/server/
+ * registrations.ts:80 records the ceiling: a 500-patient camp). It only runs
+ * when the exact match already missed.
+ */
+export async function getGateView(
+  rawCode: string,
+  eventCode?: string,
+): Promise<GateView | null> {
+  const org = await getActiveOrg();
+  if (!org) return null;
+
+  const plan = eventCode
+    ? planTicketLookup(eventCode, rawCode)
+    : { exact: normalizeCampId(rawCode), tokenSuffix: null };
+  if (plan === null) return null;
+
+  const exact = await findGateAttendee({ orgId: org.id, campId: plan.exact });
+  if (exact) return toGateView(exact);
+
+  if (plan.tokenSuffix === null) return null;
+
+  const matches = await db.attendee.findMany({
+    where: { orgId: org.id, campId: { endsWith: `-${plan.tokenSuffix}` } },
+    include: GATE_INCLUDE,
+    take: 2,
+  });
+  if (matches.length === 0) return null;
+  if (matches.length > 1) throw new Error(AMBIGUOUS_TOKEN);
+  return toGateView(matches[0]);
+}
+
+/**
  * What the gate says when a code is real, paid, and still admits nobody — a
  * competition entry or a merch-only will-call receipt. Exported so the screen
  * and the regression suite quote the same words the WalkUpForm prints.
@@ -136,16 +205,60 @@ export function admitsNobody(
 }
 
 /** Admit a paid attendee. Idempotent — a re-scan is a no-op (wristband owns re-entry). */
-export async function admitAttendee(attendeeId: string): Promise<void> {
+/**
+ * Refuse a ticket that belongs to another event, WITHOUT writing anything.
+ *
+ * Exists separately from the identical check inside `admitAttendee` because
+ * `confirmUnpaidAndAdmit` settles cash before it admits. Relying on the guard
+ * inside admitAttendee there would take the money first and refuse second.
+ */
+export async function assertAttendeeAtEvent(
+  attendeeId: string,
+  expectedEventId: string,
+): Promise<void> {
+  const org = await getActiveOrg();
+  if (!org) throw new Error("No active organization.");
+  const attendee = await db.attendee.findFirst({
+    where: { id: attendeeId, orgId: org.id },
+    select: { eventId: true, event: { select: { name: true } } },
+  });
+  if (!attendee) throw new Error("Attendee not found.");
+  if (attendee.eventId !== expectedEventId) {
+    throw new Error(wrongEventMessage(attendee.event.name));
+  }
+}
+
+export async function admitAttendee(
+  attendeeId: string,
+  /**
+   * The event this door is staffing. OPTIONAL, and that is deliberate: making
+   * it required would rewrite every existing call site in one commit, which is
+   * exactly the wide diff that makes a re-scan regression hard to spot.
+   *
+   * Supplying it closes a live hole. Until now this function resolved by
+   * { id, orgId } with NO event check, so a Garba ticket admitted at the
+   * Dandiya door read as paid and got `checkedInAt` stamped — and because
+   * getEventHeadcount filters on eventId, the head then vanished from BOTH
+   * counts and nothing surfaced it.
+   */
+  expectedEventId?: string,
+): Promise<void> {
   const org = await getActiveOrg();
   if (!org) throw new Error("No active organization.");
   const attendee = await db.attendee.findFirst({
     where: { id: attendeeId, orgId: org.id },
     include: {
+      event: true,
       order: { include: { lineItems: { include: { serviceType: true } } } },
     },
   });
   if (!attendee) throw new Error("Attendee not found.");
+  // BEFORE the already-admitted early return, on purpose. A ticket from another
+  // event that was legitimately admitted at ITS door must read "wrong event"
+  // here, not a reassuring "already in".
+  if (expectedEventId && attendee.eventId !== expectedEventId) {
+    throw new Error(wrongEventMessage(attendee.event.name));
+  }
   if (attendee.checkedInAt) return; // already processed
   if (attendee.order.status !== "CONFIRMED") {
     throw new Error("Not paid — take payment before admitting.");

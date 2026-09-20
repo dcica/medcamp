@@ -19,24 +19,39 @@ import { randomInt } from "node:crypto";
  * that no random string spells an unfortunate word.
  */
 
-/** Crockford base32: no I, L, O, or U. */
-const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+/** Letters only: no I, L, O or U. Never a digit -- the keypad is the cost. */
+const ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ";
 
 /**
- * Token length. 8 characters over a 32-symbol alphabet is 40 bits — about 1.1
- * trillion values. At camp scale (hundreds of tickets per event) the collision
- * chance is negligible, and the unique constraint plus retry covers the rest.
- * Short enough to stay readable on a badge and over a phone.
+ * Token length. 9 characters over a 22-symbol alphabet is 22^9, about 1.2
+ * trillion values, or 40.1 bits.
+ *
+ * NINE, not eight, and the ninth character is load-bearing. Dropping the ten
+ * digits costs 0.54 bits per character; at the old length of 8 the token would
+ * have fallen to 35.7 bits -- a 22x smaller space -- and "40 bits" is asserted
+ * in prose in six places across this repo, including src/lib/rateLimit.ts,
+ * where it carries the argument that the token IS the access control and a
+ * limiter is not needed. Nine keeps every one of those statements true without
+ * relitigating them.
+ *
+ * The extra character is close to free at the keyboard: nine letters on one
+ * plane is fewer taps than eight mixed characters that cross planes two or
+ * three times. That is the whole point -- "only mint alpha tokens so that we
+ * don't have to go to numbers while searching", straight off a live event.
+ *
+ * NOT RETROACTIVE. Ids already minted keep their digits, so a door resolves
+ * three shapes at once: legacy sequential (GARBA-2026-0001), Crockford base32
+ * (RON-2026-K7M2XQ9T) and letters-only (RON-2026-KQMXWVPZH).
  */
-const TOKEN_LENGTH = 8;
+const TOKEN_LENGTH = 9;
 
 /**
  * A fresh public token. Uses `randomInt` (CSPRNG) rather than `Math.random`:
  * the gate authorizes entry on this value alone, so a predictable generator
  * would let someone derive a valid ticket id they never paid for.
  *
- * `randomInt(32)` is rejection-sampled by Node, so the distribution is uniform
- * — a plain `% 32` over a byte would bias the first 8 symbols.
+ * `randomInt(22)` is rejection-sampled by Node, so the distribution is uniform
+ * — a plain `% 22` over a byte would bias the first 10 symbols.
  */
 export function generateIdToken(): string {
   let out = "";
@@ -46,31 +61,14 @@ export function generateIdToken(): string {
   return out;
 }
 
-/**
- * Normalize a scanned or hand-typed public id to the stored form.
- *
- * Only the LAST hyphen-separated segment gets the confusable mapping, and that
- * restriction is load-bearing: event codes are ordinary words and one of the
- * live ones is `RON-2026`. Mapping O→0 across the whole string would turn that
- * into `R0N-2026` and the lookup would miss. The token is always the final
- * segment, for both `GARBA-2026-K7M2XQ9T` and `VOL-GARBA-2026-K7M2XQ9T`.
- *
- * Legacy sequential ids (`GARBA-2026-0001`, `MC-2026W-0042`) pass through
- * unchanged — their final segment is digits, which the mapping does not touch.
- * They must keep resolving: tickets sold before this change are in people's
- * inboxes and will be presented at a door.
- */
-export function normalizePublicId(raw: string): string {
-  const trimmed = raw.trim().toUpperCase();
-  const cut = trimmed.lastIndexOf("-");
-  if (cut === -1) return applyConfusables(trimmed);
-  return trimmed.slice(0, cut) + "-" + applyConfusables(trimmed.slice(cut + 1));
-}
+/** The generator's alphabet and length, exposed so verify can assert on them. */
+export const ID_ALPHABET = ALPHABET;
+export const ID_TOKEN_LENGTH = TOKEN_LENGTH;
 
 /**
- * Crockford's decoding rule: I and L read as 1, O reads as 0. The generator
- * never emits these, so any that arrive came from a person reading a badge.
+ * Re-exported, not defined here. It lives in src/lib/idNormalize.ts so client
+ * components can reach it without pulling `node:crypto` (imported above for the
+ * generator) into the browser bundle. Every server-side caller keeps importing
+ * it from this module unchanged.
  */
-function applyConfusables(segment: string): string {
-  return segment.replace(/[ILO]/g, (c) => (c === "O" ? "0" : "1"));
-}
+export { normalizePublicId } from "./idNormalize";
