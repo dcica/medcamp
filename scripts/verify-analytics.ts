@@ -217,6 +217,9 @@ function main() {
     "/staff",
     "/dashboard",
     "/station",
+    // The merged scan station. /gate and /checkin still redirect to it, and a
+    // redirect still renders a pageview at the OLD path, so all three stay.
+    "/scan",
     "/gate",
     "/checkin",
     "/badge",
@@ -224,7 +227,7 @@ function main() {
     "/test-login",
   ];
   check(
-    "the exported list is exactly the nine operational prefixes",
+    "the exported list is exactly the ten operational prefixes",
     JSON.stringify([...STAFF_PATH_PREFIXES].sort()) ===
       JSON.stringify([...expectedPrefixes].sort()),
     [...STAFF_PATH_PREFIXES].join(" "),

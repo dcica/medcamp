@@ -92,6 +92,9 @@ export const STAFF_PATH_PREFIXES = [
   "/staff",
   "/dashboard",
   "/station",
+  // The merged scan station. /gate and /checkin are now redirects TO it, and
+  // both stay listed: a redirect still renders a pageview at the old path.
+  "/scan",
   "/gate",
   "/checkin",
   "/badge",
@@ -170,7 +173,7 @@ export function Analytics() {
       */}
       <Script id="ga-init" strategy="afterInteractive">
         {`(function(){
-  var staff = ['/admin','/staff','/dashboard','/station','/gate','/checkin','/badge','/volunteer/checkin','/test-login'];
+  var staff = ['/admin','/staff','/dashboard','/station','/scan','/gate','/checkin','/badge','/volunteer/checkin','/test-login'];
   var path = window.location.pathname;
   if (path.length > 1 && path.charAt(path.length - 1) === '/') path = path.slice(0, -1);
   for (var i = 0; i < staff.length; i++) {

@@ -12,6 +12,11 @@ const PROTECTED = [
   /^\/coordinator(\/|$)/,
   /^\/station(\/|$)/,
   /^\/checkin(\/|$)/,
+  // The merged scan station. /gate was MISSING from both of these lists until
+  // now: its own requireRole still redirected, so it was not a hole, but an
+  // unauthenticated hit rendered the whole page server-side first.
+  /^\/scan(\/|$)/,
+  /^\/gate(\/|$)/,
   /^\/admin(\/|$)/,
   // Volunteer coordinator dashboard (plural). The public signup/confirm/cert
   // pages live under the singular /volunteer and stay open.
@@ -44,5 +49,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/coordinator/:path*", "/station/:path*", "/checkin/:path*", "/admin/:path*", "/volunteers/:path*", "/volunteer/checkin/:path*"],
+  matcher: ["/dashboard/:path*", "/coordinator/:path*", "/station/:path*", "/checkin/:path*", "/admin/:path*", "/volunteers/:path*", "/volunteer/checkin/:path*", "/scan/:path*", "/gate/:path*"],
 };

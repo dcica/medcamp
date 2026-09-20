@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { formatCents } from "@/lib/money";
 import { formatVenueTime } from "@/lib/eventTime";
 import { expandTicketCode } from "@/lib/ticketCode";
-import { QrScanner } from "@/app/checkin/QrScanner";
+import { QrScanner } from "@/app/_components/QrScanner";
 import type { GateView } from "@/server/gate";
 import {
   resolveGate,
@@ -14,7 +14,7 @@ import {
   sellAndAdmit,
   sellMerch,
   confirmUnpaidAndAdmit,
-} from "./actions";
+} from "@/app/gate/actions";
 
 type CatalogItem = { id: string; name: string; priceCents: number };
 type MerchItem = CatalogItem & { colorHex: string };
@@ -30,7 +30,7 @@ type Flash = { kind: "ok" | "warn" | "err"; text: string };
  * will-call pickup, buy-more — plus a member-comp and a walk-up path that don't
  * need a scan. Headcount is the cumulative number admitted.
  */
-export function GateStation({
+export function GateMode({
   eventId,
   eventName,
   eventCode,

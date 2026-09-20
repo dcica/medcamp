@@ -349,6 +349,51 @@ async function main(): Promise<void> {
     ],
   });
 
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§3d ONE station, and the guards that did not move with it");
+  // /gate and /checkin merged into /scan. Structural for the same reason §3c
+  // is: what goes wrong is a route, a nav row and a matcher drifting apart, and
+  // none of that is visible from a server function.
+  const scanPage = readFileSync(join(process.cwd(), "src/app/scan/page.tsx"), "utf8");
+  const navSrc = readFileSync(join(process.cwd(), "src/app/_components/staffNav.ts"), "utf8");
+  const mwSrc = readFileSync(join(process.cwd(), "src/middleware.ts"), "utf8");
+
+  // The page spells the roles out because a "use server" module cannot export
+  // an array. This row is what stops the two copies drifting.
+  const pageRoles = [...(/requireRole[(]([\s\S]*?)[)];/.exec(scanPage)?.[1] ?? "").matchAll(/"([\w]+)"/g)].map((m) => m[1]);
+  eq("the scan station guards exactly the gate roles", pageRoles, GATE_ROLES);
+
+  // staffNav rule 2: `roles` MUST mirror the server guard on the page.
+  // Sliced rather than matched with one big regex: the row below is the point,
+  // and a clever pattern that silently yields [] would fail for the wrong
+  // reason — which is exactly the trap §3c's own role regex fell into.
+  const navRowStart = navSrc.indexOf(String.raw`href: "/scan"`);
+  check("the menu has a /scan row at all", navRowStart !== -1);
+  const rolesStart = navSrc.indexOf("roles: [", navRowStart);
+  const navRoles = [
+    ...navSrc.slice(rolesStart, navSrc.indexOf("]", rolesStart)).matchAll(/"(\w+)"/g),
+  ].map((m) => m[1]);
+  eq("the menu row offers exactly what the page allows", navRoles, GATE_ROLES);
+  check("no menu row still points at the old routes",
+    !navSrc.includes(String.raw`href: "/gate"`) && !navSrc.includes(String.raw`href: "/checkin"`));
+  check("POS_TILL lands on the station it can actually use", navSrc.includes(String.raw`return "/scan"`));
+
+  // BOTH lists. Naming a path in PROTECTED while leaving it out of the matcher
+  // is a silent no-op — the middleware never runs for that path at all.
+  check("middleware protects /scan", mwSrc.includes(String.raw`/^\/scan(\/|$)/`));
+  check("...and its matcher actually runs there", mwSrc.includes(String.raw`"/scan/:path*"`));
+  // /gate was missing from BOTH until this merge, so pin it too.
+  check("middleware protects /gate", mwSrc.includes(String.raw`/^\/gate(\/|$)/`));
+  check("...and its matcher actually runs there", mwSrc.includes(String.raw`"/gate/:path*"`));
+
+  // The old routes stay reachable, and must NOT re-decide access: two places
+  // deciding who may open a door is how they drift apart.
+  for (const old of ["gate", "checkin"]) {
+    const src = readFileSync(join(process.cwd(), `src/app/${old}/page.tsx`), "utf8");
+    check(`/${old} still resolves, as a redirect to /scan`, src.includes(String.raw`redirect("/scan")`));
+    check(`/${old} does not keep a second copy of the guard`, !src.includes("requireRole("));
+  }
+
   console.log("\n§4 the gate opens for one event");
   const active = await gate.getActiveGeneralEvent();
   check("an ACTIVE general event is resolved", active !== null && active.type === "GENERAL" && active.status === "ACTIVE",
