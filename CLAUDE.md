@@ -161,24 +161,36 @@ and are safe. The forbidding comment at `src/server/payments.ts:242-260` stays.
 
 ### Verification
 
-- `npx tsc --noEmit` after every task, then `npm run verify`. Baseline as of 2026-08-24:
-  **13 suites, 1129 assertions, all green** — schema 54, pricing 39, validation 62,
-  storage 31, branding 325, performance 125, gate 101, readiness 91, checkout 81,
-  csv 26, home 69, seo 100, registrations 25. (`pricing` and `validation` print
+- `npx tsc --noEmit` after every task, then `npm run verify`. Baseline as of 2026-09-20,
+  re-counted from the runner rather than carried forward: **15 suites, 1334 assertions,
+  all green** — schema 54, pricing 42, validation 62, storage 31, branding 323,
+  performance 125, gate 101, readiness 91, checkout 123, csv 26, testlogin 35, home 76,
+  seo 100, registrations 25, analytics 120. (`pricing` and `validation` print
   `PASS`; the rest print `ok` — count both when reporting totals. Four suites also
   print a third status, `..`, for a row a Central-time box or a local-disk adapter
   cannot distinguish: storage, performance, gate and home have one each. A `..` is
   a SKIP and is excluded from the counts above — include them and every one of
   those four reads one higher.)
-  `verify:registrations` is new: what "N registered" is allowed to mean — an
+  `verify:registrations` pins what "N registered" is allowed to mean — an
   abandoned cart is not a registration, collected money is `SUCCEEDED` payments
   and not `Payment` rows, and a line total is `amountCents × quantity`.
-  **`verify:csv` and `verify:registrations` are BOTH in the chain and NEITHER is
-  committed yet.** A chain entry naming an uncommitted script fails on a clean
-  clone — which is exactly why csv was held out of the chain for two rounds
-  running. Both scripts exist in this working tree. Land them together with the
-  package.json change, or take both entries back out; do not commit the chain
-  without the files. Strip both and the count is 11 suites and 1078.
+  `verify:analytics` executes the REAL gtag snippet, read as text out of
+  `_components/Analytics.tsx`, inside a `node:vm` with a fake `window`, then asserts on
+  gtag's actual command queue and on which loader elements got appended. The staff-route
+  guard and the `page_location` scrubber are therefore checked as they ship, rather than
+  reimplemented in a copy that could rot. Its §6 exists for one specific regression: it
+  fails if anyone "simplifies" the query-param denylist into a wholesale strip of the
+  query string, which would silently delete every `utm_*` campaign attribution while
+  leaving the acquisition reports rendering, every session merely relabelled Direct.
+  **`verify:analytics` and `verify:testlogin` are committed** as of bfe3054, with
+  the package.json chain entries, so this instance of the trap is closed — as the
+  `verify:csv` / `verify:registrations` instance was before it. The trap itself is
+  not closed and re-arms every time: a chain entry naming an untracked script
+  fails on a clean clone while passing for whoever wrote it, because the file is
+  sitting in their working tree. Both of these read the source they assert
+  against AS TEXT, so neither could land without it — which is why they went in
+  as one large commit rather than two tidy ones. **Before adding any suite to the
+  chain, commit the script in the same commit as the package.json line.**
   **Numbers here go stale on their own**, which is the recurring failure this
   paragraph keeps having: checkout had grown 76 → 81 with nobody updating this
   line, exactly as branding had grown 310 → 325 the time before. Re-count from
