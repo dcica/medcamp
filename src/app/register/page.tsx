@@ -6,6 +6,7 @@ import { getResumableCheckout } from "@/server/payments";
 import { readResumeCookie } from "@/server/resumeCookie";
 import { resolvePrice } from "@/lib/pricing";
 import { isRegistrationOpen } from "@/server/registration";
+import { eventSlug } from "@/lib/seo";
 import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
@@ -228,8 +229,14 @@ export default async function RegisterPage({
         subtitle="Register below. You'll get a QR badge by email after payment."
         items={helpItems}
       />
+      {/* eventSlug + eventKind are analytics-only: they let begin_checkout join
+          to the view_item fired on /e/[slug] for the same event. Without them the
+          funnel has two halves that cannot be connected. Nothing in render or
+          pricing reads either value. */}
       <RegisterForm
         eventId={event.id}
+        eventSlug={eventSlug(event)}
+        eventKind={event.type}
         services={services}
         collectsAttendeeDetails={event.collectsAttendeeDetails}
         acceptsDonations={event.acceptsDonations}

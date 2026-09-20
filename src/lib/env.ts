@@ -148,6 +148,27 @@ const schema = z.object({
     .string()
     .regex(GA_MEASUREMENT_ID_RE, "must look like G-XXXXXXXXXX")
     .optional(),
+
+  /**
+   * GA4 Measurement Protocol API secret — the server-side credential that lets
+   * this process report a confirmed order as a `purchase` event (src/lib/ga.ts).
+   * Created in GA4 under Admin → Data Streams → Measurement Protocol API
+   * secrets, and it is a SECRET: unlike the measurement id above it must never
+   * be sent to a browser, hence no NEXT_PUBLIC_ prefix.
+   *
+   * Optional, and the send is gated on BOTH this and the measurement id being
+   * present. A self-hoster must not have to configure Google anything to take a
+   * payment, so unset ⇒ no outbound request is ever made. The id alone is not
+   * enough either: the Measurement Protocol silently discards a request with no
+   * api_secret, which would look exactly like working analytics that reports
+   * nothing.
+   *
+   * NOT shape-validated, deliberately, unlike the measurement id: this value is
+   * only ever URL-encoded into a query string server-side, never interpolated
+   * into an inline <script>, so the injection surface the regex above exists to
+   * close does not apply. Google does not document a stable format for it.
+   */
+  GA_API_SECRET: z.string().optional(),
 });
 
 // During `next build` without a real DB, fall back so the build doesn't crash.
@@ -181,3 +202,10 @@ export const addressValidationEnabled = Boolean(env.GOOGLE_MAPS_API_KEY);
  * and the site renders with no tracking rather than with a broken snippet.
  */
 export const analyticsEnabled = Boolean(env.NEXT_PUBLIC_GA_MEASUREMENT_ID);
+
+// Server-side GA reporting (the Measurement Protocol `purchase` event) needs the
+// measurement id AND GA_API_SECRET. That predicate lives with the sender, as
+// gaServerEventsEnabled() in src/lib/ga.ts, rather than being mirrored here — a
+// second copy of a two-term gate is a second thing to forget to update, and the
+// asymmetry matters: the client snippet may be on while server events are off,
+// never the reverse.

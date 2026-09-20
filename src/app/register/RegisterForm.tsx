@@ -4,6 +4,7 @@ import type { ServiceKind } from "@prisma/client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { formatCents } from "@/lib/money";
+import { trackBeginCheckout } from "@/lib/analyticsEvents";
 import {
   clearDraft,
   hasEdits,
@@ -87,6 +88,8 @@ export function RegisterForm({
   plans,
   returnedFromCheckout,
   resumable,
+  eventSlug,
+  eventKind,
 }: {
   eventId: string;
   services: Service[];
@@ -99,6 +102,17 @@ export function RegisterForm({
   returnedFromCheckout: boolean;
   /** Set only when the server verified the resume cookie against that order. */
   resumable: { orderId: string; amountCents: number } | null;
+  /**
+   * Analytics dimensions only — never read by anything that decides what is
+   * rendered or what is charged. Optional because `/register/page.tsx` does not
+   * pass them yet: it resolves an event and hands down `event.id` plus the flags
+   * this form needs, and `eventSlug()` needs name + code. Both are one line away
+   * (`eventSlug={eventSlug(event)} eventKind={event.type}`), and until they are
+   * passed the funnel still counts begin_checkout — it just cannot join it to
+   * the `view_item` on `/e/<slug>` for the same event.
+   */
+  eventSlug?: string;
+  eventKind?: string;
 }) {
   const [registrant, setRegistrant] = useState({ name: "", email: "", phone: "" });
   const [iAmAttending, setIAmAttending] = useState(false);
@@ -277,6 +291,26 @@ export function RegisterForm({
               .filter((q) => q.quantity > 0),
       });
       if (res.ok) {
+        // GA4 funnel step 2, fired here and nowhere else: the order exists, the
+        // redirect URL is in hand, and the next statement leaves this origin.
+        //
+        // Not on field interaction and not at the top of `submit()` — a
+        // begin_checkout that fires before the server has accepted the order
+        // would also count every validation bounce, and the whole point of this
+        // event is to measure how many accepted checkouts never come back as a
+        // purchase. Firing it on the failure path would make that ratio a
+        // measure of our own error messages.
+        //
+        // Also fired for a $0 order, whose redirect goes straight to the
+        // confirmation rather than to Stripe. Dropping those would leave the
+        // free registrations as purchases with no begin_checkout, which reads in
+        // the funnel as a step that can be skipped rather than as a free ticket.
+        //
+        // `total` is the DISPLAYED total. The server recomputes the
+        // authoritative amount, so a hostile client could report a wrong value
+        // here — acceptable for a funnel metric and the reason nothing about
+        // money is decided from this number.
+        trackBeginCheckout({ eventSlug, eventKind, valueCents: total });
         // Written immediately before the hop, because that hop is a full
         // document navigation to another origin — every useState above is about
         // to cease to exist. Keyed to the order just created so the return page

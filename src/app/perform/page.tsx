@@ -6,6 +6,7 @@ import { uploadsEnabled, SONG_MAX_BYTES } from "@/lib/storage";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { getResumableCheckout } from "@/server/payments";
 import { readResumeCookie } from "@/server/resumeCookie";
+import { eventSlug } from "@/lib/seo";
 import { PerformanceEntryForm } from "./PerformanceEntryForm";
 import type { Metadata } from "next";
 
@@ -169,6 +170,12 @@ export default async function PerformPage({
       <PerformanceEntryForm
         eventId={event.id}
         eventName={event.name}
+        /* Analytics dimension only — the same derived slug `/e/<slug>` is
+           served at, so a generate_lead can be joined to the view_item that
+           preceded it. Derived here rather than in the form because the slug
+           needs the event CODE, which the form is not given and has no other
+           use for. */
+        eventSlug={eventSlug(event)}
         entries={entries}
         uploadsAvailable={canUpload}
         maxUploadMb={maxMb}

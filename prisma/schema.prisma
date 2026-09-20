@@ -528,6 +528,25 @@ model Order {
   /// Idempotency key for resilient day-of writes (decision #3).
   idempotencyKey String?       @unique
 
+  /// The buyer's Google Analytics client id (`<a>.<b>`, lifted from the
+  /// first-party `_ga` cookie at checkout), so the server-side GA4 purchase
+  /// event can be attributed to the session and channel that produced the sale.
+  /// See src/lib/ga.ts.
+  ///
+  /// NULL is a first-class, expected value and must stay nullable:
+  ///   - a walk-in paying cash at the desk has no web session of their own (the
+  ///     till volunteer's browser is not the buyer's), so there is nothing
+  ///     honest to record and no purchase event is sent;
+  ///   - a buyer with analytics blocked, or a self-hoster who configures no
+  ///     Google anything, never has a `_ga` cookie to read.
+  /// Reconciliation is the source of truth for money; this column exists only
+  /// for acquisition measurement.
+  ///
+  /// NOT a foreign key and deliberately UNINDEXED: nothing queries orders by
+  /// it — it is written once at checkout and read once at confirmation, both by
+  /// primary key. verify:schema enforces covering indexes on FK children only.
+  gaClientId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

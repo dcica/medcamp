@@ -28,6 +28,7 @@ dcica is a registered 501(c)(3) non-profit organization. We organize medical cam
 - Payment confirmation (processed by Stripe — we do not store card numbers)
 - Marketing consent preference and timestamp
 - Signed waiver (digital or paper)
+- An analytics identifier from your browser, if website analytics is switched on for this organization and your browser accepted the cookie — see [Analytics and Cookies](#analytics-and-cookies)
 
 ### At Membership Signup
 - Full name, phone, email, mailing address
@@ -67,6 +68,7 @@ dcica is a registered 501(c)(3) non-profit organization. We organize medical cam
 | Payment info | Confirming registration; reconciliation records |
 | Marketing consent | If opted in: membership drives, event announcements, organization updates |
 | Volunteer profile, hours, school affiliation | Scheduling, confirmation reminders, recognition, certificates, and per-school hour summaries; recruitment for future events |
+| Analytics identifier | Connecting a completed registration back to the visit that produced it, so we can tell which outreach actually brings people to an event |
 
 We do not sell, rent, or share your personal information with third parties for their marketing purposes.
 
@@ -85,6 +87,68 @@ If you opted in, we may contact you by email or phone about:
 
 ---
 
+## Analytics and Cookies
+
+This section spells out what our website measurement does. A one-line summary would not be accurate enough to be useful, and there is a real difference between how a medical camp and a general event are handled.
+
+**Analytics is off unless the organization has switched it on.** The platform ships with no analytics account configured. When none is configured no analytics script loads, no analytics cookies are set, and nothing is sent anywhere at all. dcica's public event pages do use Google Analytics 4; another organization running this same software may not.
+
+**When it is on, cookies are set in your browser.** Google Analytics sets first-party cookies to recognize a returning browser and group its page views into one visit. That identifier is a random value belonging to the browser. It is not your name, and Google is not given your name to attach to it.
+
+### What is measured while you browse
+
+Page views, the referring site or search that brought you here, approximate location derived from your IP address (city level), device and browser type, and which pages you moved between — including funnel steps such as opening an event page, starting a checkout, submitting a volunteer signup, or submitting a contact form. Those funnel events carry an amount, a currency, and which event you were looking at. They carry no item detail.
+
+### What is measured when you complete a payment
+
+**When an order is confirmed we send Google Analytics a purchase record.** It contains:
+
+- the order identifier
+- the order total, and the currency (USD)
+- the payment method (card, cash, and so on)
+- which event it was for, and what kind of event that is
+- the analytics identifier from your browser, so the sale is credited to the visit that produced it
+- **for non-camp events only:** what was bought — ticket tier names, merchandise items, or membership term
+
+An order total and an order identifier are payment-adjacent information, and we would rather say so than describe this as "aggregate traffic measurement." It exists to answer a question our own payment records cannot: which channel — a flyer, a search result, a social post, an email — actually produced a paid registration.
+
+### A medical camp is treated differently, on purpose
+
+**For a medical camp the item detail is deliberately withheld.** The purchase record carries a single generic line in place of the services you bought. The names of clinical services — a vision screening, a dental check, bloodwork — are **never** transmitted to Google Analytics, or to any other outside system.
+
+The reason is the point of the entire design. Attaching a list of health services a person purchased to a durable analytics identifier would create exactly the record this organization has committed never to hold, and it is prohibited by Google's own rules on health data besides. So a camp purchase is reported as a total, and nothing more.
+
+### What is never sent to analytics, for any kind of event
+
+- Your name, email address, phone number, or mailing address
+- Any clinical or medical information, including the names of services purchased at a medical camp
+- Your card number or any payment credential — those go only to Stripe
+- Your waiver, or anything you typed into a form field
+- A durable account identifier. We do not send a user ID to analytics, so visits are not stitched into one named person's history across events.
+- Advertising signals. Ad storage, ad personalization, and ad user data are set to denied everywhere by default, and Google's cross-device advertising features are left switched off. We do not use analytics data to target advertising.
+
+### If you are in the EEA, the UK, or Switzerland
+
+For visitors in those regions both analytics and advertising storage default to **denied**. Nothing is stored in your browser and no measurement is recorded unless and until consent is given.
+
+### Staff screens are not measured
+
+The analytics tag is suppressed entirely on the screens volunteers and staff use — the admin area, station queues, the gate and check-in screens, badge printing, dashboards, and volunteer check-in. Day-of operations are not tracked.
+
+### Payment links and codes are scrubbed
+
+The page address reported to analytics has the Stripe checkout session identifier and any per-person confirmation code stripped out of it, including on the page you land on after paying. We do not want those sitting in an analytics report, or in any long-term export of one.
+
+### Paid cash at the door?
+
+Then there was no browser session and no analytics identifier, and **no purchase record is sent at all**. Walk-in and cash transactions exist only in our own records.
+
+### How to opt out
+
+Block cookies for this site in your browser, install Google's Analytics Opt-out Browser Add-on, or use any content blocker. Registration, payment, check-in, and lab-status lookup all work normally with analytics blocked. The only consequence is that we cannot tell where your visit came from.
+
+---
+
 ## Data Retention
 
 | Data type | Retention |
@@ -95,10 +159,13 @@ If you opted in, we may contact you by email or phone about:
 | Vendor / sponsor records | Retained for 3 years for financial record-keeping |
 | Payment references (Stripe transaction IDs) | Retained for 7 years (tax/audit requirements) |
 | Lab result mailing status | Purged after mailing confirmed |
+| Analytics identifier stored on an order | Purged with the rest of the order record |
 | Volunteer profiles (contact, hours, history) | Retained across events to support recruitment and recognition; deleted on request |
 | Minor volunteer consent records | Retained 3 years (record of authorization), then purged; deleted sooner on parent/guardian request |
 
 **No clinical or medical data is stored in our system at any time.**
+
+**Analytics data held by Google is separate from the table above and outlives our purge.** Once a purchase record has been sent, the order identifier, the amount, and the browser identifier sit in the analytics property under Google's own retention settings — up to 14 months, and longer where the organization exports its analytics data to keep year-over-year comparisons. Purging a registration from our system does not reach into that copy, and we cannot delete one visitor from it, because it holds no name, email, or phone number to find you by. What can be deleted there is the whole dataset, not an individual. If that matters to you, opt out of analytics before you register.
 
 ---
 
@@ -118,7 +185,7 @@ You may request at any time:
 - **Access:** A copy of the personal data we hold about you
 - **Correction:** Update any incorrect information
 - **Deletion:** Remove your data from our records (subject to legal retention requirements)
-- **Opt-out:** Stop receiving marketing communications
+- **Opt-out:** Stop receiving marketing communications, or stop website analytics (see [Analytics and Cookies](#analytics-and-cookies))
 
 To exercise any of these rights, contact: **admin@dcica.org**
 
@@ -131,7 +198,7 @@ To exercise any of these rights, contact: **admin@dcica.org**
 | Stripe | Payment processing | stripe.com/privacy |
 | Google (OAuth) | Staff login | policies.google.com/privacy |
 | Google (Address Validation) | Standardizing your mailing address so lab results reach you (optional; only the address you enter is sent, once) | policies.google.com/privacy |
-| Google Analytics | Aggregate website traffic measurement (page views, referrers, device type). Sets cookies in your browser. No registration, payment, or patient data is sent to it. Only active when the organization has configured its own GA property | policies.google.com/privacy |
+| Google Analytics | Website traffic measurement (page views, referrers, device type) and completed-order measurement. Sets cookies in your browser. Receives an order identifier, order total, payment method, and which event the order was for — plus, for non-camp events only, the items purchased. **Never** receives your name, email, phone, address, card details, or the names of clinical services. Only active when the organization has configured its own GA property. Full detail in [Analytics and Cookies](#analytics-and-cookies) | policies.google.com/privacy |
 | Vercel | Website hosting | vercel.com/legal/privacy-policy |
 
 ---

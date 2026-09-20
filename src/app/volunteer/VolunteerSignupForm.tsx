@@ -10,6 +10,7 @@ import {
   isMinorBand,
 } from "@/lib/volunteerRoles";
 import { ValidatedInput, validateEmail } from "@/app/_components/ValidatedInput";
+import { trackSignUp } from "@/lib/analyticsEvents";
 import type { RoleOption } from "@/server/volunteers";
 import { submitVolunteerSignup } from "./actions";
 
@@ -154,8 +155,22 @@ export function VolunteerSignupForm({
         guardianName: v.guardianName || undefined,
         sourceTag: sourceTag || undefined,
       });
-      if (res.ok) window.location.href = res.redirectUrl;
-      else setError(res.error);
+      if (res.ok) {
+        // GA4 `sign_up`, on the accepted response and before the navigation.
+        //
+        // On success only: a signup the server refused (role full, schema
+        // rejection) is not a signup, and counting it would turn this metric
+        // into a measure of how often a role fills up. Before the redirect
+        // rather than after, because the next statement is a full document
+        // navigation — gtag flushes over sendBeacon, which survives it, but a
+        // call placed after the assignment may never run at all.
+        //
+        // `method` is the volunteer door specifically. The general-interest form
+        // on the same route is deliberately NOT instrumented as a sign_up — see
+        // GeneralInterestForm: it joins a list, it does not take a shift.
+        trackSignUp({ method: "volunteer_signup" });
+        window.location.href = res.redirectUrl;
+      } else setError(res.error);
     });
   }
 
