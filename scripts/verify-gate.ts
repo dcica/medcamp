@@ -60,6 +60,9 @@ const db = new PrismaClient();
 const CODE = "VERIFY-GATE";
 // A second scratch door, so "wrong event" can be exercised for real (§5d).
 const CODE2 = "VERIFY-GATE2";
+// A throwaway tenant for the §4b event-resolution rows, so seeded ACTIVE
+// events on the real org cannot decide the answer.
+const SCRATCH_ORG_SLUG = "verify-gate-scratch";
 const ADM_KEY = "vg-admission";
 const MERCH_KEY = "vg-merch";
 const FEE_KEY = "vg-fee";
@@ -354,6 +357,72 @@ async function main(): Promise<void> {
   // a property, so it holds whether or not this box has other active events.
   check("the newest ACTIVE general event wins",
     (active?.startsAt.getTime() ?? 0) >= startsAt.getTime(), `${active?.startsAt.toISOString()}`);
+
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§4b the scan station opens before doors, and never on a stale event");
+  // Every row passes an explicit `now`, so these are deterministic rather than
+  // dependent on whatever else is ACTIVE on the box running them.
+  const { getScanStationEvent, SCAN_STATION_SETUP_HOURS } = await import("../src/server/events");
+  const HOUR = 3600_000;
+  // A SCRATCH ORG, not the live one. getCurrentEvent's tier 2 matches any ACTIVE
+  // event with walkInOpensAt set once it has started, and the seeded MC-2027S
+  // camp satisfies that forever after June 2027 — so picking a "quiet" now on
+  // the real org is not hermetic, it just moves which fixture wins. Org scoping
+  // is the isolation this suite already relies on everywhere else.
+  const scratchOrg = await db.organization.create({
+    data: { slug: SCRATCH_ORG_SLUG, name: "Verify Gate Scan Station" },
+  });
+  const doors = new Date(Date.now() + 3 * 24 * HOUR);
+  const tonight = await db.event.create({
+    data: {
+      orgId: scratchOrg.id, type: "GENERAL", status: "ACTIVE", code: CODE2,
+      name: "Tonight At The Door", startsAt: doors,
+      endsAt: new Date(doors.getTime() + 4 * HOUR), offersRegistration: true,
+    },
+  });
+  const at = (h: number) => ({ now: new Date(doors.getTime() + h * HOUR) });
+  const orgId = scratchOrg.id;
+
+  eq("in window: the station resolves the running event",
+    (await getScanStationEvent(orgId, at(1)))?.id, tonight.id);
+  // THE REQUIREMENT. getCurrentEvent cannot answer this — both its tiers need
+  // startsAt <= now, and at 3:45pm for 4:30 doors it has not started.
+  eq("45 minutes BEFORE doors, the station still resolves it",
+    (await getScanStationEvent(orgId, at(-0.75)))?.id, tonight.id);
+  eq("at the edge of the setup window it still resolves",
+    (await getScanStationEvent(orgId, at(-SCAN_STATION_SETUP_HOURS + 0.01)))?.id, tonight.id);
+  // …and null is a real answer, not something to paper over with a fallback.
+  eq("beyond the setup window it is null, not the nearest guess",
+    await getScanStationEvent(orgId, at(-SCAN_STATION_SETUP_HOURS - 1)), null);
+  eq("the day before is null", await getScanStationEvent(orgId, at(-24)), null);
+
+  // ── THE ROW THIS SECTION EXISTS FOR ──
+  // This database has carried a general event still ACTIVE 160 days after it
+  // ended, holding $541 (src/server/events.ts). A laxer fallback — ACTIVE and
+  // startsAt <= now, newest first — hands that to a volunteer setting up, and
+  // every scan afterwards resolves against the wrong event. `endsAt >= now` is
+  // what refuses it.
+  await db.event.update({
+    where: { id: tonight.id },
+    data: {
+      startsAt: new Date(Date.now() - 160 * 24 * HOUR),
+      endsAt: new Date(Date.now() - 159 * 24 * HOUR),
+    },
+  });
+  eq("AN ACTIVE EVENT THAT ALREADY ENDED IS NEVER THE DOOR",
+    await getScanStationEvent(orgId, { now: new Date() }), null);
+  // A future ACTIVE event is the same defect facing the other way.
+  await db.event.update({
+    where: { id: tonight.id },
+    data: {
+      startsAt: new Date(Date.now() + 200 * 24 * HOUR),
+      endsAt: new Date(Date.now() + 200 * 24 * HOUR + 4 * HOUR),
+    },
+  });
+  eq("an ACTIVE event 200 days out is not tonight",
+    await getScanStationEvent(orgId, { now: new Date() }), null);
+  await db.event.delete({ where: { id: tonight.id } });
+  await db.organization.delete({ where: { id: scratchOrg.id } });
 
   // ───────────────────────────────────────────────────────────────────────────
   console.log("\n§5 RE-SCAN IDEMPOTENCY — the assertion this file exists for");
@@ -671,6 +740,8 @@ async function cleanup(orgId: string): Promise<void> {
     await db.event.delete({ where: { id: event.id } });
   }
   await db.serviceType.deleteMany({ where: { orgId, key: { in: [ADM_KEY, MERCH_KEY, FEE_KEY] } } });
+  await db.event.deleteMany({ where: { org: { slug: SCRATCH_ORG_SLUG } } });
+  await db.organization.deleteMany({ where: { slug: SCRATCH_ORG_SLUG } });
   // Memberships cascade from the user.
   await db.user.deleteMany({ where: { email: { in: [TILL_EMAIL, NOTILL_EMAIL] } } });
 }
