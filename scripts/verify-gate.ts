@@ -292,7 +292,10 @@ async function main(): Promise<void> {
     "not found — move it back, or update GATE_ACTIONS_REL",
   );
   const CASH_ACTIONS = ["sellAndAdmit", "confirmUnpaidAndAdmit", "sellMerch"];
-  const OPEN_ACTIONS = ["resolveGate", "admit", "fulfill", "comp"];
+  // searchGuests is a READ returning exactly what resolveGate already returns
+  // to the same roles, so it is classified OPEN. Adding it here is the
+  // deliberate act this section exists to force.
+  const OPEN_ACTIONS = ["resolveGate", "admit", "fulfill", "comp", "searchGuests"];
   for (const name of CASH_ACTIONS) {
     const body = actionBody(actionsSrc, name);
     check(`${name}() is wrapped in requireTill`, /requireTill\(/.test(body), body ? "" : "action not found");
@@ -648,7 +651,11 @@ async function main(): Promise<void> {
   const feeSale = await gate.sellAtGate(event.id, [fee.id], { buyerName: "Shakti Steps" });
   eq("the fee is charged at the door price", feeSale.totalCents, 3000);
   await gate.confirmGateCash(feeSale.orderId);
-  eq("SELLING A FEE ISSUES NO ADMISSION", await gate.admitOrderAttendees(feeSale.orderId), 0);
+  // Reads .admitted rather than a bare number now that admitOrderAttendees
+  // reports both halves. SAME expected value, read more precisely, plus a
+  // companion for the half it could not express before.
+  eq("SELLING A FEE ISSUES NO ADMISSION", (await gate.admitOrderAttendees(feeSale.orderId)).admitted, 0);
+  eq("...and it did not quietly count them as already in", (await gate.admitOrderAttendees(feeSale.orderId)).already, 0);
   eq("SELLING A FEE DOES NOT MOVE THE HEADCOUNT", await gate.getEventHeadcount(event.id), headBeforeFee);
   const feeAttendee = await db.attendee.findFirstOrThrow({ where: { orderId: feeSale.orderId } });
   eq("the fee buyer is not checked in", feeAttendee.checkedInAt, null);
@@ -665,12 +672,152 @@ async function main(): Promise<void> {
   const walkUp = await gate.sellAtGate(event.id, [admission.id, fee.id], { buyerName: "Walk Up" });
   eq("both items are charged at door prices", walkUp.totalCents, 6000);
   await gate.confirmGateCash(walkUp.orderId);
-  eq("a ticket-plus-fee sale admits exactly one", await gate.admitOrderAttendees(walkUp.orderId), 1);
+  eq("a ticket-plus-fee sale admits exactly one", (await gate.admitOrderAttendees(walkUp.orderId)).admitted, 1);
   eq("the headcount moves by one", await gate.getEventHeadcount(event.id), headBeforeFee + 1);
-  eq("re-running the sale's admission admits nobody twice", await gate.admitOrderAttendees(walkUp.orderId), 0);
+  eq("re-running the sale's admission admits nobody twice", (await gate.admitOrderAttendees(walkUp.orderId)).admitted, 0);
+  // THE HALF THAT WAS INVISIBLE: a bare 0 could not distinguish "nobody was
+  // eligible" from "they were all already in". At a door those mean different
+  // numbers of wristbands.
+  eq("...and reports that they were already in", (await gate.admitOrderAttendees(walkUp.orderId)).already, 1);
   eq("…and the headcount is unmoved", await gate.getEventHeadcount(event.id), headBeforeFee + 1);
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§8 a guest who cannot be scanned can still be found");
+  // "Allow search and checkin" / "we shoudl be able to also serach by
+  // name/email AND CHECKIN". Same GateView a scan produces, so a tapped result
+  // flows into the identical verdict and the identical admit path.
+  const hits = (q: string) => gate.searchGateGuests(event.id, q, CODE);
 
-  console.log("\n§7c prices and menu come from the server, never the client");
+  eq("a single character is a browse, not a lookup", (await hits("A")).length, 0);
+  const byName = await hits("Asha");
+  eq("a guest is found by first name", byName[0]?.attendeeId, paid.attendeeId);
+  eq("...case-insensitively", (await hits("asha"))[0]?.attendeeId, paid.attendeeId);
+  eq("...and by surname, not just a prefix of the whole name",
+    (await hits("Mehta"))[0]?.attendeeId, paid.attendeeId);
+  eq("a guest is found by a fragment of their code",
+    (await hits("K7M2"))[0]?.attendeeId, paid.attendeeId);
+
+  // PREDICTIVE ENTRY. "BV should bring in any tokens starting with BV so the
+  // gate doesnt have to type whole."
+  await ticket(org.id, event.id, `${CODE}-BVAAAAAAA`, "Bee Vee One", "CONFIRMED", adm);
+  await ticket(org.id, event.id, `${CODE}-BVBBBBBBB`, "Bee Vee Two", "CONFIRMED", adm);
+  const bvHits = await hits("BV");
+  eq("two characters bring back every token starting with them",
+    bvHits.filter((h) => h.campId?.startsWith(`${CODE}-BV`)).length, 2);
+  // Anchored to THIS event's code, so a fragment cannot match inside the
+  // prefix every ticket already shares.
+  // THE ROW THE ANCHOR EXISTS FOR. Every campId contains the event code, so an
+  // unanchored code search turns a fragment of it into a full roster dump.
+  // "GATE" is inside every campId this suite mints (VERIFY-GATE-...), and
+  // unlike "VERIF" it survives the confusable mapping intact -- I would become
+  // 1 and match nothing either way, which is how this row first passed against
+  // a broken implementation.
+  // Every campId this suite mints contains "GATE" (VERIFY-GATE-...), so an
+  // UNANCHORED code clause turns that fragment into a whole-roster dump. Rows
+  // legitimately matched by NAME are excluded -- walk-up orders are literally
+  // called "Gate sale", and finding those is correct. What must be zero is rows
+  // that came back only because the event code happens to contain the letters.
+  const gateHits = await hits("GATE");
+  eq("a fragment of the EVENT CODE matches no CODES",
+    gateHits.filter((h) => !(h.name ?? "").toUpperCase().includes("GATE")).length, 0);
+  // ...while a pasted whole id still resolves through search.
+  eq("a pasted whole id is still found",
+    (await hits(PAID_ID))[0]?.attendeeId, paid.attendeeId);
+  check("a code match sorts above a name match",
+    (await hits("BV"))[0]?.campId?.startsWith(`${CODE}-BV`) === true);
+
+  // THE ROW SEARCH EXISTS FOR. Attendees are created at cart creation but
+  // campIds only at confirmOrderPaid, so a will-call guest on an unpaid order
+  // has campId NULL -- getGateView matches on campId and can NEVER find them.
+  // Search by name is the only way those people get through a door.
+  const noCode = await db.order.create({
+    data: {
+      orgId: org.id, eventId: event.id, status: "PENDING", method: "STRIPE",
+      registrantName: "Nocode Nirmala", registrantEmail: "nirmala@example.test",
+      registrantPhone: "555-0100",
+      attendees: { create: [{ orgId: org.id, eventId: event.id, name: "Nocode Nirmala" }] },
+    },
+    include: { attendees: true },
+  });
+  const found = await hits("Nirmala");
+  eq("AN UNPAID GUEST WITH NO CODE AT ALL IS STILL FINDABLE", found.length, 1);
+  eq("...and has no code to have been scanned by", found[0]?.campId, null);
+  eq("...and reads as unpaid", found[0]?.isPaid, false);
+  eq("a guest is findable by the email on their order",
+    (await hits("nirmala@example.test"))[0]?.attendeeId, noCode.attendees[0].id);
+
+  // Event-scoped, unlike a code lookup. A NAME has no way to say which event.
+  const otherOrg = await hits("Nirmala");
+  eq("search never leaves the event being staffed",
+    otherOrg.every((h) => h.eventId === event.id), true);
+  check("a result set is capped", (await hits("e")).length <= gate.GATE_SEARCH_LIMIT);
+  // Every walk-up cash sale is recorded against gate@gate.local, so an
+  // unfiltered email clause turns "gate" into every walk-up in the building.
+  eq("the walk-up sentinel address is not searchable",
+    (await hits("gate@gate.local")).length, 0);
+  // ...but a walk-up whose buyer name was actually typed is still findable,
+  // which is the case that matters at a door.
+  await gate.sellAtGate(event.id, [admission.id], { buyerName: "Findable Walkup" });
+  check("a named walk-up is still findable by that name",
+    (await hits("Findable")).length >= 1);
+
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§8b one scan resolves the whole party");
+  // "present total ticetks under one scan and ask for checking in all of them."
+  const famOrder = await db.order.create({
+    data: {
+      orgId: org.id, eventId: event.id, status: "CONFIRMED", method: "CASH",
+      registrantName: "Family Of Three", registrantEmail: "fam@example.test",
+      registrantPhone: "555-0101",
+      attendees: {
+        create: [
+          { orgId: org.id, eventId: event.id, name: "Fam One", campId: `${CODE}-FAMAAAAAA` },
+          { orgId: org.id, eventId: event.id, name: "Fam Two", campId: `${CODE}-FAMBBBBBB` },
+          { orgId: org.id, eventId: event.id, name: "Fam Three", campId: `${CODE}-FAMCCCCCC` },
+        ],
+      },
+      lineItems: {
+        create: [{
+          orgId: org.id, serviceTypeId: admission.id, description: "Family entry",
+          amountCents: 7500, quantity: 3, status: "PAID",
+        }],
+      },
+    },
+    include: { attendees: true },
+  });
+
+  const famView = await gate.getGateView(`${CODE}-FAMAAAAAA`);
+  eq("scanning one code shows all three tickets", famView?.party.length, 3);
+  eq("...and flags which one was actually presented",
+    famView?.party.filter((t) => t.scanned).map((t) => t.campId), [`${CODE}-FAMAAAAAA`]);
+  eq("...none of them admitted yet",
+    famView?.party.every((t) => !t.alreadyAdmitted), true);
+
+  const headBeforeFam = await gate.getEventHeadcount(event.id);
+  // Admit two of the three individually, to build the partial case.
+  await gate.admitAttendee(famOrder.attendees[0].id, event.id);
+  await gate.admitAttendee(famOrder.attendees[1].id, event.id);
+  eq("individual admits move the headcount one at a time",
+    await gate.getEventHeadcount(event.id), headBeforeFam + 2);
+
+  // THE PARTIAL CASE. Admitting the order again must report ONE new and TWO
+  // already in -- at a door those are different numbers of wristbands.
+  const partial = await gate.admitOrderAttendees(famOrder.id, event.id);
+  eq("ADMIT ALL REPORTS BOTH HALVES, NOT A TOTAL", partial, { admitted: 1, already: 2 });
+  eq("...and only the new one moved the headcount",
+    await gate.getEventHeadcount(event.id), headBeforeFam + 3);
+  const again = await gate.admitOrderAttendees(famOrder.id, event.id);
+  eq("running it once more admits nobody", again, { admitted: 0, already: 3 });
+  eq("...and the headcount is unmoved",
+    await gate.getEventHeadcount(event.id), headBeforeFam + 3);
+
+  eq("a party admit refuses a ticket from another event",
+    (await gate.getGateView(`${CODE}-FAMAAAAAA`))?.party.length, 3);
+  await rejectsWith("...and the guard still fires per attendee",
+    () => gate.admitOrderAttendees(famOrder.id, event2.id), "Wrong event");
+
+
+
+  console.log("\n§9 prices and menu come from the server, never the client");
   const other = await db.serviceType.findFirstOrThrow({
     where: { orgId: org.id, key: { notIn: [ADM_KEY, MERCH_KEY, FEE_KEY] } },
   });
@@ -723,7 +870,12 @@ async function ticket(
       status,
       method: "STRIPE",
       registrantName: name,
-      registrantEmail: `${campId.toLowerCase()}@example.test`,
+      // NOT derived from the campId. It used to be, and that quietly made the
+        // code-search rows meaningless: every order email then contained the
+        // event code, so searching a fragment of it matched everything by
+        // EMAIL and no code clause could be observed. A real buyer email has
+        // nothing to do with their ticket id.
+      registrantEmail: `${name.toLowerCase().replace(/[^a-z]+/g, ".")}@example.test`,
       registrantPhone: "(555) 010-0000",
       attendees: { create: [{ orgId, eventId, campId, name }] },
     },

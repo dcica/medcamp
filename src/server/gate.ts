@@ -2,7 +2,7 @@ import type { ServiceKind } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
 import { normalizeCampId } from "@/lib/campId";
-import { planTicketLookup } from "@/lib/ticketCode";
+import { planTicketLookup, tokenPrefixFor, MIN_TOKEN_PREFIX } from "@/lib/ticketCode";
 import { confirmOrderPaid } from "@/server/payments";
 import { resolvePrice } from "@/lib/pricing";
 import { NOT_A_TICKET, NOT_PAID } from "@/lib/scanVerdict";
@@ -35,6 +35,17 @@ export type AdmitResult =
   | { state: "admitted"; at: Date }
   | { state: "already"; at: Date };
 
+/** One ticket on the scanned order. */
+export type GateTicket = {
+  attendeeId: string;
+  campId: string | null;
+  name: string | null;
+  alreadyAdmitted: boolean;
+  admittedAt: Date | null;
+  /** True for the ticket whose code was actually presented. */
+  scanned: boolean;
+};
+
 export type GateView = {
   attendeeId: string;
   orderId: string;
@@ -51,6 +62,12 @@ export type GateView = {
   admittedAt: Date | null;
   /** Pre-bought physical goods to hand over (MERCH line items). */
   pickupItems: GatePickupItem[];
+  /**
+   * Every ticket on this order, the scanned one included and flagged.
+   * ADDITIVE: nothing that reads the fields above changes behaviour, which
+   * is why every existing verify-gate row stays green.
+   */
+  party: GateTicket[];
 };
 
 /**
@@ -83,7 +100,18 @@ export function wrongEventMessage(ticketEventName: string): string {
 
 const GATE_INCLUDE = {
   event: true,
-  order: { include: { lineItems: { include: { serviceType: true } } } },
+  order: {
+    include: {
+      lineItems: { include: { serviceType: true } },
+      // The whole party. A family of five is ONE order with five attendees,
+      // and scanning one of their codes used to resolve exactly one of them
+      // -- five scans for five people standing together.
+      attendees: {
+        select: { id: true, campId: true, name: true, checkedInAt: true },
+        orderBy: { campId: "asc" },
+      },
+    },
+  },
 } as const;
 
 /**
@@ -136,6 +164,14 @@ export function toGateView(attendee: GateAttendee): GateView {
     alreadyAdmitted: Boolean(attendee.checkedInAt),
     admittedAt: attendee.checkedInAt,
     pickupItems,
+    party: attendee.order.attendees.map((a) => ({
+      attendeeId: a.id,
+      campId: a.campId,
+      name: a.name,
+      alreadyAdmitted: Boolean(a.checkedInAt),
+      admittedAt: a.checkedInAt,
+      scanned: a.id === attendee.id,
+    })),
   };
 }
 
@@ -184,6 +220,105 @@ export async function getGateView(
   if (matches.length === 0) return null;
   if (matches.length > 1) throw new Error(AMBIGUOUS_TOKEN);
   return toGateView(matches[0]);
+}
+
+/** Below this, a query is a browse rather than a lookup. */
+export const GATE_SEARCH_MIN = MIN_TOKEN_PREFIX;
+/** A short list a volunteer can read, not an export. */
+export const GATE_SEARCH_LIMIT = 25;
+
+/**
+ * Find a guest when the QR will not scan.
+ *
+ * "we shoudl be able to also serach by name/email AND CHECKIN". Three ways in,
+ * one result type: name, contact details, or a PARTIAL code. Returns GateView,
+ * the same shape a scan produces, so a tapped result flows into the identical
+ * verdict and the identical admit path. If search returned anything else, a
+ * guest found by name would be governed by different rules than the same guest
+ * found by scanning, and only one of those paths would be tested.
+ *
+ * IT ALSO REACHES PEOPLE A SCAN CANNOT. Attendees are created at cart creation
+ * but campIds only at confirmOrderPaid, so a will-call guest on an unpaid order
+ * has campId NULL and getGateView -- which matches on campId -- can never find
+ * them. Search by name is the only way those people get through a door.
+ *
+ * ON PRIVACY, because this is a list where a scan was one row. The returned
+ * shape (GateView) carries NO email and NO phone: those fields are matched
+ * server-side and never leave it. What comes back is a name, a code and a
+ * status -- exactly what identifies the person standing in front of you and
+ * nothing more. Combined with the minimum length and the cap, this is a lookup
+ * rather than a roster dump. That is deliberately a narrowing of the DATA
+ * rather than of GATE_ROLES: a station volunteer is usually the one holding the
+ * scanner at a dandiya door, so revoking their search would remove the feature
+ * exactly where it was asked for.
+ */
+export async function searchGateGuests(
+  eventId: string,
+  query: string,
+  eventCode?: string,
+): Promise<GateView[]> {
+  const org = await getActiveOrg();
+  if (!org) return [];
+  const q = query.trim();
+  if (q.length < GATE_SEARCH_MIN) return [];
+
+  // Predictive code entry: "BV should bring in any tokens starting with BV so
+  // the gate doesnt have to type whole". ANCHORED to this event's code, which
+  // does two jobs -- it stops BV matching characters inside the event code
+  // itself, and unlike the `contains` clauses beside it an anchored prefix can
+  // actually use the campId index.
+  const prefix = eventCode ? tokenPrefixFor(q) : null;
+
+  const or: Array<Record<string, unknown>> = [
+    { name: { contains: q, mode: "insensitive" } },
+    // A PASTED WHOLE ID only. A bare `contains` here would defeat the anchored
+    // prefix clause below entirely: every campId contains the event code, so
+    // typing any fragment of it ("VERIF") would return the whole roster. A
+    // fragment of the TOKEN is handled by the anchored clause; a fragment from
+    // the middle of a token is not a thing anyone types.
+    ...(q.includes("-") ? [{ campId: { contains: q.toUpperCase() } }] : []),
+    { order: { registrantName: { contains: q, mode: "insensitive" } } },
+    {
+      order: {
+        registrantEmail: {
+          contains: q,
+          mode: "insensitive",
+          // NOT the sentinel addresses. Every walk-up cash sale is recorded
+          // against gate@gate.local, so without this a volunteer typing "gate"
+          // pulls back every walk-up in the building. `.local` is reserved
+          // (RFC 6762) and never belongs to a real person, so excluding it
+          // cannot hide a guest. A walk-up whose buyer name WAS typed is still
+          // found by that name, which is the case that matters.
+          not: { endsWith: ".local" },
+        },
+      },
+    },
+  ];
+  if (prefix) or.push({ campId: { startsWith: `${eventCode}-${prefix}` } });
+  // Phone is stored as typed (registrationSchema trims but does not normalize),
+  // so a digits-only reduction of the query would match nothing against
+  // "(555) 010-0000". Raw substring is best-effort and honest about it.
+  if (/\d/.test(q)) or.push({ order: { registrantPhone: { contains: q } } });
+
+  const rows = await db.attendee.findMany({
+    // EVENT-scoped, unlike getGateView, which is org-scoped. A scanned CODE
+    // resolves across events on purpose -- that is how staff see a wrong-event
+    // ticket. A NAME must not: there is no code in hand to disambiguate, and a
+    // cross-event name search would surface last year's roster beside tonight's.
+    where: { orgId: org.id, eventId, OR: or },
+    include: GATE_INCLUDE,
+    orderBy: [{ name: "asc" }, { campId: "asc" }],
+    take: GATE_SEARCH_LIMIT,
+  });
+
+  const views = rows.map(toGateView);
+  // A code fragment means they want the code. Float those above name matches.
+  if (!prefix) return views;
+  const head = `${eventCode}-${prefix}`;
+  return [
+    ...views.filter((v) => v.campId?.startsWith(head)),
+    ...views.filter((v) => !v.campId?.startsWith(head)),
+  ];
 }
 
 /**
@@ -301,10 +436,19 @@ export async function admitAttendee(
  * Returns how many people this call put through the door — 0 for a fee-only or
  * merch-only sale, which is the point: the walk-up form sells competition
  * entries under a "NOT A TICKET · NO FLOOR ACCESS" banner, and the server has to
- * mean it. A no-op here is a completed sale, not a failure, so this returns a
- * count rather than throwing the way `admitAttendee` does on a scan.
+ * mean it. A no-op here is a completed sale, not a failure, so this reports
+ * counts rather than throwing the way `admitAttendee` does on a scan.
+ *
+ * BOTH halves, because the partial case is the one that matters at a door:
+ * two admitted out of five means the volunteer hands over TWO wristbands,
+ * not five, and a bare total cannot say that.
  */
-export async function admitOrderAttendees(orderId: string): Promise<number> {
+export type PartyAdmitResult = { admitted: number; already: number };
+
+export async function admitOrderAttendees(
+  orderId: string,
+  expectedEventId?: string,
+): Promise<PartyAdmitResult> {
   const org = await getActiveOrg();
   if (!org) throw new Error("No active organization.");
   const order = await db.order.findFirst({
@@ -315,15 +459,15 @@ export async function admitOrderAttendees(orderId: string): Promise<number> {
     },
   });
   if (!order) throw new Error("Order not found.");
-  if (admitsNobody(order.lineItems)) return 0;
+  if (admitsNobody(order.lineItems)) return { admitted: 0, already: 0 };
   let admitted = 0;
+  let already = 0;
   for (const attendee of order.attendees) {
-    if (attendee.checkedInAt) continue;
-    const result = await admitAttendee(attendee.id);
-    if (result.state === "already") continue;
-    admitted++;
+    const result = await admitAttendee(attendee.id, expectedEventId);
+    if (result.state === "already") already++;
+    else admitted++;
   }
-  return admitted;
+  return { admitted, already };
 }
 
 /**

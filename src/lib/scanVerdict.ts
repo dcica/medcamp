@@ -56,6 +56,8 @@ export type ScanOutcome =
   | "CHECKED_IN"
   | "ALREADY_ADMITTED"
   | "ALREADY_CHECKED_IN"
+  | "PARTY_ADMITTED"
+  | "PARTY_PARTIAL"
   | "UNPAID"
   | "PAYMENT_UNCONFIRMED"
   | "NOT_A_TICKET"
@@ -95,6 +97,11 @@ export type ScanSignal =
   | { kind: "admitted"; name?: string | null }
   | { kind: "checkedIn"; name?: string | null; at?: string | null }
   | { kind: "already"; flow: "gate" | "camp"; at?: string | null }
+  /**
+   * One tap that admitted a whole order. Counts rather than a boolean,
+   * because the partial case is the one a door gets wrong.
+   */
+  | { kind: "party"; admitted: number; already: number; at?: string | null }
   | { kind: "unpaid"; owed: string }
   | { kind: "paymentUnconfirmed" }
   | { kind: "notATicket" }
@@ -166,6 +173,42 @@ export function verdictFor(signal: ScanSignal): ScanVerdict {
             detail: signal.at ? `Checked in ${signal.at}` : null,
             instruction: "Badge already issued — reprint only if asked",
           };
+
+    case "party": {
+      const { admitted, already } = signal;
+      const total = admitted + already;
+      // Nobody new. Same meaning as a single re-scan, so the same tone.
+      if (admitted === 0) {
+        return verdictFor({ kind: "already", flow: "gate", at: signal.at });
+      }
+      // Everybody new, and only one of them — the ordinary single admit.
+      if (already === 0 && admitted === 1) {
+        return verdictFor({ kind: "admitted" });
+      }
+      // THE CASE THIS EXISTS FOR. Two admitted out of five means the volunteer
+      // hands over TWO wristbands. Green would say five. Tone is `go` ONLY when
+      // every ticket in the party transitioned; anything mixed is a hold,
+      // because the wristband count differs from the party size and the
+      // volunteer has to read a number rather than act on a colour.
+      if (already > 0) {
+        return {
+          outcome: "PARTY_PARTIAL",
+          tone: "hold",
+          glyph: "!",
+          headline: "Partly in",
+          detail: `Admitted ${admitted} · ${already} already in`,
+          instruction: `Give ${admitted} wristband${admitted === 1 ? "" : "s"}`,
+        };
+      }
+      return {
+        outcome: "PARTY_ADMITTED",
+        tone: "go",
+        glyph: "✓",
+        headline: `Admitted ${admitted}`,
+        detail: total > admitted ? `of ${total}` : null,
+        instruction: `Give ${admitted} wristband${admitted === 1 ? "" : "s"}`,
+      };
+    }
 
     case "unpaid":
       return {

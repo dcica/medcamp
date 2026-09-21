@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { formatCents } from "@/lib/money";
 import { formatVenueTime } from "@/lib/eventTime";
-import { expandTicketCode } from "@/lib/ticketCode";
+import { expandTicketCode, MIN_TOKEN_PREFIX } from "@/lib/ticketCode";
 import { QrScanner } from "@/app/_components/QrScanner";
 import { ScanVerdictBanner } from "@/app/_components/ScanVerdictBanner";
 import { verdictFor, signalForError, type ScanVerdict } from "@/lib/scanVerdict";
@@ -24,6 +24,7 @@ import {
   sellAndAdmit,
   sellMerch,
   confirmUnpaidAndAdmit,
+  searchGuests,
 } from "@/app/gate/actions";
 
 type CatalogItem = { id: string; name: string; priceCents: number };
@@ -61,6 +62,8 @@ export function GateMode({
   // The standing verdict, if any. Only a deliberate tap moves this.
   const [phase, setPhase] = useState<StationPhase>(INITIAL_PHASE);
   const [nudge, setNudge] = useState(false);
+  const [hits, setHits] = useState<GateView[] | null>(null);
+  const [searching, setSearching] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const [pickupSel, setPickupSel] = useState<Set<string>>(new Set());
@@ -97,11 +100,73 @@ export function GateMode({
     };
   }
 
+  /**
+   * Turn an admit outcome into the verdict. ONE place, so a single guest and
+   * a family of five cannot end up described by different rules.
+   */
+  function applyAdmit(out: {
+    admitted: number;
+    already: number;
+    headcount: number;
+    at: Date | null;
+  }) {
+    setHeadcount(out.headcount);
+    settle(
+      verdictFor({
+        kind: "party",
+        admitted: out.admitted,
+        already: out.already,
+        at: out.at ? formatVenueTime(out.at) : null,
+      }),
+    );
+  }
+
+  function doAdmitMany(attendeeIds: string[]) {
+    return (async () => {
+      const res = await admit(attendeeIds, eventId);
+      if (!res.ok) return settle(verdictFor(signalForError(res.error)));
+      applyAdmit(res.data);
+    })();
+  }
+
+  /** Debounced by the input; this just runs the query and keeps the last one. */
+  function runSearch(q: string) {
+    setSearching(true);
+    void (async () => {
+      const res = await searchGuests(eventId, q, eventCode);
+      setSearching(false);
+      setHits(res.ok ? res.data : []);
+    })();
+  }
+
   /** "Next guest" - the only exit from a standing verdict. */
   function release() {
     setPhase(INITIAL_PHASE);
     setNudge(false);
+    setHits(null);
     clearGuest();
+  }
+
+  /**
+   * A tapped search result IS a resolved guest -- searchGuests returns the
+   * same GateView a scan does, so the whole card below renders unchanged and
+   * there is no second admit path to keep in step.
+   */
+  function pickHit(hit: GateView) {
+    setHits(null);
+    setPickupSel(new Set());
+    setBuySel(new Set());
+    setView(hit);
+    if (hit.alreadyAdmitted) {
+      settle(
+        verdictFor({
+          kind: "already",
+          flow: "gate",
+          at: hit.admittedAt ? formatVenueTime(new Date(hit.admittedAt)) : null,
+        }),
+        "acted",
+      );
+    }
   }
 
   function clearGuest() {
@@ -173,20 +238,7 @@ export function GateMode({
   function doAdmit() {
     if (!view) return;
     run(async () => {
-      const res = await admit(view.attendeeId, eventId);
-      if (!res.ok) return settle(verdictFor(signalForError(res.error)));
-      setHeadcount(res.data.headcount);
-      // The discriminant, never an assumption. A guest admitted at another
-      // door between this scan and this tap now reads amber, not green.
-      settle(
-        res.data.result.state === "admitted"
-          ? verdictFor({ kind: "admitted", name: view.name })
-          : verdictFor({
-              kind: "already",
-              flow: "gate",
-              at: formatVenueTime(res.data.result.at),
-            }),
-      );
+      await doAdmitMany([view.attendeeId]);
     });
   }
 
@@ -195,16 +247,7 @@ export function GateMode({
     run(async () => {
       const res = await confirmUnpaidAndAdmit(view.orderId, view.attendeeId, eventId);
       if (!res.ok) return settle(verdictFor(signalForError(res.error)));
-      setHeadcount(res.data.headcount);
-      settle(
-        res.data.result.state === "admitted"
-          ? verdictFor({ kind: "admitted", name: view.name })
-          : verdictFor({
-              kind: "already",
-              flow: "gate",
-              at: formatVenueTime(res.data.result.at),
-            }),
-      );
+      applyAdmit(res.data);
     });
   }
 
@@ -281,8 +324,19 @@ export function GateMode({
       {/* Continuous scanner */}
       <QrScanner onScan={onScan} continuous />
 
-      {/* Manual entry — camera-free fallback (mirrors check-in). */}
-      <ManualEntry eventCode={eventCode} disabled={pending} onSubmit={onScan} />
+      {/* ONE box for every "the scan did not work" path: a partial code, a
+          whole code, a name, an email, a phone number. Two adjacent inputs
+          doing almost the same thing is a choice a volunteer should not
+          have to make with a queue waiting. */}
+      <GuestFinder
+        eventCode={eventCode}
+        disabled={pending}
+        searching={searching}
+        hits={hits}
+        onLookup={onScan}
+        onSearch={runSearch}
+        onPick={pickHit}
+      />
 
       {/* Resolved guest */}
       {view && (
@@ -293,6 +347,69 @@ export function GateMode({
           </div>
 
           {/* Admission */}
+          {/* THE WHOLE PARTY. A family of five is one order with five tickets,
+              and scanning one of their codes used to admit exactly one person —
+              five scans for five people standing together. */}
+          {view.party.length > 1 &&
+            (() => {
+              const pending2 = view.party.filter((t) => !t.alreadyAdmitted);
+              return (
+                <div className="rounded-lg border border-gray-300 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    {view.party.length} tickets on this order
+                  </p>
+                  <ul className="mt-2 space-y-1">
+                    {view.party.map((t) => (
+                      <li
+                        key={t.attendeeId}
+                        className="flex items-center justify-between gap-2 text-sm"
+                      >
+                        <span className={t.scanned ? "font-semibold" : ""}>
+                          {t.name ?? "Guest"}
+                          {t.scanned && (
+                            <span className="ml-1 text-xs text-gray-500">(scanned)</span>
+                          )}
+                        </span>
+                        {t.alreadyAdmitted ? (
+                          <span className="shrink-0 text-xs text-gray-500">
+                            in
+                            {t.admittedAt
+                              ? ` ${formatVenueTime(new Date(t.admittedAt))}`
+                              : ""}
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={pending || !view.isPaid}
+                            onClick={() => run(() => doAdmitMany([t.attendeeId]))}
+                            className="min-h-tap shrink-0 rounded-lg border border-gray-300 px-3 text-xs font-medium disabled:opacity-50"
+                          >
+                            Admit
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  {pending2.length > 0 && view.isPaid && (
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={() =>
+                        run(() => doAdmitMany(pending2.map((t) => t.attendeeId)))
+                      }
+                      className="mt-3 min-h-tap w-full rounded-lg bg-brand font-semibold text-brand-fg disabled:opacity-50"
+                    >
+                      {/* Says REMAINING, not the party size, when some are already
+                          in — the number on the button is the number of
+                          wristbands to hand over. */}
+                      Admit {pending2.length === view.party.length ? "all " : "remaining "}
+                      {pending2.length}
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+
           {view.alreadyAdmitted ? (
             // NOT GREEN, and no longer shouting. This used to be
             // This was a green tint - the SAME one the fresh-admit flash used,
@@ -477,53 +594,145 @@ export function GateMode({
  * The rule itself is `expandTicketCode` in `@/lib/ticketCode` — it outlives any
  * particular arrangement of this form and is pinned by scripts/verify-gate.ts.
  */
-function ManualEntry({
+/**
+ * One box for every way a scan can fail.
+ *
+ * Replaces two adjacent controls that did almost the same thing: a fixed-prefix
+ * manual-entry field, and (as of this change) a guest search. Deciding which to
+ * use is not a decision a volunteer should make with a queue waiting.
+ *
+ * What the characters mean, in order:
+ *   - looks like a WHOLE token (>= 8 chars, no hyphen) -> exact lookup, which
+ *     also resolves across events so a wrong-event ticket names its real event
+ *     instead of reporting "no match";
+ *   - shorter, or contains a space or an @ -> search: token PREFIX within this
+ *     event, plus name, email and phone.
+ * Both run as you type; the exact lookup needs Enter, because firing an admit
+ * path on a partial code would be its own bug.
+ */
+function GuestFinder({
   eventCode,
   disabled,
-  onSubmit,
+  searching,
+  hits,
+  onLookup,
+  onSearch,
+  onPick,
 }: {
   eventCode: string;
   disabled: boolean;
-  onSubmit: (code: string) => void;
+  searching: boolean;
+  hits: GateView[] | null;
+  onLookup: (code: string) => void;
+  onSearch: (q: string) => void;
+  onPick: (hit: GateView) => void;
 }) {
-  const [token, setToken] = useState("");
+  const [q, setQ] = useState("");
+  const seq = useRef(0);
+
+  // 250ms, and a sequence guard so a slow early response cannot overwrite a
+  // later one. Same pattern MemberSearch already uses.
+  useEffect(() => {
+    const value = q.trim();
+    if (value.length < MIN_TOKEN_PREFIX) return;
+    const mine = ++seq.current;
+    const t = setTimeout(() => {
+      if (mine === seq.current) onSearch(value);
+    }, 250);
+    return () => clearTimeout(t);
+    // onSearch is stable enough for this; re-running on identity would re-fire
+    // every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
+
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        const code = expandTicketCode(eventCode, token);
-        if (!code) return;
-        onSubmit(code);
-        setToken("");
-      }}
-      className="flex gap-2"
-    >
-      {/* Prefix and field share one bordered box so they read as a single
-          control. The border lives here, not on the input. */}
-      <div className="flex min-h-tap w-full flex-1 items-center overflow-hidden rounded-lg border border-gray-300 bg-white px-3">
-        <span className="shrink-0 select-none whitespace-nowrap text-base text-gray-500">
-          {eventCode}-
-        </span>
-        <input
-          className="w-full min-w-0 bg-transparent py-2 text-base uppercase outline-none"
-          placeholder="K7M2XQ9T"
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          autoCapitalize="characters"
-          autoComplete="off"
-          autoCorrect="off"
-          spellCheck={false}
-          aria-label={`Ticket ID, after the ${eventCode}- prefix`}
-        />
-      </div>
-      <button
-        type="submit"
-        disabled={disabled}
-        className="min-h-tap shrink-0 rounded-lg border border-gray-300 px-4 text-sm font-medium disabled:opacity-50"
+    <div className="space-y-2">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          const code = expandTicketCode(eventCode, q);
+          if (!code) return;
+          onLookup(code);
+          setQ("");
+        }}
+        className="flex gap-2"
       >
-        Look up
-      </button>
-    </form>
+        {/* Prefix and field share one bordered box so they read as a single
+            control. The border lives here, not on the input. It stays visible
+            because it is what makes the short form obvious — but it is a hint
+            now, not a constraint: a name typed here works too. */}
+        <div className="flex min-h-tap w-full flex-1 items-center overflow-hidden rounded-lg border border-gray-300 bg-white px-3">
+          <span className="shrink-0 select-none whitespace-nowrap text-base text-gray-500">
+            {eventCode}-
+          </span>
+          <input
+            className="w-full min-w-0 bg-transparent py-2 text-base outline-none"
+            placeholder="K7M2XQ9T, or a name"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
+            enterKeyHint="search"
+            aria-label={`Ticket ID after the ${eventCode}- prefix, or a guest name`}
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={disabled}
+          className="min-h-tap shrink-0 rounded-lg border border-gray-300 px-4 text-sm font-medium disabled:opacity-50"
+        >
+          Look up
+        </button>
+      </form>
+
+      {searching && <p className="text-sm text-gray-500">Searching…</p>}
+
+      {hits !== null && !searching && (
+        hits.length === 0 ? (
+          <p className="text-sm text-gray-500">No guest matches that.</p>
+        ) : (
+          <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200">
+            {hits.map((h) => (
+              <li key={h.attendeeId}>
+                <button
+                  type="button"
+                  onClick={() => onPick(h)}
+                  className="flex min-h-tap w-full items-center justify-between gap-2 px-3 py-2 text-left"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium">
+                      {h.name ?? "Guest"}
+                    </span>
+                    <span className="block truncate font-mono text-xs text-gray-500">
+                      {h.campId ?? "no code yet"}
+                    </span>
+                  </span>
+                  {/* Status BEFORE the tap, so a volunteer scanning the list
+                      knows which row is the one they want. */}
+                  <span className="shrink-0 text-xs font-semibold">
+                    {h.alreadyAdmitted ? (
+                      <span className="text-gray-500">
+                        in
+                        {h.admittedAt
+                          ? ` ${formatVenueTime(new Date(h.admittedAt))}`
+                          : ""}
+                      </span>
+                    ) : h.isPaid ? (
+                      <span className="text-gray-700">paid</span>
+                    ) : (
+                      <span className="text-red-700">
+                        owes {formatCents(h.amountOwedCents)}
+                      </span>
+                    )}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )
+      )}
+    </div>
   );
 }
 

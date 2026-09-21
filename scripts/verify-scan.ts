@@ -58,6 +58,7 @@ function read(rel: string): string {
 async function main(): Promise<void> {
   const ALL_OUTCOMES: v.ScanOutcome[] = [
     "ADMITTED", "CHECKED_IN", "ALREADY_ADMITTED", "ALREADY_CHECKED_IN",
+    "PARTY_ADMITTED", "PARTY_PARTIAL",
     "UNPAID", "PAYMENT_UNCONFIRMED", "NOT_A_TICKET", "WRONG_EVENT",
     "WAIVER_UNSIGNED", "NO_MATCH", "CAMERA_ERROR", "SERVER_ERROR",
   ];
@@ -67,6 +68,8 @@ async function main(): Promise<void> {
     { kind: "checkedIn", name: "Asha Mehta", at: "9:03 AM" },
     { kind: "already", flow: "gate", at: "7:42 PM" },
     { kind: "already", flow: "camp", at: "9:03 AM" },
+    { kind: "party", admitted: 5, already: 0 },
+    { kind: "party", admitted: 2, already: 3 },
     { kind: "unpaid", owed: "$25.00" },
     { kind: "paymentUnconfirmed" },
     { kind: "notATicket" },
@@ -94,8 +97,12 @@ async function main(): Promise<void> {
     v.verdictFor({ kind: "already", flow: "gate" }).tone !== "stop", true);
 
   const goes = verdicts.filter((x) => x.tone === "go").map((x) => x.outcome);
-  eq("exactly two outcomes are GO, and both mean 'I just changed something'",
-    goes.sort(), ["ADMITTED", "CHECKED_IN"]);
+  // An exact set, not a count: every GO must mean "I just changed something",
+  // which is what makes green safe to act on without reading. PARTY_ADMITTED
+  // qualifies (everyone in the party went in); PARTY_PARTIAL deliberately does
+  // not, because then the wristband count is not the party size.
+  eq("the GO outcomes are exactly the ones that changed something",
+    goes.sort(), ["ADMITTED", "CHECKED_IN", "PARTY_ADMITTED"]);
 
   eq("every outcome is reachable from some signal",
     [...new Set(verdicts.map((x) => x.outcome))].sort(), [...ALL_OUTCOMES].sort());
@@ -124,6 +131,27 @@ async function main(): Promise<void> {
     v.verdictFor({ kind: "unpaid", owed: "$25.00" }).detail?.includes("$25.00") === true);
   check("NO_MATCH shows the code that failed",
     v.verdictFor({ kind: "noMatch", code: "RON-2026-ZZZZZZZZ" }).detail === "RON-2026-ZZZZZZZZ");
+
+  // A family of five is ONE order. Scanning one of their codes used to
+  // resolve exactly one person, so a door scanned five times for five
+  // people standing together.
+  const party = (a: number, b: number) =>
+    v.verdictFor({ kind: "party", admitted: a, already: b });
+
+  eq("a whole party admitted at once is a GO", party(5, 0).tone, "go");
+  check("...and it says how many wristbands", party(5, 0).instruction === "Give 5 wristbands");
+  // THE PARTIAL CASE. Two of five means TWO wristbands; green would say five.
+  eq("A PARTLY-ADMITTED PARTY IS A HOLD, NOT A GO", party(2, 3).tone, "hold");
+  check("...and it names both halves",
+    party(2, 3).detail === "Admitted 2 · 3 already in", String(party(2, 3).detail));
+  check("...and the wristband count is the ADMITTED count, not the party size",
+    party(2, 3).instruction === "Give 2 wristbands", String(party(2, 3).instruction));
+  // Nobody new is the same news as a single re-scan, so the same verdict.
+  eq("a party that was entirely already in reads as already in",
+    party(0, 5).outcome, "ALREADY_ADMITTED");
+  eq("a party of one collapses to the ordinary single admit",
+    party(1, 0).outcome, "ADMITTED");
+  check("singular wristband for one person", party(3, 0).instruction === "Give 3 wristbands");
 
   // ───────────────────────────────────────────────────────────────────────────
   console.log("\n§2 the server's words and the screen's words are the same words");
