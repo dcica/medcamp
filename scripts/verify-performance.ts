@@ -312,7 +312,8 @@ async function main() {
     await import("../src/lib/confirmationEmail");
   const baseMail = {
     to: "a@b.c", registrantName: "Asha Rao", eventName: "Performance Verification",
-    confirmUrl: "https://example.test/confirm/x", campIds: [campId],
+    confirmUrl: "https://example.test/confirm/x",
+    walletBaseUrl: "https://example.test", campIds: [campId],
     lineItems: [{ description: "Competition Entry", quantity: 1, amountCents: 3000 }],
     merch: [], totalPaidCents: 3000, venue: null,
     startsAt: new Date(), endsAt: new Date(), allowsRefunds: false,
@@ -343,6 +344,61 @@ async function main() {
   const doneMail = { ...entryMail, performanceEntry: { ...entryMail.performanceEntry, songNeeded: false } };
   check("music-received variant drops the chase",
     !confirmationText(doneMail).includes("WE STILL NEED"));
+
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§9b one code at a time, on a phone, at a gate");
+  // "design the email ... surfaces only one code at a time on the phone"
+  //
+  // The problem is physical. Five 220px QR codes stacked 12px apart means TWO
+  // ARE IN FRAME AT ONCE under a gate scanner, and the camera takes whichever
+  // it decodes first -- so the station latches onto the wrong attendee, the
+  // volunteer acts on it, and the right person reads ALREADY IN later.
+  const { confirmationHtml } = await import("../src/lib/confirmationEmail");
+  const five = ["AAAAAAAAA", "BBBBBBBBB", "CCCCCCCCC", "DDDDDDDDD", "EEEEEEEEE"]
+    .map((t) => `PERF-2026-${t}`);
+  const partyMail = { ...baseMail, campIds: five };
+  const html = confirmationHtml(partyMail);
+
+  check("every ticket is rendered",
+    five.filter((id) => html.includes(id)).length === 5);
+  // Each one says WHICH it is, so a guest can tell them apart at all.
+  for (let n = 1; n <= 5; n++) {
+    check(`ticket ${n} is numbered`, html.includes(`Ticket ${n} of 5`));
+  }
+  check("a single ticket is not numbered like a party",
+    confirmationHtml(baseMail).includes("Ticket 1 of 1") === false);
+
+  // THE ROW THIS SECTION EXISTS FOR. An explicit-height spacer row between
+  // tickets, because email clients strip <style>, ignore viewport units and
+  // drop most margins -- a CSS-only separation would silently not apply.
+  // Counts the spacer ROW, via its height attribute. Matching the CSS string
+  // instead double-counts, because `line-height:260px` contains it too.
+  const spacers = (html.match(/<td height="260"/g) ?? []).length;
+  check("FOUR SPACERS BETWEEN FIVE TICKETS",
+    spacers === 4);
+  check("...and none trailing the last one",
+    (confirmationHtml(baseMail).match(/<td height="260"/g) ?? []).length === 0);
+  check("a printed sheet breaks between tickets, not through one",
+    html.includes("page-break-inside:avoid"));
+
+  // The wallet is the primary call to action now, not the muted footer line it
+  // used to be -- it is the only surface that can show live used/unused status.
+  check("the wallet is offered up front", html.includes("Open your tickets"));
+  check("...keyed on the CAMPID, never the order id",
+    html.includes(`/t/${five[0]}`));
+  // An order id is a cuid: "partly a timestamp and a counter, not unguessable
+  // the way the 40-bit CSPRNG campId is" (src/lib/checkoutResume.ts). Promoting
+  // it to the thing people carry would have raised what a guessed URL is worth.
+  check("...and the wallet link is not an order url",
+    !/\/t\/[a-z0-9]{20,}/.test(html));
+  check("every ticket also links to just itself",
+    five.filter((id) => html.includes(`/t/${id}`)).length === 5);
+
+  // Offline is still the fallback: the QR images stay inline, because a gym
+  // with no bars is the normal case and the wallet needs a connection.
+  check("the inline QR images are still there",
+    (html.match(/src="cid:/g) ?? []).length === 5);
+
 
 
   console.log("\n§10 the music split classifies every combination");

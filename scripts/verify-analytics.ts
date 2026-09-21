@@ -220,6 +220,9 @@ function main() {
     // The merged scan station. /gate and /checkin still redirect to it, and a
     // redirect still renders a pageview at the OLD path, so all three stay.
     "/scan",
+    // Guest-facing, but the campId is a path segment and the scrubber only
+    // cleans query params -- so a view would ship a live credential to GA.
+    "/t",
     "/gate",
     "/checkin",
     "/badge",
@@ -227,7 +230,7 @@ function main() {
     "/test-login",
   ];
   check(
-    "the exported list is exactly the ten operational prefixes",
+    "the exported list is exactly the eleven prefixes kept out of analytics",
     JSON.stringify([...STAFF_PATH_PREFIXES].sort()) ===
       JSON.stringify([...expectedPrefixes].sort()),
     [...STAFF_PATH_PREFIXES].join(" "),

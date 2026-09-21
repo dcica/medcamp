@@ -828,6 +828,7 @@ export async function confirmOrderPaid(
         registrantName: order.registrantName,
         eventName: order.event.name,
         confirmUrl: `${env.NEXT_PUBLIC_APP_URL}/confirm/${order.id}`,
+        walletBaseUrl: env.NEXT_PUBLIC_APP_URL,
         campIds: result.campIds,
         // A FEE-kind entry admits nobody, so the wording must not call the
         // code a ticket or promise it admits anyone. The entry URL is keyed on

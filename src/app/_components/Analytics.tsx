@@ -95,6 +95,15 @@ export const STAFF_PATH_PREFIXES = [
   // The merged scan station. /gate and /checkin are now redirects TO it, and
   // both stay listed: a redirect still renders a pageview at the old path.
   "/scan",
+  // The guest ticket wallet. NOT staff, but excluded for a stronger reason:
+  // the campId is a PATH segment, and the page_location scrubber is a
+  // query-param denylist -- it would ship a live ticket credential to GA on
+  // every view. There is nothing to measure here anyway.
+  // No trailing slash: the snippet strips one from the path before matching,
+  // so "/t/" could never equal it. Still precise -- the matcher is
+  // `path === prefix || path.startsWith(prefix + "/")`, so a future /teams
+  // route would not be caught by this.
+  "/t",
   "/gate",
   "/checkin",
   "/badge",
@@ -173,7 +182,7 @@ export function Analytics() {
       */}
       <Script id="ga-init" strategy="afterInteractive">
         {`(function(){
-  var staff = ['/admin','/staff','/dashboard','/station','/scan','/gate','/checkin','/badge','/volunteer/checkin','/test-login'];
+  var staff = ['/admin','/staff','/dashboard','/station','/scan','/t','/gate','/checkin','/badge','/volunteer/checkin','/test-login'];
   var path = window.location.pathname;
   if (path.length > 1 && path.charAt(path.length - 1) === '/') path = path.slice(0, -1);
   for (var i = 0; i < staff.length; i++) {

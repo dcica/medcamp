@@ -29,6 +29,7 @@ const DISALLOW = [
   "/dashboard",
   "/station/",
   "/scan",
+  "/t/",
   "/checkin",
   "/volunteers/", // plural: the coordinator dashboard. /volunteer is public.
   "/volunteer/checkin",
