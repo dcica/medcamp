@@ -54,7 +54,8 @@ export type StaffDestination = {
  *   /volunteer/checkin   VOLUNTEER_COORDINATOR, COMMITTEE_ADMIN, STATION_VOLUNTEER
  *   /admin, /admin/camps, /admin/performances, /admin/services
  *                        COORDINATOR, COMMITTEE_ADMIN (requireAdmin)
- *   /admin/members, /admin/membership, /admin/email, /admin/settings
+ *   /admin/members, /admin/membership, /admin/email, /admin/settings,
+ *   /admin/errors
  *                        COORDINATOR only (requireCoordinator)
  */
 export const STAFF_DESTINATIONS: StaffDestination[] = [
@@ -123,6 +124,9 @@ export const STAFF_DESTINATIONS: StaffDestination[] = [
   { href: "/admin/membership", name: "Membership", roles: [], group: "admin" },
   { href: "/admin/email", name: "Email", roles: [], group: "admin" },
   { href: "/admin/settings", name: "Settings", roles: [], group: "admin" },
+  // roles: [] means coordinator-only, per the note above. Rows carry
+  // scrubbed field data and stack traces.
+  { href: "/admin/errors", name: "Errors", roles: [], group: "admin" },
 ];
 
 /**
