@@ -162,10 +162,10 @@ and are safe. The forbidding comment at `src/server/payments.ts:242-260` stays.
 ### Verification
 
 - `npx tsc --noEmit` after every task, then `npm run verify`. Baseline as of 2026-09-20,
-  re-counted from the runner rather than carried forward: **15 suites, 1334 assertions,
+  re-counted from the runner rather than carried forward: **17 suites, 1629 assertions,
   all green** — schema 54, pricing 42, validation 62, storage 31, branding 323,
-  performance 125, gate 101, readiness 91, checkout 123, csv 26, testlogin 35, home 76,
-  seo 100, registrations 25, analytics 120. (`pricing` and `validation` print
+  performance 140, gate 225, scan 88, logging 62, readiness 91, checkout 123, csv 26,
+  testlogin 35, home 76, seo 100, registrations 25, analytics 126. (`pricing` and `validation` print
   `PASS`; the rest print `ok` — count both when reporting totals. Four suites also
   print a third status, `..`, for a row a Central-time box or a local-disk adapter
   cannot distinguish: storage, performance, gate and home have one each. A `..` is
@@ -174,6 +174,17 @@ and are safe. The forbidding comment at `src/server/payments.ts:242-260` stays.
   `verify:registrations` pins what "N registered" is allowed to mean — an
   abandoned cart is not a registration, collected money is `SUCCEEDED` payments
   and not `Payment` rows, and a line total is `amountCents × quantity`.
+  `verify:scan` covers the scan station: the verdict table, the latch state
+  machine, the tone vocabulary and the CSS override that neutralises
+  html5-qrcode's own green. It needs no database, so it runs on a clean clone.
+  Its §5 reads `node_modules/html5-qrcode` AS TEXT and goes red if the library
+  renames its shader region or changes its match colour — without that the
+  override rots silently on the next `npm update`.
+  `verify:logging` covers the error table. Every row there is about the ERROR
+  PATH, which only misbehaves once something else already has: the sink must
+  not throw, must not recurse (it never calls `log`, and guards re-entry), must
+  not block a request, and must not carry a secret into a table that outlives
+  it.
   `verify:analytics` executes the REAL gtag snippet, read as text out of
   `_components/Analytics.tsx`, inside a `node:vm` with a fake `window`, then asserts on
   gtag's actual command queue and on which loader elements got appended. The staff-route
