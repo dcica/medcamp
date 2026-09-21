@@ -4,6 +4,7 @@ import { requireRole, requireTill } from "@/server/session";
 import {
   getGateView,
   admitAttendee,
+  type AdmitResult,
   assertAttendeeAtEvent,
   admitOrderAttendees,
   fulfillLineItems,
@@ -45,14 +46,24 @@ export async function resolveGate(
   }
 }
 
+/**
+ * The headcount AND what this particular call did.
+ *
+ * The headcount alone could not express "they were already in": a re-scan
+ * returned the same number with ok:true, so the screen flashed "admitted" for
+ * someone nobody had just let in. That is the reported bug, at the action
+ * boundary rather than in CSS.
+ */
+export type AdmitOutcome = { result: AdmitResult; headcount: number };
+
 export async function admit(
   attendeeId: string,
   eventId: string,
-): Promise<Result<number>> {
+): Promise<Result<AdmitOutcome>> {
   await requireRole(...GATE_ROLES);
   try {
-    await admitAttendee(attendeeId, eventId);
-    return { ok: true, data: await getEventHeadcount(eventId) };
+    const result = await admitAttendee(attendeeId, eventId);
+    return { ok: true, data: { result, headcount: await getEventHeadcount(eventId) } };
   } catch (err) {
     return fail(err);
   }
@@ -106,16 +117,18 @@ export async function confirmUnpaidAndAdmit(
   orderId: string,
   attendeeId: string,
   eventId: string,
-): Promise<Result<number>> {
+): Promise<Result<AdmitOutcome>> {
   const m = await requireTill();
   try {
     // BEFORE the cash. A ticket for another event must be refused while the
     // money is still in the guest's hand, not after it is recorded.
     await assertAttendeeAtEvent(attendeeId, eventId);
     await confirmGateCash(orderId);
-    await admitAttendee(attendeeId, eventId);
+    // Carries the outcome for a case that used to read as plain success: cash
+    // taken from somebody who was already inside.
+    const result = await admitAttendee(attendeeId, eventId);
     await fulfillOrder(orderId, m.userId);
-    return { ok: true, data: await getEventHeadcount(eventId) };
+    return { ok: true, data: { result, headcount: await getEventHeadcount(eventId) } };
   } catch (err) {
     return fail(err);
   }

@@ -23,6 +23,18 @@ export type GatePickupItem = {
   fulfilledAt: Date | null;
 };
 
+/**
+ * What one admit attempt actually DID.
+ *
+ * Returned rather than thrown for the two outcomes that are normal at a door:
+ * it landed now, or it had already landed. `at` is the ORIGINAL admit time in
+ * the "already" case, which is the whole value of it — "already in" is a shrug,
+ * "already in at 7:42 PM" is something a volunteer can act on.
+ */
+export type AdmitResult =
+  | { state: "admitted"; at: Date }
+  | { state: "already"; at: Date };
+
 export type GateView = {
   attendeeId: string;
   orderId: string;
@@ -245,7 +257,7 @@ export async function admitAttendee(
    * counts and nothing surfaced it.
    */
   expectedEventId?: string,
-): Promise<void> {
+): Promise<AdmitResult> {
   const org = await getActiveOrg();
   if (!org) throw new Error("No active organization.");
   const attendee = await db.attendee.findFirst({
@@ -262,15 +274,26 @@ export async function admitAttendee(
   if (expectedEventId && attendee.eventId !== expectedEventId) {
     throw new Error(wrongEventMessage(attendee.event.name));
   }
-  if (attendee.checkedInAt) return; // already processed
+  // REPORTED, not thrown. "They were already in" is a normal outcome at a door,
+  // not an error — and it is the one the screen most needs to tell apart from a
+  // fresh admit, because the two demand opposite physical actions. The early
+  // return is byte-for-byte the same condition it always was, so re-scan
+  // idempotency (verify-gate §5) is untouched: no second write, no second head,
+  // and the ORIGINAL timestamp comes back rather than now.
+  if (attendee.checkedInAt) {
+    return { state: "already", at: attendee.checkedInAt };
+  }
+  // Refusals still throw. A refusal is not an outcome the door can act on.
   if (attendee.order.status !== "CONFIRMED") {
     throw new Error(NOT_PAID);
   }
   if (admitsNobody(attendee.order.lineItems)) throw new Error(NOT_A_TICKET);
+  const at = new Date();
   await db.attendee.update({
     where: { id: attendee.id },
-    data: { checkedInAt: new Date() },
+    data: { checkedInAt: at },
   });
+  return { state: "admitted", at };
 }
 
 /**
@@ -296,7 +319,8 @@ export async function admitOrderAttendees(orderId: string): Promise<number> {
   let admitted = 0;
   for (const attendee of order.attendees) {
     if (attendee.checkedInAt) continue;
-    await admitAttendee(attendee.id);
+    const result = await admitAttendee(attendee.id);
+    if (result.state === "already") continue;
     admitted++;
   }
   return admitted;

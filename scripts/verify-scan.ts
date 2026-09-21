@@ -244,6 +244,36 @@ async function main(): Promise<void> {
   check("globals.css neutralises the shader colour",
     /#qr-reader[\s\S]{0,80}qr-shaded-region[\s\S]{0,200}!important/.test(css));
 
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§6 the station owns no colours of its own");
+  // The banner is the ONLY thing allowed to say green. Every previous
+  // regression here was a screen inventing its own success styling beside it:
+  // a bg-green-50 flash for "just admitted", and a second bg-green-50 block
+  // inside the guest card for "already admitted by someone else".
+  const gateMode = read("src/app/scan/GateMode.tsx");
+  const banner = read("src/app/_components/ScanVerdictBanner.tsx");
+
+  check("the station renders the shared banner", gateMode.includes("ScanVerdictBanner"));
+  check("the station plays the verdict tone", gateMode.includes("playTone"));
+  check("the station asks the latch before accepting a decode",
+    gateMode.includes("acceptsDecode"));
+  // THE ROW: no hand-rolled success or warning tint anywhere in the station.
+  check("the station paints no success colour of its own",
+    !/bg-(green|amber|red)-(50|100)/.test(gateMode),
+    (gateMode.match(/bg-(green|amber|red)-(50|100)/g) ?? []).join(" "));
+  check("the old flash strip is gone", !gateMode.includes("setFlash"));
+
+  // The banner must not be dismissable by anything but a tap, and must not
+  // quietly time out - the volunteer is looking at a wristband, not a phone.
+  check("the banner has an explicit release control", banner.includes("Next guest"));
+  check("the banner never auto-dismisses",
+    !banner.includes("setTimeout") && !banner.includes("setInterval"));
+  check("the banner announces itself to a screen reader",
+    banner.includes(String.raw`aria-live="assertive"`));
+  // Status colour is meaning, not identity - CLAUDE.md, verify-branding §8.
+  check("the banner uses no tenant brand token",
+    !/bg-brand|text-brand|accent2?/.test(banner));
+
   console.log(
     failures === 0
       ? "\nAll checks passed."

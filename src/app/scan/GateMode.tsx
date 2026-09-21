@@ -5,6 +5,16 @@ import { formatCents } from "@/lib/money";
 import { formatVenueTime } from "@/lib/eventTime";
 import { expandTicketCode } from "@/lib/ticketCode";
 import { QrScanner } from "@/app/_components/QrScanner";
+import { ScanVerdictBanner } from "@/app/_components/ScanVerdictBanner";
+import { verdictFor, signalForError, type ScanVerdict } from "@/lib/scanVerdict";
+import { playTone } from "@/lib/scanTones";
+import {
+  acceptsDecode,
+  shouldNudge,
+  nextPhase,
+  INITIAL_PHASE,
+  type StationPhase,
+} from "@/lib/scanLatch";
 import type { GateView } from "@/server/gate";
 import {
   resolveGate,
@@ -22,7 +32,10 @@ type MerchItem = CatalogItem & { colorHex: string };
 // go missing here before and the compiler never caught it (see task A3).
 type Catalog = { admission: CatalogItem[]; merch: MerchItem[]; fees: CatalogItem[] };
 
-type Flash = { kind: "ok" | "warn" | "err"; text: string };
+// `Flash` is gone. It was a 32px tinted strip that sat BELOW the camera, was
+// set to null on success (so a successful scan said nothing at all), and used
+// the SAME green for "just admitted" and "already admitted". The three
+// meanings are now one ScanVerdict; see src/lib/scanVerdict.ts.
 
 /**
  * Gate station (phone-first, continuous scan). The camera stays live; each scan
@@ -45,7 +58,9 @@ export function GateMode({
 }) {
   const [headcount, setHeadcount] = useState(initialHeadcount);
   const [view, setView] = useState<GateView | null>(null);
-  const [flash, setFlash] = useState<Flash | null>(null);
+  // The standing verdict, if any. Only a deliberate tap moves this.
+  const [phase, setPhase] = useState<StationPhase>(INITIAL_PHASE);
+  const [nudge, setNudge] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const [pickupSel, setPickupSel] = useState<Set<string>>(new Set());
@@ -57,6 +72,38 @@ export function GateMode({
     startTransition(fn);
   }
 
+  /**
+   * Land a verdict and sound it. ONE place, so no path can show a banner
+   * without the matching tone, or play a tone with nothing on screen.
+   */
+  function settle(verdict: ScanVerdict, event: "resolved" | "acted" = "acted") {
+    setPhase((prev) => nextPhase(prev, { type: event, verdict }));
+    playTone(verdict.tone);
+  }
+
+  /**
+   * A completed hand-over. Tone `go` because the action succeeded, but it
+   * deliberately does NOT reuse the ADMITTED verdict: nobody was admitted,
+   * and "give wristband" under a merch pickup is how someone walks in free.
+   */
+  function handedOver(headline: string): ScanVerdict {
+    return {
+      outcome: "ADMITTED",
+      tone: "go",
+      glyph: "✓",
+      headline,
+      detail: view?.name ?? null,
+      instruction: "Goods given to the guest",
+    };
+  }
+
+  /** "Next guest" - the only exit from a standing verdict. */
+  function release() {
+    setPhase(INITIAL_PHASE);
+    setNudge(false);
+    clearGuest();
+  }
+
   function clearGuest() {
     setView(null);
     setPickupSel(new Set());
@@ -64,17 +111,56 @@ export function GateMode({
   }
 
   function onScan(code: string) {
+    // THE LATCH. A standing verdict is not replaced by the next badge that
+    // drifts into frame - see src/lib/scanLatch.ts. The drop is announced,
+    // and deliberately makes no sound: silence means "ignored on purpose".
+    if (!acceptsDecode(phase)) {
+      if (shouldNudge(phase, { type: "decoded" })) setNudge(true);
+      return;
+    }
+    setNudge(false);
+    setPhase((prev) => nextPhase(prev, { type: "decoded" }));
     run(async () => {
       const res = await resolveGate(code);
-      if (!res.ok) return setFlash({ kind: "err", text: res.error });
+      if (!res.ok) {
+        clearGuest();
+        return settle(verdictFor(signalForError(res.error)), "resolved");
+      }
       if (!res.data) {
         clearGuest();
-        return setFlash({ kind: "warn", text: `No match for ${code}` });
+        return settle(verdictFor({ kind: "noMatch", code }), "resolved");
       }
-      setFlash(null);
+      const g = res.data;
       setPickupSel(new Set());
       setBuySel(new Set());
-      setView(res.data);
+      setView(g);
+
+      // A resolve is already a verdict for every state the volunteer cannot
+      // simply act on. Only "paid, here, not yet admitted" leaves the station
+      // quiet and waiting for the Admit tap, because nothing has happened yet.
+      if (g.eventId !== eventId) {
+        return settle(
+          verdictFor({ kind: "wrongEvent", eventName: g.eventName }),
+          "resolved",
+        );
+      }
+      if (g.alreadyAdmitted) {
+        return settle(
+          verdictFor({
+            kind: "already",
+            flow: "gate",
+            at: g.admittedAt ? formatVenueTime(new Date(g.admittedAt)) : null,
+          }),
+          "resolved",
+        );
+      }
+      if (!g.isPaid) {
+        return settle(
+          verdictFor({ kind: "unpaid", owed: formatCents(g.amountOwedCents) }),
+          "resolved",
+        );
+      }
+      setPhase(INITIAL_PHASE);
     });
   }
 
@@ -88,10 +174,19 @@ export function GateMode({
     if (!view) return;
     run(async () => {
       const res = await admit(view.attendeeId, eventId);
-      if (!res.ok) return setFlash({ kind: "err", text: res.error });
-      setHeadcount(res.data);
-      setFlash({ kind: "ok", text: `${view.name ?? "Guest"} admitted — give wristband` });
-      clearGuest();
+      if (!res.ok) return settle(verdictFor(signalForError(res.error)));
+      setHeadcount(res.data.headcount);
+      // The discriminant, never an assumption. A guest admitted at another
+      // door between this scan and this tap now reads amber, not green.
+      settle(
+        res.data.result.state === "admitted"
+          ? verdictFor({ kind: "admitted", name: view.name })
+          : verdictFor({
+              kind: "already",
+              flow: "gate",
+              at: formatVenueTime(res.data.result.at),
+            }),
+      );
     });
   }
 
@@ -99,10 +194,17 @@ export function GateMode({
     if (!view) return;
     run(async () => {
       const res = await confirmUnpaidAndAdmit(view.orderId, view.attendeeId, eventId);
-      if (!res.ok) return setFlash({ kind: "err", text: res.error });
-      setHeadcount(res.data);
-      setFlash({ kind: "ok", text: `${view.name ?? "Guest"} paid & admitted — give wristband` });
-      clearGuest();
+      if (!res.ok) return settle(verdictFor(signalForError(res.error)));
+      setHeadcount(res.data.headcount);
+      settle(
+        res.data.result.state === "admitted"
+          ? verdictFor({ kind: "admitted", name: view.name })
+          : verdictFor({
+              kind: "already",
+              flow: "gate",
+              at: formatVenueTime(res.data.result.at),
+            }),
+      );
     });
   }
 
@@ -111,8 +213,8 @@ export function GateMode({
     const campId = view.campId;
     run(async () => {
       const res = await fulfill([...pickupSel]);
-      if (!res.ok) return setFlash({ kind: "err", text: res.error });
-      setFlash({ kind: "ok", text: "Handed over ✓" });
+      if (!res.ok) return settle(verdictFor(signalForError(res.error)));
+      settle(handedOver("Handed over"));
       setPickupSel(new Set());
       await refresh(campId);
     });
@@ -123,8 +225,8 @@ export function GateMode({
     const campId = view.campId;
     run(async () => {
       const res = await sellMerch(eventId, [...buySel], view.attendeeId);
-      if (!res.ok) return setFlash({ kind: "err", text: res.error });
-      setFlash({ kind: "ok", text: "Sold & handed over ✓" });
+      if (!res.ok) return settle(verdictFor(signalForError(res.error)));
+      settle(handedOver("Sold and handed over"));
       setBuySel(new Set());
       await refresh(campId);
     });
@@ -133,11 +235,13 @@ export function GateMode({
   function doComp() {
     run(async () => {
       const res = await comp(eventId, compCount);
-      if (!res.ok) return setFlash({ kind: "err", text: res.error });
+      if (!res.ok) return settle(verdictFor(signalForError(res.error)));
       setHeadcount(res.data);
-      setFlash({
-        kind: "ok",
-        text: `Comped ${compCount} — give wristband${compCount > 1 ? "s" : ""}`,
+      settle({
+        ...verdictFor({ kind: "admitted" }),
+        headline: "Comped",
+        detail: `${compCount} guest${compCount > 1 ? "s" : ""}`,
+        instruction: `Give ${compCount} wristband${compCount > 1 ? "s" : ""}`,
       });
       setCompCount(1);
     });
@@ -154,25 +258,31 @@ export function GateMode({
         <p className="max-w-[55%] text-right text-xs text-gray-400">{eventName}</p>
       </div>
 
+      {/* ABOVE the camera, on purpose. The strip this replaces sat below
+          both the scanner and the manual box, so a tall guest card pushed
+          the one thing the volunteer needed off the bottom of the screen. */}
+      {phase.phase === "held" && (
+        <ScanVerdictBanner
+          verdict={phase.verdict}
+          onRelease={release}
+          nudge={nudge}
+        />
+      )}
+
+      {phase.phase === "reading" && (
+        // Grey and SILENT. The volunteer needs to know the tap registered,
+        // not that it succeeded - a tone here would pre-announce a verdict
+        // the server has not given yet, which is the old beep all over again.
+        <p className="rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600">
+          Reading…
+        </p>
+      )}
+
       {/* Continuous scanner */}
       <QrScanner onScan={onScan} continuous />
 
       {/* Manual entry — camera-free fallback (mirrors check-in). */}
       <ManualEntry eventCode={eventCode} disabled={pending} onSubmit={onScan} />
-
-      {flash && (
-        <div
-          className={`rounded-lg px-3 py-2 text-sm ${
-            flash.kind === "ok"
-              ? "bg-green-50 text-green-800"
-              : flash.kind === "warn"
-                ? "bg-amber-50 text-amber-800"
-                : "bg-red-50 text-red-700"
-          }`}
-        >
-          {flash.text}
-        </div>
-      )}
 
       {/* Resolved guest */}
       {view && (
@@ -184,17 +294,19 @@ export function GateMode({
 
           {/* Admission */}
           {view.alreadyAdmitted ? (
-            <div className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800">
-              Already admitted ✓{" "}
-              {view.admittedAt && (
-                <span className="text-green-700">
-                  {/* Venue time: the volunteer reading this is standing at the
-                      door and will compare it against the clock on the wall. */}
-                  ({formatVenueTime(new Date(view.admittedAt))})
-                </span>
-              )}{" "}
-              — wristband issued.
-            </div>
+            // NOT GREEN, and no longer shouting. This used to be
+            // This was a green tint - the SAME one the fresh-admit flash used,
+            // which is half of why green meant four different things. The amber
+            // banner above now carries the verdict; this is just the record,
+            // in venue time because the volunteer will compare it against the
+            // clock on the wall.
+            <p className="rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-700">
+              Wristband issued
+              {view.admittedAt
+                ? ` at ${formatVenueTime(new Date(view.admittedAt))}`
+                : ""}
+              .
+            </p>
           ) : view.isPaid ? (
             <button
               type="button"
@@ -205,10 +317,10 @@ export function GateMode({
               Paid ✓ — Admit &amp; wristband
             </button>
           ) : (
+            // No tint here: the banner above already says UNPAID, the amount
+            // and what to do about it, at full size. Saying it twice in two
+            // different wordings is how the two drift apart.
             <div className="space-y-2">
-              <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-                Unpaid — owes {formatCents(view.amountOwedCents)}.
-              </div>
               <button
                 type="button"
                 disabled={pending}
@@ -333,12 +445,9 @@ export function GateMode({
           onSubmit={(serviceTypeIds, name) =>
             run(async () => {
               const res = await sellAndAdmit(eventId, serviceTypeIds, name);
-              if (!res.ok) return setFlash({ kind: "err", text: res.error });
+              if (!res.ok) return settle(verdictFor(signalForError(res.error)));
               setHeadcount(res.data);
-              setFlash({
-                kind: "ok",
-                text: `${name || "Walk-up"} admitted — give wristband`,
-              });
+              settle(verdictFor({ kind: "admitted", name: name || "Walk-up" }));
               setWalkUp(false);
             })
           }
