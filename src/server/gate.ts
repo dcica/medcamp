@@ -5,6 +5,11 @@ import { normalizeCampId } from "@/lib/campId";
 import { planTicketLookup, tokenPrefixFor, MIN_TOKEN_PREFIX } from "@/lib/ticketCode";
 import { confirmOrderPaid } from "@/server/payments";
 import { resolvePrice } from "@/lib/pricing";
+import {
+  normalizeGateBasket,
+  ticketCountFor,
+  type GateSaleItem,
+} from "@/lib/ticketMinting";
 import { NOT_A_TICKET, NOT_PAID } from "@/lib/scanVerdict";
 
 /**
@@ -553,18 +558,22 @@ export async function compAdmit(
  */
 export async function sellAtGate(
   eventId: string,
-  serviceTypeIds: string[],
+  items: GateSaleItem[],
   opts: { buyerName?: string; attendeeId?: string } = {},
-): Promise<{ orderId: string; totalCents: number }> {
+): Promise<{ orderId: string; totalCents: number; ticketCount: number }> {
   const org = await getActiveOrg();
   if (!org) throw new Error("No active organization.");
-  if (serviceTypeIds.length === 0) throw new Error("Pick at least one item.");
+  // Integers, clamped, merged. A duplicate id from the screen must behave
+  // exactly like one line with the summed quantity.
+  const basket = normalizeGateBasket(items);
+  if (basket.length === 0) throw new Error("Pick at least one item.");
 
   const event = await db.event.findFirst({
     where: { id: eventId, orgId: org.id },
   });
   if (!event) throw new Error("Event not found.");
 
+  const serviceTypeIds = basket.map((b) => b.serviceTypeId);
   // Resolve via this event's offerings so the gate charges the per-event price.
   const offerings = await db.serviceCap.findMany({
     where: {
@@ -580,7 +589,30 @@ export async function sellAtGate(
   }
 
   const name = opts.buyerName?.trim() || "Gate sale";
-  const needsAttendee = !opts.attendeeId;
+  const now = new Date();
+  // Walk-ups pay the door price; a pre-bought will-call order settled here keeps
+  // its original online price, because that path confirms existing lines and
+  // never routes through this function.
+  const doorCents = (o: (typeof offerings)[number]) =>
+    resolvePrice(o, "door", now).amountCents;
+
+  // ONE CODE PER PERSON ADMITTED, not one per sale. This is the half that was
+  // not a UI limitation: `attendees: { create: [{...}] }` was a hard-coded
+  // single-element array, so selling three admissions charged for three,
+  // decremented capacity by three, and minted one ticket. A "family of 4" chip
+  // bought twice is eight, via admitsCount.
+  const ticketCount = opts.attendeeId
+    ? 0
+    : ticketCountFor(
+        basket.map((b) => {
+          const o = byId.get(b.serviceTypeId)!;
+          return {
+            kind: o.serviceType.kind,
+            quantity: b.quantity,
+            admitsCount: o.serviceType.admitsCount,
+          };
+        }),
+      );
 
   const order = await db.order.create({
     data: {
@@ -591,43 +623,49 @@ export async function sellAtGate(
       registrantName: name,
       registrantEmail: "gate@gate.local",
       registrantPhone: "",
-      attendees: needsAttendee
-        ? { create: [{ orgId: org.id, eventId: event.id, name }] }
-        : undefined,
+      attendees: opts.attendeeId
+        ? undefined
+        : {
+            // Named, not anonymous: a volunteer re-scanning ticket 3 of 3 should
+            // read the buyer's name rather than "Guest".
+            create: Array.from({ length: ticketCount }, () => ({
+              orgId: org.id,
+              eventId: event.id,
+              name,
+            })),
+          },
     },
     include: { attendees: true },
   });
 
-  const attendeeId = opts.attendeeId ?? order.attendees[0].id;
-
-  // Walk-ups pay the door price; a pre-bought will-call order settled here keeps
-  // its original online price, because that path confirms existing lines and
-  // never routes through this function.
-  const now = new Date();
-  const doorCents = (o: (typeof offerings)[number]) =>
-    resolvePrice(o, "door", now).amountCents;
+  // ORDER-LEVEL on a walk-up (attendeeId null), per-attendee only on buy-more.
+  // This matches createQuantityOrder. Pinning a qty-3 line to attendee #1 would
+  // make #2 and #3 read amountOwedCents 0 with no services against their name.
+  const lineAttendeeId = opts.attendeeId ?? null;
 
   await db.lineItem.createMany({
-    data: serviceTypeIds.map((id) => {
-      const offering = byId.get(id)!;
+    data: basket.map((b) => {
+      const offering = byId.get(b.serviceTypeId)!;
       return {
         orgId: org.id,
         orderId: order.id,
-        attendeeId,
+        attendeeId: lineAttendeeId,
         serviceTypeId: offering.serviceTypeId,
         description: `${offering.serviceType.name} — ${name}`,
         amountCents: doorCents(offering),
+        quantity: b.quantity,
         status: "PENDING_PAYMENT" as const,
       };
     }),
   });
 
-  const totalCents = serviceTypeIds.reduce((s, id) => {
-    const offering = byId.get(id);
-    return s + (offering ? doorCents(offering) : 0);
+  const totalCents = basket.reduce((s, b) => {
+    const offering = byId.get(b.serviceTypeId);
+    return s + (offering ? doorCents(offering) * b.quantity : 0);
   }, 0);
-  return { orderId: order.id, totalCents };
+  return { orderId: order.id, totalCents, ticketCount };
 }
+
 
 /**
  * Record cash for a gate order and confirm it via the single PaymentService
@@ -665,10 +703,20 @@ export async function getEventHeadcount(eventId: string): Promise<number> {
  * Scoped to services actually offered at this event (those with a ServiceCap
  * row) so a camp's clinical services never leak into a dance-night gate.
  */
+/**
+ * How many of this item are left, or null when it is uncapped.
+ *
+ * ADVISORY ONLY. Capacity is still claimed atomically at confirmation, and
+ * that claim remains the authority. This exists because quantity turns a rare
+ * failure into a common one: three seats left, a family of six at the window,
+ * and the whole sale throws AFTER the volunteer has taken the cash, with a
+ * message naming an internal service key. Showing the number beforehand is
+ * the fix; clamping the stepper is not a substitute for the server claim.
+ */
 export async function getGateCatalog(eventId: string): Promise<{
-  admission: { id: string; name: string; priceCents: number }[];
-  merch: { id: string; name: string; priceCents: number; colorHex: string }[];
-  fees: { id: string; name: string; priceCents: number }[];
+  admission: { id: string; name: string; priceCents: number; remaining: number | null }[];
+  merch: { id: string; name: string; priceCents: number; colorHex: string; remaining: number | null }[];
+  fees: { id: string; name: string; priceCents: number; remaining: number | null }[];
 }> {
   const org = await getActiveOrg();
   if (!org) return { admission: [], merch: [], fees: [] };
@@ -682,10 +730,12 @@ export async function getGateCatalog(eventId: string): Promise<{
   const now = new Date();
   const doorCents = (o: (typeof offerings)[number]) =>
     resolvePrice(o, "door", now).amountCents;
+  const left = (o: (typeof offerings)[number]) =>
+    o.capacity === null ? null : Math.max(0, o.capacity - o.sold);
   return {
     admission: offerings
       .filter((o) => o.serviceType.kind === "ADMISSION" && !o.serviceType.hasLab)
-      .map((o) => ({ id: o.serviceType.id, name: o.serviceType.name, priceCents: doorCents(o) })),
+      .map((o) => ({ id: o.serviceType.id, name: o.serviceType.name, priceCents: doorCents(o), remaining: left(o) })),
     merch: offerings
       .filter((o) => o.serviceType.kind === "MERCH")
       .map((o) => ({
@@ -693,11 +743,12 @@ export async function getGateCatalog(eventId: string): Promise<{
         name: o.serviceType.name,
         priceCents: doorCents(o),
         colorHex: o.serviceType.colorHex,
+        remaining: left(o),
       })),
     // A competition entry sold at the desk. Buying one admits nobody and hands
     // over nothing.
     fees: offerings
       .filter((o) => o.serviceType.kind === "FEE" && !o.serviceType.hasLab)
-      .map((o) => ({ id: o.serviceType.id, name: o.serviceType.name, priceCents: doorCents(o) })),
+      .map((o) => ({ id: o.serviceType.id, name: o.serviceType.name, priceCents: doorCents(o), remaining: left(o) })),
   };
 }

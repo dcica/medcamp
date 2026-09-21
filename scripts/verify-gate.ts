@@ -648,7 +648,7 @@ async function main(): Promise<void> {
     gate.admitsNobody([{ serviceType: { kind: "FEE" } }, { serviceType: { kind: "ADMISSION" } }]), false);
 
   const headBeforeFee = await gate.getEventHeadcount(event.id);
-  const feeSale = await gate.sellAtGate(event.id, [fee.id], { buyerName: "Shakti Steps" });
+  const feeSale = await gate.sellAtGate(event.id, [{ serviceTypeId: fee.id, quantity: 1 }], { buyerName: "Shakti Steps" });
   eq("the fee is charged at the door price", feeSale.totalCents, 3000);
   await gate.confirmGateCash(feeSale.orderId);
   // Reads .admitted rather than a bare number now that admitOrderAttendees
@@ -669,7 +669,7 @@ async function main(): Promise<void> {
   eq("a refused fee scan counts no head", await gate.getEventHeadcount(event.id), headBeforeFee);
 
   console.log("\n§7b a walk-up that DOES buy admission still works");
-  const walkUp = await gate.sellAtGate(event.id, [admission.id, fee.id], { buyerName: "Walk Up" });
+  const walkUp = await gate.sellAtGate(event.id, [{ serviceTypeId: admission.id, quantity: 1 }, { serviceTypeId: fee.id, quantity: 1 }], { buyerName: "Walk Up" });
   eq("both items are charged at door prices", walkUp.totalCents, 6000);
   await gate.confirmGateCash(walkUp.orderId);
   eq("a ticket-plus-fee sale admits exactly one", (await gate.admitOrderAttendees(walkUp.orderId)).admitted, 1);
@@ -756,7 +756,7 @@ async function main(): Promise<void> {
     (await hits("gate@gate.local")).length, 0);
   // ...but a walk-up whose buyer name was actually typed is still findable,
   // which is the case that matters at a door.
-  await gate.sellAtGate(event.id, [admission.id], { buyerName: "Findable Walkup" });
+  await gate.sellAtGate(event.id, [{ serviceTypeId: admission.id, quantity: 1 }], { buyerName: "Findable Walkup" });
   check("a named walk-up is still findable by that name",
     (await hits("Findable")).length >= 1);
 
@@ -816,13 +816,127 @@ async function main(): Promise<void> {
     () => gate.admitOrderAttendees(famOrder.id, event2.id), "Wrong event");
 
 
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§8c a walk-up buys for the whole family");
+  // "Add more then one cash e purchase. Right now it is only one at a time."
+  // The UI held selections in a Set, which cannot contain a duplicate -- and
+  // sellAtGate hard-coded ONE attendee, so even with a quantity the sale would
+  // have charged for three, decremented capacity by three, and minted one code.
+  const mint = await import("../src/lib/ticketMinting");
+
+  // The pure rules first, so a failure says which half broke.
+  eq("duplicate lines merge", mint.normalizeGateBasket([
+    { serviceTypeId: "a", quantity: 1 },
+    { serviceTypeId: "a", quantity: 2 },
+  ]), [{ serviceTypeId: "a", quantity: 3 }]);
+  eq("a zero quantity is not a line",
+    mint.normalizeGateBasket([{ serviceTypeId: "a", quantity: 0 }]), []);
+  eq("a negative quantity is not a line",
+    mint.normalizeGateBasket([{ serviceTypeId: "a", quantity: -4 }]), []);
+  eq("a fat-fingered quantity is clamped", mint.normalizeGateBasket([
+    { serviceTypeId: "a", quantity: 999 },
+  ]), [{ serviceTypeId: "a", quantity: mint.GATE_MAX_QTY_PER_LINE }]);
+  eq("a fraction is floored",
+    mint.normalizeGateBasket([{ serviceTypeId: "a", quantity: 2.7 }])[0]?.quantity, 2);
+
+  eq("a fee alone still mints ONE receipt, not zero",
+    mint.ticketCountFor([{ kind: "FEE", quantity: 1, admitsCount: 1 }]), 1);
+  eq("merch alone likewise",
+    mint.ticketCountFor([{ kind: "MERCH", quantity: 5, admitsCount: 1 }]), 1);
+  eq("three admissions mint three",
+    mint.ticketCountFor([{ kind: "ADMISSION", quantity: 3, admitsCount: 1 }]), 3);
+  // A "family of 4" chip bought twice is EIGHT people, which the gate could
+  // never express before.
+  eq("admitsCount multiplies",
+    mint.ticketCountFor([{ kind: "ADMISSION", quantity: 2, admitsCount: 4 }]), 8);
+  eq("a fee riding along with admissions does not add a ticket",
+    mint.ticketCountFor([
+      { kind: "ADMISSION", quantity: 2, admitsCount: 1 },
+      { kind: "FEE", quantity: 1, admitsCount: 1 },
+    ]), 2);
+
+  // End to end at the door.
+  const headBeforeQty = await gate.getEventHeadcount(event.id);
+  const family = await gate.sellAtGate(event.id, [
+    { serviceTypeId: admission.id, quantity: 3 },
+    { serviceTypeId: merch.id, quantity: 2 },
+  ], { buyerName: "Quantity Family" });
+  // 3 x 3000 door admission + 2 x 1500 door merch
+  eq("every line is charged for its quantity", family.totalCents, 12000);
+  eq("THREE ADMISSIONS MINT THREE CODES", family.ticketCount, 3);
+
+  const famLines = await db.lineItem.findMany({ where: { orderId: family.orderId } });
+  eq("merch is ONE row with quantity 2, not two rows",
+    famLines.filter((l) => l.quantity === 2).length, 1);
+  eq("...and the basket is two lines in total", famLines.length, 2);
+
+  const soldBefore = (await db.serviceCap.findFirstOrThrow({
+    where: { eventId: event.id, serviceTypeId: admission.id },
+  })).sold;
+  await gate.confirmGateCash(family.orderId);
+  const soldAfter = (await db.serviceCap.findFirstOrThrow({
+    where: { eventId: event.id, serviceTypeId: admission.id },
+  })).sold;
+  eq("capacity is consumed per PERSON, not per sale", soldAfter - soldBefore, 3);
+
+  const famAttendees = await db.attendee.findMany({
+    where: { orderId: family.orderId }, select: { campId: true },
+  });
+  eq("three distinct codes exist", new Set(famAttendees.map((a) => a.campId)).size, 3);
+  check("...and every one of them was actually minted",
+    famAttendees.every((a) => a.campId !== null));
+
+  eq("admitting the order puts three people through",
+    await gate.admitOrderAttendees(family.orderId, event.id), { admitted: 3, already: 0 });
+  eq("...and the headcount moved by three",
+    await gate.getEventHeadcount(event.id), headBeforeQty + 3);
+
+  // Every ticket on the order reads the same money, because the lines are
+  // order-level rather than pinned to attendee #1.
+  const famViews = await Promise.all(
+    famAttendees.map((a) => gate.getGateView(a.campId!)),
+  );
+  eq("every ticket in the party reads the same amount owed",
+    new Set(famViews.map((v) => v?.amountOwedCents)).size, 1);
+  eq("...and each one sees all three tickets",
+    famViews.every((v) => v?.party.length === 3), true);
+
+  // The menu now says how much room is left, so a volunteer can see the cliff
+  // BEFORE taking cash for more than exists.
+  const cat = await gate.getGateCatalog(event.id);
+  check("the menu reports remaining headroom",
+    cat.admission.every((a) => a.remaining === null || a.remaining >= 0));
+
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§8d a reserved address is never sent to");
+  const mail = await import("../src/lib/emailAddress");
+  // Every walk-up is recorded against gate@gate.local. `.local` (RFC 6762) and
+  // `.invalid` (RFC 6761) never resolve, so each send is a silent HARD BOUNCE
+  // -- and SES suspends an account over 5%.
+  eq("the walk-up sentinel is undeliverable",
+    mail.isUndeliverableAddress("gate@gate.local"), true);
+  eq("so is the membership sentinel",
+    mail.isUndeliverableAddress("someone@dcica.invalid"), true);
+  eq("a real address is deliverable",
+    mail.isUndeliverableAddress("asha@example.com"), false);
+  // NOT .test or .example: the verify suites and manual QA use those on
+  // purpose, and silently swallowing one would be a nastier surprise.
+  eq("a .test address is still sent (QA uses them deliberately)",
+    mail.isUndeliverableAddress("asha@example.test"), false);
+  eq("case does not matter", mail.isUndeliverableAddress("Gate@GATE.LOCAL"), true);
+  eq("a non-address is not undeliverable", mail.isUndeliverableAddress("nonsense"), false);
+  const emailSrc = readFileSync(join(process.cwd(), "src/lib/email.ts"), "utf8");
+  check("the guard sits at the one chokepoint every send passes",
+    emailSrc.includes("isUndeliverableAddress(to)"));
+
+
 
   console.log("\n§9 prices and menu come from the server, never the client");
   const other = await db.serviceType.findFirstOrThrow({
     where: { orgId: org.id, key: { notIn: [ADM_KEY, MERCH_KEY, FEE_KEY] } },
   });
   await rejectsWith("a service not offered here is refused",
-    () => gate.sellAtGate(event.id, [other.id], { buyerName: "Chancer" }), "not offered at this event");
+    () => gate.sellAtGate(event.id, [{ serviceTypeId: other.id, quantity: 1 }], { buyerName: "Chancer" }), "not offered at this event");
   await rejectsWith("an empty basket is refused",
     () => gate.sellAtGate(event.id, [], { buyerName: "Nobody" }), "Pick at least one item");
 

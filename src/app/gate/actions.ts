@@ -1,9 +1,11 @@
 "use server";
 
 import { requireRole, requireTill } from "@/server/session";
+import type { GateSaleItem } from "@/lib/ticketMinting";
 import {
   getGateView,
   admitAttendee,
+  getGateCatalog,
   searchGateGuests,
   assertAttendeeAtEvent,
   admitOrderAttendees,
@@ -138,12 +140,15 @@ export async function comp(
 /** Walk-up: sell admission (+ optional merch) for cash, then admit + hand over. */
 export async function sellAndAdmit(
   eventId: string,
-  serviceTypeIds: string[],
+  items: GateSaleItem[],
   buyerName: string,
 ): Promise<Result<number>> {
   const m = await requireTill();
   try {
-    const { orderId } = await sellAtGate(eventId, serviceTypeIds, { buyerName });
+    const { orderId } = await sellAtGate(eventId, items, { buyerName });
+    // The capacity claim happens inside confirmGateCash, AFTER the cash is
+    // in hand. If it throws, the volunteer needs a number and an item name,
+    // not `Service "vg-admission" is at capacity`.
     await confirmGateCash(orderId);
     // Admits whoever this sale actually bought entry for — nobody, for a
     // competition fee. The sale still succeeds; see admitOrderAttendees.
@@ -151,8 +156,30 @@ export async function sellAndAdmit(
     await fulfillOrder(orderId, m.userId);
     return { ok: true, data: await getEventHeadcount(eventId) };
   } catch (err) {
-    return fail(err);
+    return fail(await asDoorCopy(err, eventId));
   }
+}
+
+/**
+ * Turn an OverCapacityError into something readable at a door.
+ *
+ * It carries a serviceKey, which is an internal identifier no volunteer has
+ * seen before. They need the item's NAME and how many are actually left, so
+ * they can sell that many instead of starting over.
+ */
+async function asDoorCopy(err: unknown, eventId: string): Promise<unknown> {
+  if (!(err instanceof Error) || err.name !== "OverCapacityError") return err;
+  const key = (err as { serviceKey?: string }).serviceKey;
+  const catalog = await getGateCatalog(eventId);
+  const all = [...catalog.admission, ...catalog.merch, ...catalog.fees];
+  const hit = all.find((i) => i.id === key) ?? null;
+  const left = hit?.remaining ?? 0;
+  const what = hit?.name ?? "That item";
+  return new Error(
+    left > 0
+      ? `Only ${left} ${what} left — sell ${left}.`
+      : `${what} is sold out — nothing was charged.`,
+  );
 }
 
 /** Pay an existing unpaid (will-call) order with cash, then admit the guest. */
@@ -204,12 +231,12 @@ export async function searchGuests(
 /** Buy-more: sell merch for cash to an already-resolved attendee, then hand it over. */
 export async function sellMerch(
   eventId: string,
-  serviceTypeIds: string[],
+  items: GateSaleItem[],
   attendeeId: string,
 ): Promise<Result<null>> {
   const m = await requireTill();
   try {
-    const { orderId } = await sellAtGate(eventId, serviceTypeIds, { attendeeId });
+    const { orderId } = await sellAtGate(eventId, items, { attendeeId });
     await confirmGateCash(orderId);
     await fulfillOrder(orderId, m.userId);
     return { ok: true, data: null };

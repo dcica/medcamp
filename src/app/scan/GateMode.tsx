@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { formatCents } from "@/lib/money";
 import { formatVenueTime } from "@/lib/eventTime";
 import { expandTicketCode, MIN_TOKEN_PREFIX } from "@/lib/ticketCode";
+import { GATE_MAX_QTY_PER_LINE, type GateSaleItem } from "@/lib/ticketMinting";
 import { QrScanner } from "@/app/_components/QrScanner";
 import { ScanVerdictBanner } from "@/app/_components/ScanVerdictBanner";
 import { verdictFor, signalForError, type ScanVerdict } from "@/lib/scanVerdict";
@@ -28,6 +29,22 @@ import {
 } from "@/app/gate/actions";
 
 type CatalogItem = { id: string; name: string; priceCents: number };
+
+/** id -> quantity. A Set could not hold a duplicate, which is exactly why
+    the gate could never sell two of anything. */
+type Basket = Map<string, number>;
+
+function basketItems(b: Basket): GateSaleItem[] {
+  return [...b.entries()].map(([serviceTypeId, quantity]) => ({ serviceTypeId, quantity }));
+}
+
+function basketTotal(items: CatalogItem[], b: Basket): number {
+  return items.reduce((s, it) => s + it.priceCents * (b.get(it.id) ?? 0), 0);
+}
+
+function basketCount(b: Basket): number {
+  return [...b.values()].reduce((s, q) => s + q, 0);
+}
 type MerchItem = CatalogItem & { colorHex: string };
 // Must name every bucket getGateCatalog sends — structural typing let `fees`
 // go missing here before and the compiler never caught it (see task A3).
@@ -67,9 +84,11 @@ export function GateMode({
   const [pending, startTransition] = useTransition();
 
   const [pickupSel, setPickupSel] = useState<Set<string>>(new Set());
-  const [buySel, setBuySel] = useState<Set<string>>(new Set());
+  const [buySel, setBuySel] = useState<Basket>(new Map());
   const [compCount, setCompCount] = useState(1);
   const [walkUp, setWalkUp] = useState(false);
+  /** Bumped to remount WalkUpForm with empty state, without hiding it. */
+  const [walkUpNonce, setWalkUpNonce] = useState(0);
 
   function run(fn: () => Promise<void>) {
     startTransition(fn);
@@ -140,6 +159,10 @@ export function GateMode({
   }
 
   /** "Next guest" - the only exit from a standing verdict. */
+  function resetWalkUp() {
+    setWalkUpNonce((n) => n + 1);
+  }
+
   function release() {
     setPhase(INITIAL_PHASE);
     setNudge(false);
@@ -155,7 +178,7 @@ export function GateMode({
   function pickHit(hit: GateView) {
     setHits(null);
     setPickupSel(new Set());
-    setBuySel(new Set());
+    setBuySel(new Map());
     setView(hit);
     if (hit.alreadyAdmitted) {
       settle(
@@ -172,7 +195,7 @@ export function GateMode({
   function clearGuest() {
     setView(null);
     setPickupSel(new Set());
-    setBuySel(new Set());
+    setBuySel(new Map());
   }
 
   function onScan(code: string) {
@@ -197,7 +220,7 @@ export function GateMode({
       }
       const g = res.data;
       setPickupSel(new Set());
-      setBuySel(new Set());
+      setBuySel(new Map());
       setView(g);
 
       // A resolve is already a verdict for every state the volunteer cannot
@@ -267,10 +290,10 @@ export function GateMode({
     if (!view || buySel.size === 0) return;
     const campId = view.campId;
     run(async () => {
-      const res = await sellMerch(eventId, [...buySel], view.attendeeId);
+      const res = await sellMerch(eventId, basketItems(buySel), view.attendeeId);
       if (!res.ok) return settle(verdictFor(signalForError(res.error)));
       settle(handedOver("Sold and handed over"));
-      setBuySel(new Set());
+      setBuySel(new Map());
       await refresh(campId);
     });
   }
@@ -500,7 +523,7 @@ export function GateMode({
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Buy more
               </p>
-              <ItemPicker items={catalog.merch} selected={buySel} onToggle={setBuySel} />
+              <ItemPicker items={catalog.merch} basket={buySel} onChange={setBuySel} />
               {buySel.size > 0 && (
                 <button
                   type="button"
@@ -508,7 +531,7 @@ export function GateMode({
                   onClick={doBuyMore}
                   className="mt-2 min-h-tap w-full rounded-lg bg-brand font-semibold text-brand-fg disabled:opacity-50"
                 >
-                  Take cash {formatCents(sum(catalog.merch, buySel))} &amp; hand over
+                  Take cash {formatCents(basketTotal(catalog.merch, buySel))} &amp; hand over
                 </button>
               )}
             </div>
@@ -556,16 +579,21 @@ export function GateMode({
         </button>
       ) : (
         <WalkUpForm
+          key={walkUpNonce}
           catalog={catalog}
           pending={pending}
           onCancel={() => setWalkUp(false)}
-          onSubmit={(serviceTypeIds, name) =>
+          onSubmit={(items, name) =>
             run(async () => {
-              const res = await sellAndAdmit(eventId, serviceTypeIds, name);
+              const res = await sellAndAdmit(eventId, items, name);
               if (!res.ok) return settle(verdictFor(signalForError(res.error)));
               setHeadcount(res.data);
               settle(verdictFor({ kind: "admitted", name: name || "Walk-up" }));
-              setWalkUp(false);
+              // The form STAYS MOUNTED. It used to unmount itself after every
+              // sale, so a volunteer re-tapped "No ticket - walk-up sale" for
+              // each customer in the queue. Clearing it is the same reset
+              // without the extra tap.
+              resetWalkUp();
             })
           }
         />
@@ -736,43 +764,92 @@ function GuestFinder({
   );
 }
 
+/**
+ * Pick items AND how many of each.
+ *
+ * Tapping a chip still takes it 0 -> 1, so selling one of something is the same
+ * single tap it has always been. At >= 1 the chip grows a stepper. The old
+ * control wrote into a Set, which cannot hold a duplicate — that, not the
+ * server, is why "three pairs of sticks" was unsellable at a door.
+ */
 function ItemPicker({
   items,
-  selected,
-  onToggle,
+  basket,
+  onChange,
 }: {
-  items: (CatalogItem & { colorHex?: string })[];
-  selected: Set<string>;
-  onToggle: (next: Set<string>) => void;
+  items: (CatalogItem & { colorHex?: string; remaining?: number | null })[];
+  basket: Basket;
+  onChange: (next: Basket) => void;
 }) {
+  function setQty(id: string, qty: number) {
+    const next = new Map(basket);
+    if (qty <= 0) next.delete(id);
+    else next.set(id, qty);
+    onChange(next);
+  }
+
   return (
     <div className="flex flex-wrap gap-2">
       {items.map((it) => {
-        const on = selected.has(it.id);
+        const qty = basket.get(it.id) ?? 0;
+        // Advisory only — the server still claims capacity atomically at
+        // confirmation. Showing it stops the volunteer taking cash for six
+        // when three are left, which is the failure this would otherwise
+        // create far more often than it used to happen.
+        const soldOut = it.remaining === 0;
+        const ceiling = Math.min(
+          GATE_MAX_QTY_PER_LINE,
+          it.remaining ?? GATE_MAX_QTY_PER_LINE,
+        );
+        if (qty === 0) {
+          return (
+            <button
+              key={it.id}
+              type="button"
+              disabled={soldOut}
+              onClick={() => setQty(it.id, 1)}
+              className="min-h-tap rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 disabled:opacity-40"
+            >
+              {it.colorHex && (
+                <span
+                  className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full align-middle"
+                  style={{ backgroundColor: it.colorHex }}
+                />
+              )}
+              {it.name} · {formatCents(it.priceCents)}
+              {soldOut && <span className="ml-1 text-xs">· sold out</span>}
+            </button>
+          );
+        }
         return (
-          <button
+          <div
             key={it.id}
-            type="button"
-            onClick={() => {
-              const next = new Set(selected);
-              if (on) next.delete(it.id);
-              else next.add(it.id);
-              onToggle(next);
-            }}
-            className={`min-h-tap rounded-full border px-3 py-1.5 text-sm ${
-              on
-                ? "border-brand bg-brand text-brand-fg"
-                : "border-gray-300 bg-white text-gray-700"
-            }`}
+            className="flex min-h-tap items-center gap-1 rounded-full border border-brand bg-brand px-2 py-1 text-sm text-brand-fg"
           >
-            {it.colorHex && (
-              <span
-                className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full align-middle"
-                style={{ backgroundColor: it.colorHex }}
-              />
-            )}
-            {it.name} · {formatCents(it.priceCents)}
-          </button>
+            <button
+              type="button"
+              aria-label={`One fewer ${it.name}`}
+              onClick={() => setQty(it.id, qty - 1)}
+              className="h-9 w-9 rounded-full text-lg font-bold"
+            >
+              −
+            </button>
+            <span className="min-w-[2ch] text-center tabular-nums font-semibold">
+              {qty}
+            </span>
+            <button
+              type="button"
+              aria-label={`One more ${it.name}`}
+              disabled={qty >= ceiling}
+              onClick={() => setQty(it.id, qty + 1)}
+              className="h-9 w-9 rounded-full text-lg font-bold disabled:opacity-40"
+            >
+              +
+            </button>
+            <span className="px-1">
+              {it.name} · {formatCents(it.priceCents * qty)}
+            </span>
+          </div>
         );
       })}
     </div>
@@ -788,12 +865,12 @@ function WalkUpForm({
   catalog: Catalog;
   pending: boolean;
   onCancel: () => void;
-  onSubmit: (serviceTypeIds: string[], name: string) => void;
+  onSubmit: (items: GateSaleItem[], name: string) => void;
 }) {
   const [name, setName] = useState("");
-  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [basket, setBasket] = useState<Basket>(new Map());
   const all = [...catalog.admission, ...catalog.merch, ...catalog.fees];
-  const total = sum(all, sel);
+  const total = basketTotal(all, basket);
 
   return (
     <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
@@ -809,13 +886,13 @@ function WalkUpForm({
       {catalog.admission.length > 0 && (
         <div>
           <p className="mb-1 text-xs text-gray-500">Admission</p>
-          <ItemPicker items={catalog.admission} selected={sel} onToggle={setSel} />
+          <ItemPicker items={catalog.admission} basket={basket} onChange={setBasket} />
         </div>
       )}
       {catalog.merch.length > 0 && (
         <div>
           <p className="mb-1 text-xs text-gray-500">Merch</p>
-          <ItemPicker items={catalog.merch} selected={sel} onToggle={setSel} />
+          <ItemPicker items={catalog.merch} basket={basket} onChange={setBasket} />
         </div>
       )}
       {/* Fees (e.g. dance-competition entry): neither admission nor merch — buying
@@ -834,7 +911,7 @@ function WalkUpForm({
           >
             Fees
           </p>
-          <ItemPicker items={catalog.fees} selected={sel} onToggle={setSel} />
+          <ItemPicker items={catalog.fees} basket={basket} onChange={setBasket} />
           <p className="mt-2 text-xs font-semibold" style={{ color: "#a86800" }}>
             NOT A TICKET · NO FLOOR ACCESS
           </p>
@@ -843,11 +920,11 @@ function WalkUpForm({
       <div className="flex gap-2">
         <button
           type="button"
-          disabled={pending || sel.size === 0}
-          onClick={() => onSubmit([...sel], name)}
+          disabled={pending || basket.size === 0}
+          onClick={() => onSubmit(basketItems(basket), name)}
           className="min-h-tap flex-1 rounded-lg bg-brand font-semibold text-brand-fg disabled:opacity-50"
         >
-          Take cash {formatCents(total)} &amp; admit
+          Take cash {formatCents(total)} &amp; admit {basketCount(basket)}
         </button>
         <button
           type="button"
@@ -893,6 +970,3 @@ function Stepper({
   );
 }
 
-function sum(items: CatalogItem[], selected: Set<string>): number {
-  return items.reduce((s, it) => (selected.has(it.id) ? s + it.priceCents : s), 0);
-}

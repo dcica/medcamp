@@ -5,6 +5,7 @@ import {
 } from "@aws-sdk/client-sesv2";
 import { env } from "@/lib/env";
 import { log } from "@/lib/logger";
+import { isUndeliverableAddress } from "@/lib/emailAddress";
 import {
   buildConfirmationMime,
   confirmationSubject,
@@ -166,6 +167,16 @@ async function dispatch(
    */
   buildRaw?: () => Promise<Buffer>,
 ): Promise<void> {
+  // ONE chokepoint, before anything else. Every walk-up cash sale is recorded
+  // against gate@gate.local, a reserved TLD (RFC 6762) that never resolves --
+  // so today each one is a silent hard bounce, and SES suspends an account over
+  // a 5% bounce rate. A 200-walk-up night is 200 bounces from one door, and
+  // because this function catches provider errors by design, nobody would see
+  // it until sending stopped working for real guests.
+  if (isUndeliverableAddress(to)) {
+    log.info("email skipped: reserved address", { to, subject });
+    return;
+  }
   try {
     let raw: Buffer | undefined;
     if (buildRaw) {
