@@ -39,6 +39,18 @@ export const PAYMENT_UNCONFIRMED =
 export const WAIVER_REQUIRED = "Waiver must be signed before check-in.";
 
 /**
+ * Orders that can never be settled at a door: the money already went back, or
+ * the sale was called off. Distinct from PENDING, which IS payable.
+ *
+ * Takes a plain string rather than Prisma's OrderStatus so this module keeps
+ * its zero imports -- GateMode is a client component, and reaching this rule
+ * through src/server/gate.ts would pull Prisma into the browser bundle.
+ */
+export function isVoidOrder(status: string): boolean {
+  return status === "REFUNDED" || status === "CANCELLED";
+}
+
+/**
  * Three tones, and only three.
  *
  * `go` = the thing you were about to do is done, act on it.
@@ -61,6 +73,7 @@ export type ScanOutcome =
   | "UNPAID"
   | "PAYMENT_UNCONFIRMED"
   | "NOT_A_TICKET"
+  | "ORDER_VOID"
   | "WRONG_EVENT"
   | "WAIVER_UNSIGNED"
   | "NO_MATCH"
@@ -105,6 +118,8 @@ export type ScanSignal =
   | { kind: "unpaid"; owed: string }
   | { kind: "paymentUnconfirmed" }
   | { kind: "notATicket" }
+  /** REFUNDED or CANCELLED: money returned or sale called off. */
+  | { kind: "voidOrder"; status: "REFUNDED" | "CANCELLED" }
   | { kind: "wrongEvent"; eventName: string }
   | { kind: "waiverUnsigned" }
   | { kind: "noMatch"; code: string }
@@ -238,6 +253,19 @@ export function verdictFor(signal: ScanSignal): ScanVerdict {
         headline: "Not a ticket",
         detail: NOT_A_TICKET,
         instruction: "Sell them admission",
+      };
+
+    case "voidOrder":
+      return {
+        outcome: "ORDER_VOID",
+        tone: "stop",
+        glyph: "✕",
+        // Says which, because the two need different conversations: a refund
+        // is "you got your money back", a cancellation is "this sale was
+        // called off". Neither is "pay me now".
+        headline: signal.status === "REFUNDED" ? "Refunded" : "Cancelled",
+        detail: "This ticket is not valid for entry",
+        instruction: "Send them to the registration desk",
       };
 
     case "wrongEvent":

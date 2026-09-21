@@ -906,6 +906,15 @@ async function main(): Promise<void> {
   const cat = await gate.getGateCatalog(event.id);
   check("the menu reports remaining headroom",
     cat.admission.every((a) => a.remaining === null || a.remaining >= 0));
+  // The screen has to say how many PEOPLE a basket admits, and three admissions
+  // plus two dandiya sticks is five ITEMS and three people. Caught driving the
+  // real UI: the button read "admit 5" while the server correctly admitted 3.
+  // admitsCount is why a "family of 4" chip counts four rather than one.
+  check("the menu carries admitsCount, so the screen can count people",
+    cat.admission.every((a) => typeof a.admitsCount === "number" && a.admitsCount >= 1));
+  const gm = readFileSync(join(process.cwd(), "src/app/scan/GateMode.tsx"), "utf8");
+  check("the cash button counts admissions, not basket lines",
+    gm.includes("admitsCountFor(catalog.admission") && !/admit \{basketCount\(/.test(gm));
 
   // ───────────────────────────────────────────────────────────────────────────
   console.log("\n§8d a reserved address is never sent to");

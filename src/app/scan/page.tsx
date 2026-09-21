@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireRole } from "@/server/session";
+import { canRecordCash, requireRole } from "@/server/session";
 import { getActiveOrg } from "@/lib/tenant";
 import { getEventHeadcount, getGateCatalog } from "@/server/gate";
 import { getScanStationEvent, SCAN_STATION_SETUP_HOURS } from "@/server/events";
@@ -39,12 +39,17 @@ export const metadata = PRIVATE_PAGE_METADATA;
  * only export async functions, so that array cannot be shared.
  */
 export default async function ScanPage() {
-  await requireRole(
+  const member = await requireRole(
     "REGISTRATION_TILL",
     "REGISTRATION_NO_TILL",
     "STATION_VOLUNTEER",
     "POS_TILL",
   );
+  // The till is a CAPABILITY on the membership, not a role -- a coordinator
+  // hands one out before the event. Passed down so the screen does not offer
+  // cash controls that requireTill will then redirect on: a volunteer who
+  // taps one currently loses the guest and lands on /403 mid-flow.
+  const canTakeCash = canRecordCash(member);
 
   const org = await getActiveOrg();
   const event = org ? await getScanStationEvent(org.id) : null;
@@ -139,6 +144,7 @@ export default async function ScanPage() {
         eventCode={event.code}
         initialHeadcount={headcount}
         catalog={catalog}
+        canTakeCash={canTakeCash}
       />
     </main>
   );

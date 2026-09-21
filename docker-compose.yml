@@ -1,0 +1,60 @@
+# Run the whole site locally in containers.
+#
+#   docker compose up -d --build
+#   open http://localhost:3100
+#
+# The database is its OWN service here rather than the pre-existing dcica-pg
+# container, so `docker compose down -v` cannot take a developer's working
+# database with it. They listen on different ports (5434 vs 5433) for the same
+# reason.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: dcica
+    ports:
+      # 5434, deliberately: 5433 belongs to the long-lived dcica-pg container
+      # and a clash there would be silent and confusing.
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - dcica-compose-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d dcica"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # `db` is the compose service name; the app reaches it on the internal
+      # network, so the published 5434 is only for a human with psql.
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/dcica
+      DIRECT_URL: postgresql://postgres:postgres@db:5432/dcica
+      NEXT_PUBLIC_APP_URL: http://localhost:3100
+      NEXT_PUBLIC_ROOT_DOMAIN: localhost:3100
+      TENANT_ROUTING: path
+      DEFAULT_ORG_SLUG: dcica
+      NEXTAUTH_URL: http://localhost:3100
+      NEXTAUTH_SECRET: docker-local-not-a-real-secret
+      # The staff back door, for driving the UI without an OIDC round trip.
+      # Local-only by construction: the route refuses unless this is set.
+      TEST_LOGIN_ENABLED: "true"
+      # NOT "camp-test". That string is published in .env.example, and
+      # src/lib/testAccounts.ts refuses to open the back door for it -- the
+      # gate that guards every role including COORDINATOR. 16+ chars so it
+      # also clears the thin-password warning.
+      TEST_LOGIN_PASSWORD: docker-local-staff-door-9f2c
+      # No EMAIL_PROVIDER: send() logs to the console instead of reaching SES.
+      # That is the correct default for a throwaway stack.
+    ports:
+      - "127.0.0.1:3100:3000"
+
+volumes:
+  dcica-compose-db:

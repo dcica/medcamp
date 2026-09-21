@@ -1,4 +1,4 @@
-import type { ServiceKind } from "@prisma/client";
+import type { OrderStatus, ServiceKind } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
 import { normalizeCampId } from "@/lib/campId";
@@ -11,6 +11,9 @@ import {
   type GateSaleItem,
 } from "@/lib/ticketMinting";
 import { NOT_A_TICKET, NOT_PAID } from "@/lib/scanVerdict";
+// Re-exported so server callers keep one import site; the rule itself lives
+// in the pure module because the gate screen is a client component.
+export { isVoidOrder } from "@/lib/scanVerdict";
 
 /**
  * Gate service (general / ticketed events — e.g. a dandia dance night). The
@@ -60,6 +63,16 @@ export type GateView = {
   eventName: string;
   /** Order is CONFIRMED (admission paid). */
   isPaid: boolean;
+  /**
+   * WHY it is not paid, which `isPaid` alone cannot say.
+   *
+   * A REFUNDED order is not paid AND owes nothing: every line is REFUNDED,
+   * so amountOwedCents sums to zero. The door then read "owes $0.00" and
+   * offered "Take cash $0.00 & admit" -- which reads to a volunteer as
+   * "nothing to pay, let them in" for somebody who has had their money back.
+   * The server always refused, but only AFTER the tap.
+   */
+  orderStatus: OrderStatus;
   /** Sum of any still-unpaid line items on the order (pay-at-gate amount). */
   amountOwedCents: number;
   /** checkedInAt is set — already processed at the gate. */
@@ -165,6 +178,7 @@ export function toGateView(attendee: GateAttendee): GateView {
     eventId: attendee.eventId,
     eventName: attendee.event.name,
     isPaid: attendee.order.status === "CONFIRMED",
+    orderStatus: attendee.order.status,
     amountOwedCents,
     alreadyAdmitted: Boolean(attendee.checkedInAt),
     admittedAt: attendee.checkedInAt,
@@ -714,7 +728,14 @@ export async function getEventHeadcount(eventId: string): Promise<number> {
  * the fix; clamping the stepper is not a substitute for the server claim.
  */
 export async function getGateCatalog(eventId: string): Promise<{
-  admission: { id: string; name: string; priceCents: number; remaining: number | null }[];
+  admission: {
+    id: string;
+    name: string;
+    priceCents: number;
+    remaining: number | null;
+    /** People ONE unit admits. A "family of 4" chip is 4, not 1. */
+    admitsCount: number;
+  }[];
   merch: { id: string; name: string; priceCents: number; colorHex: string; remaining: number | null }[];
   fees: { id: string; name: string; priceCents: number; remaining: number | null }[];
 }> {
@@ -735,7 +756,13 @@ export async function getGateCatalog(eventId: string): Promise<{
   return {
     admission: offerings
       .filter((o) => o.serviceType.kind === "ADMISSION" && !o.serviceType.hasLab)
-      .map((o) => ({ id: o.serviceType.id, name: o.serviceType.name, priceCents: doorCents(o), remaining: left(o) })),
+      .map((o) => ({
+        id: o.serviceType.id,
+        name: o.serviceType.name,
+        priceCents: doorCents(o),
+        remaining: left(o),
+        admitsCount: Math.max(1, o.serviceType.admitsCount),
+      })),
     merch: offerings
       .filter((o) => o.serviceType.kind === "MERCH")
       .map((o) => ({

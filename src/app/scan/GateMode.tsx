@@ -7,7 +7,12 @@ import { expandTicketCode, MIN_TOKEN_PREFIX } from "@/lib/ticketCode";
 import { GATE_MAX_QTY_PER_LINE, type GateSaleItem } from "@/lib/ticketMinting";
 import { QrScanner } from "@/app/_components/QrScanner";
 import { ScanVerdictBanner } from "@/app/_components/ScanVerdictBanner";
-import { verdictFor, signalForError, type ScanVerdict } from "@/lib/scanVerdict";
+import {
+  verdictFor,
+  signalForError,
+  isVoidOrder,
+  type ScanVerdict,
+} from "@/lib/scanVerdict";
 import { playTone } from "@/lib/scanTones";
 import {
   acceptsDecode,
@@ -42,13 +47,32 @@ function basketTotal(items: CatalogItem[], b: Basket): number {
   return items.reduce((s, it) => s + it.priceCents * (b.get(it.id) ?? 0), 0);
 }
 
-function basketCount(b: Basket): number {
-  return [...b.values()].reduce((s, q) => s + q, 0);
+/**
+ * How many PEOPLE this basket admits.
+ *
+ * NOT the number of things in it. Three admissions plus two dandiya sticks
+ * is five items and THREE people, and the button used to say "admit 5" while
+ * the server correctly admitted 3 — a number on a button that did not match
+ * what happened, which is the exact defect class this screen exists to fix.
+ *
+ * Mirrors admissionUnits() in src/lib/ticketMinting.ts, which is what the
+ * server actually mints from; admitsCount is why a "family of 4" chip counts
+ * four and not one.
+ */
+function admitsCountFor(
+  admission: (CatalogItem & { admitsCount?: number })[],
+  b: Basket,
+): number {
+  return admission.reduce(
+    (s, it) => s + (b.get(it.id) ?? 0) * Math.max(1, it.admitsCount ?? 1),
+    0,
+  );
 }
 type MerchItem = CatalogItem & { colorHex: string };
 // Must name every bucket getGateCatalog sends — structural typing let `fees`
 // go missing here before and the compiler never caught it (see task A3).
-type Catalog = { admission: CatalogItem[]; merch: MerchItem[]; fees: CatalogItem[] };
+type AdmissionItem = CatalogItem & { admitsCount: number };
+type Catalog = { admission: AdmissionItem[]; merch: MerchItem[]; fees: CatalogItem[] };
 
 // `Flash` is gone. It was a 32px tinted strip that sat BELOW the camera, was
 // set to null on success (so a successful scan said nothing at all), and used
@@ -67,12 +91,20 @@ export function GateMode({
   eventCode,
   initialHeadcount,
   catalog,
+  canTakeCash,
 }: {
   eventId: string;
   eventName: string;
   eventCode: string;
   initialHeadcount: number;
   catalog: Catalog;
+  /**
+   * Whether THIS volunteer may record cash. A capability on the membership,
+   * not a role. The server is still the gate (requireTill); this only stops
+   * the screen offering a control that would bounce them to /403 and lose
+   * the guest they had resolved.
+   */
+  canTakeCash: boolean;
 }) {
   const [headcount, setHeadcount] = useState(initialHeadcount);
   const [view, setView] = useState<GateView | null>(null);
@@ -229,6 +261,15 @@ export function GateMode({
       if (g.eventId !== eventId) {
         return settle(
           verdictFor({ kind: "wrongEvent", eventName: g.eventName }),
+          "resolved",
+        );
+      }
+      // Money already went back, or the sale was called off. Neither is
+      // payable, and both used to read as "owes $0.00" because a REFUNDED
+      // line is not a PENDING_PAYMENT one.
+      if (isVoidOrder(g.orderStatus)) {
+        return settle(
+          verdictFor({ kind: "voidOrder", status: g.orderStatus as "REFUNDED" | "CANCELLED" }),
           "resolved",
         );
       }
@@ -447,6 +488,12 @@ export function GateMode({
                 : ""}
               .
             </p>
+          ) : isVoidOrder(view.orderStatus) ? (
+            // Not payable at any price. The banner above says which.
+            <p className="rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-700">
+              {view.orderStatus === "REFUNDED" ? "Refunded" : "Cancelled"} — this
+              ticket cannot be settled here.
+            </p>
           ) : view.isPaid ? (
             <button
               type="button"
@@ -461,6 +508,17 @@ export function GateMode({
             // and what to do about it, at full size. Saying it twice in two
             // different wordings is how the two drift apart.
             <div className="space-y-2">
+              {/* HIDDEN, not greyed out: staffNav's rule is that a control
+                  you cannot use should not spend your attention. One line of
+                  explanation instead, so a volunteer knows to fetch someone
+                  rather than wondering where the button went. */}
+              {!canTakeCash && (
+                <p className="rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-700">
+                  Owes {formatCents(view.amountOwedCents)} — a till holder has to
+                  take this.
+                </p>
+              )}
+              {canTakeCash && (
               <button
                 type="button"
                 disabled={pending}
@@ -469,6 +527,7 @@ export function GateMode({
               >
                 Take cash {formatCents(view.amountOwedCents)} &amp; admit
               </button>
+              )}
             </div>
           )}
 
@@ -518,7 +577,7 @@ export function GateMode({
           )}
 
           {/* Buy more */}
-          {catalog.merch.length > 0 && (
+          {canTakeCash && catalog.merch.length > 0 && (
             <div className="rounded-lg border border-gray-200 p-3">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Buy more
@@ -568,8 +627,10 @@ export function GateMode({
         </div>
       </div>
 
-      {/* Walk-up (no ticket) */}
-      {!walkUp ? (
+      {/* Walk-up (no ticket). A cash path, so it is hidden without a till for
+          the same reason as the others: tapping it would resolve nothing and
+          bounce the volunteer to /403. */}
+      {canTakeCash && !walkUp ? (
         <button
           type="button"
           onClick={() => setWalkUp(true)}
@@ -577,7 +638,7 @@ export function GateMode({
         >
           No ticket — walk-up sale
         </button>
-      ) : (
+      ) : canTakeCash ? (
         <WalkUpForm
           key={walkUpNonce}
           catalog={catalog}
@@ -597,7 +658,7 @@ export function GateMode({
             })
           }
         />
-      )}
+      ) : null}
     </div>
   );
 }
@@ -745,6 +806,14 @@ function GuestFinder({
                         {h.admittedAt
                           ? ` ${formatVenueTime(new Date(h.admittedAt))}`
                           : ""}
+                      </span>
+                    ) : isVoidOrder(h.orderStatus) ? (
+                      // NOT "owes $0.00". A refunded order owes nothing because
+                      // every line is REFUNDED rather than PENDING_PAYMENT, so
+                      // the amount is a true zero and a badly misleading one:
+                      // it reads as "nothing to pay, let them in".
+                      <span className="text-red-700">
+                        {h.orderStatus === "REFUNDED" ? "refunded" : "cancelled"}
                       </span>
                     ) : h.isPaid ? (
                       <span className="text-gray-700">paid</span>
@@ -924,7 +993,8 @@ function WalkUpForm({
           onClick={() => onSubmit(basketItems(basket), name)}
           className="min-h-tap flex-1 rounded-lg bg-brand font-semibold text-brand-fg disabled:opacity-50"
         >
-          Take cash {formatCents(total)} &amp; admit {basketCount(basket)}
+          Take cash {formatCents(total)} &amp; admit{" "}
+          {admitsCountFor(catalog.admission, basket)}
         </button>
         <button
           type="button"

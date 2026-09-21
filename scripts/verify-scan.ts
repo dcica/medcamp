@@ -59,7 +59,7 @@ async function main(): Promise<void> {
   const ALL_OUTCOMES: v.ScanOutcome[] = [
     "ADMITTED", "CHECKED_IN", "ALREADY_ADMITTED", "ALREADY_CHECKED_IN",
     "PARTY_ADMITTED", "PARTY_PARTIAL",
-    "UNPAID", "PAYMENT_UNCONFIRMED", "NOT_A_TICKET", "WRONG_EVENT",
+    "UNPAID", "PAYMENT_UNCONFIRMED", "NOT_A_TICKET", "ORDER_VOID", "WRONG_EVENT",
     "WAIVER_UNSIGNED", "NO_MATCH", "CAMERA_ERROR", "SERVER_ERROR",
   ];
 
@@ -73,6 +73,7 @@ async function main(): Promise<void> {
     { kind: "unpaid", owed: "$25.00" },
     { kind: "paymentUnconfirmed" },
     { kind: "notATicket" },
+    { kind: "voidOrder", status: "REFUNDED" },
     { kind: "wrongEvent", eventName: "Garba 2026" },
     { kind: "waiverUnsigned" },
     { kind: "noMatch", code: "RON-2026-ZZZZZZZZ" },
@@ -154,6 +155,32 @@ async function main(): Promise<void> {
   check("singular wristband for one person", party(3, 0).instruction === "Give 3 wristbands");
 
   // ───────────────────────────────────────────────────────────────────────────
+  // A REFUNDED order is not paid AND owes nothing -- every line is REFUNDED,
+  // so amountOwedCents sums to zero. The door read "owes $0.00" and offered
+  // "Take cash $0.00 & admit", which to a volunteer means "nothing to pay, let
+  // them in" for somebody who already had their money back. Found by driving
+  // the real UI; the server always refused, but only AFTER the tap.
+  eq("a refunded order is a STOP, not a $0 payment",
+    v.verdictFor({ kind: "voidOrder", status: "REFUNDED" }).tone, "stop");
+  check("...and it says refunded, not unpaid",
+    v.verdictFor({ kind: "voidOrder", status: "REFUNDED" }).headline === "Refunded");
+  check("a cancelled order says cancelled",
+    v.verdictFor({ kind: "voidOrder", status: "CANCELLED" }).headline === "Cancelled");
+  // The two need different conversations, so they must not collapse into one.
+  check("refunded and cancelled are not the same message",
+    v.verdictFor({ kind: "voidOrder", status: "REFUNDED" }).headline !==
+      v.verdictFor({ kind: "voidOrder", status: "CANCELLED" }).headline);
+  eq("a void order is never payable", v.isVoidOrder("REFUNDED"), true);
+  eq("...nor a cancelled one", v.isVoidOrder("CANCELLED"), true);
+  // PENDING really is payable -- that is the whole distinction.
+  eq("a PENDING order is still payable", v.isVoidOrder("PENDING"), false);
+  eq("a CONFIRMED order is not void either", v.isVoidOrder("CONFIRMED"), false);
+  // Pure, because GateMode is a client component and reaching this rule through
+  // src/server/gate.ts would pull Prisma into the browser bundle.
+  const verdictSrc = read("src/lib/scanVerdict.ts");
+  check("the rule lives in the import-free module",
+    verdictSrc.includes("export function isVoidOrder"));
+
   console.log("\n§2 the server's words and the screen's words are the same words");
   // These constants moved OUT of src/server/gate.ts so a tsx script could load
   // them without Prisma. The point of moving rather than copying is that the
@@ -290,6 +317,34 @@ async function main(): Promise<void> {
     !/bg-(green|amber|red)-(50|100)/.test(gateMode),
     (gateMode.match(/bg-(green|amber|red)-(50|100)/g) ?? []).join(" "));
   check("the old flash strip is gone", !gateMode.includes("setFlash"));
+
+  // THE MID-FLOW 403. requireTill is the real gate and stays the real gate,
+  // but the screen used to render every cash control to a volunteer without
+  // a till -- who tapped one, lost the guest they had resolved, and landed
+  // on /403. Hidden rather than greyed out, per staffNav's rule that a
+  // control you cannot use should not spend your attention.
+  check("the screen knows whether this volunteer holds a till",
+    gateMode.includes("canTakeCash"));
+  check("...the pay-unpaid control is gated on it",
+    /canTakeCash &&[\s\S]{0,400}doPayUnpaid/.test(gateMode));
+  check("...so is the walk-up sale",
+    /canTakeCash && !walkUp/.test(gateMode));
+  check("...and buy-more merch",
+    /canTakeCash && catalog\.merch/.test(gateMode));
+  // Hidden, with a reason -- not a disabled button.
+  check("a no-till volunteer is told who can take it",
+    gateMode.includes("a till holder has to"));
+  const scanPage = read("src/app/scan/page.tsx");
+  check("the capability comes from the SERVER session, not the client",
+    scanPage.includes("canRecordCash(member)"));
+  // A void order must not offer a settle control at any price.
+  check("a refunded order shows no cash control",
+    /isVoidOrder\(view\.orderStatus\)/.test(gateMode));
+  // THREE surfaces show payment state, and the first fix only reached two of
+  // them: the search ROW still read "owes $0.00", which is the one a volunteer
+  // sees before they tap anything.
+  check("...and the search row says refunded, not owes $0.00",
+    /isVoidOrder\(h\.orderStatus\)/.test(gateMode));
 
   // The banner must not be dismissable by anything but a tap, and must not
   // quietly time out - the volunteer is looking at a wristband, not a phone.
