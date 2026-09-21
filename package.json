@@ -26,6 +26,7 @@
     "verify:branding": "tsx scripts/verify-branding.ts",
     "verify:performance": "tsx scripts/verify-performance.ts",
     "verify:gate": "tsx scripts/verify-gate.ts",
+    "verify:scan": "tsx scripts/verify-scan.ts",
     "verify:readiness": "tsx scripts/verify-readiness.ts",
     "verify:checkout": "tsx scripts/verify-checkout.ts",
     "verify:csv": "tsx scripts/verify-csv.ts",
@@ -34,7 +35,7 @@
     "verify:seo": "tsx scripts/verify-seo.ts",
     "verify:registrations": "tsx scripts/verify-registrations.ts",
     "verify:analytics": "tsx scripts/verify-analytics.ts",
-    "verify": "npm run verify:schema && npm run verify:pricing && npm run verify:validation && npm run verify:storage && npm run verify:branding && npm run verify:performance && npm run verify:gate && npm run verify:readiness && npm run verify:checkout && npm run verify:csv && npm run verify:testlogin && npm run verify:home && npm run verify:seo && npm run verify:registrations && npm run verify:analytics"
+    "verify": "npm run verify:schema && npm run verify:pricing && npm run verify:validation && npm run verify:storage && npm run verify:branding && npm run verify:performance && npm run verify:gate && npm run verify:scan && npm run verify:readiness && npm run verify:checkout && npm run verify:csv && npm run verify:testlogin && npm run verify:home && npm run verify:seo && npm run verify:registrations && npm run verify:analytics"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

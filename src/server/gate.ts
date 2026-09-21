@@ -5,6 +5,7 @@ import { normalizeCampId } from "@/lib/campId";
 import { planTicketLookup } from "@/lib/ticketCode";
 import { confirmOrderPaid } from "@/server/payments";
 import { resolvePrice } from "@/lib/pricing";
+import { NOT_A_TICKET, NOT_PAID } from "@/lib/scanVerdict";
 
 /**
  * Gate service (general / ticketed events — e.g. a dandia dance night). The
@@ -175,11 +176,13 @@ export async function getGateView(
 
 /**
  * What the gate says when a code is real, paid, and still admits nobody — a
- * competition entry or a merch-only will-call receipt. Exported so the screen
- * and the regression suite quote the same words the WalkUpForm prints.
+ * competition entry or a merch-only will-call receipt.
+ *
+ * Re-exported, not defined here. The wording lives in src/lib/scanVerdict.ts so
+ * the screen that MATCHES it and the server that THROWS it cannot drift into
+ * paraphrase, and so a tsx suite can load it without pulling in Prisma.
  */
-export const NOT_A_TICKET =
-  "Not a ticket — this buys no floor access. Sell them admission.";
+export { NOT_A_TICKET, NOT_PAID } from "@/lib/scanVerdict";
 
 /**
  * Does this purchase admit anyone at all?
@@ -261,7 +264,7 @@ export async function admitAttendee(
   }
   if (attendee.checkedInAt) return; // already processed
   if (attendee.order.status !== "CONFIRMED") {
-    throw new Error("Not paid — take payment before admitting.");
+    throw new Error(NOT_PAID);
   }
   if (admitsNobody(attendee.order.lineItems)) throw new Error(NOT_A_TICKET);
   await db.attendee.update({

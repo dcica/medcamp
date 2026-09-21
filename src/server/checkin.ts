@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
 import { normalizeCampId } from "@/lib/campId";
+import { PAYMENT_UNCONFIRMED, WAIVER_REQUIRED } from "@/lib/scanVerdict";
 
 /**
  * Check-in service (Module 2). All reads/writes are scoped to the active org
@@ -135,10 +136,10 @@ export async function checkInAttendee(campId: string): Promise<void> {
   if (attendee.checkedInAt) return; // already checked in
 
   if (attendee.order.status !== "CONFIRMED") {
-    throw new Error("Payment not confirmed — send to registration desk.");
+    throw new Error(PAYMENT_UNCONFIRMED);
   }
   if (!attendee.waiverSigned) {
-    throw new Error("Waiver must be signed before check-in.");
+    throw new Error(WAIVER_REQUIRED);
   }
 
   await db.$transaction(async (tx) => {
