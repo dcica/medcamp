@@ -388,6 +388,67 @@ async function main() {
   check("...and counting them would have read differently",
     withDonations !== expectUnits, `${withDonations} vs ${expectUnits}`);
 
+  // CLOSED EVENTS ARE NOT CURRENT TRADE. The chart answers "is anything selling
+  // right now", so a camp that finished last week must not keep its bars on it
+  // for another fortnight and read as today's business.
+  const closedEvent = await db.event.create({
+    data: {
+      orgId: org.id, type: "GENERAL", status: "CLOSED", code: "VR-CLOSED",
+      name: "Finished Event", startsAt: new Date(Date.now() - 3 * 86_400_000),
+      endsAt: new Date(Date.now() - 3 * 86_400_000 + 3_600_000),
+    },
+  });
+  const closedOrder = await db.order.create({
+    data: {
+      orgId: org.id, eventId: closedEvent.id, status: "CONFIRMED", method: "CASH",
+      registrantName: "Past Buyer", registrantEmail: "past@example.test",
+      registrantPhone: "555-0199",
+      lineItems: {
+        create: [{
+          orgId: org.id, description: "Old ticket",
+          amountCents: 4242, quantity: 3, status: "PAID",
+        }],
+      },
+      payments: {
+        create: [{
+          orgId: org.id, status: "SUCCEEDED", method: "CASH",
+          amountCents: 12726, createdAt: new Date(Date.now() - 86_400_000),
+        }],
+      },
+    },
+  });
+
+  const afterClose = await dash.getDailySales(org.id, 7);
+  check("a CLOSED event's sale is not on the chart",
+    afterClose.reduce((n, d) => n + d.cents, 0) === expectCents,
+    `${afterClose.reduce((n, d) => n + d.cents, 0)} vs ${expectCents}`);
+  check("...nor are its units",
+    afterClose.reduce((n, d) => n + d.units, 0) === expectUnits);
+
+  // The same sale on an OPEN event IS current trade — otherwise the row above
+  // would pass for an unrelated reason (a filter that excludes everything).
+  await db.event.update({
+    where: { id: closedEvent.id }, data: { status: "OPEN" },
+  });
+  const afterOpen = await dash.getDailySales(org.id, 7);
+  check("...but the identical sale on an OPEN event IS counted",
+    afterOpen.reduce((n, d) => n + d.cents, 0) === expectCents + 12726,
+    `${afterOpen.reduce((n, d) => n + d.cents, 0)} vs ${expectCents + 12726}`);
+  check("...including its units", 
+    afterOpen.reduce((n, d) => n + d.units, 0) === expectUnits + 3);
+
+  // PURGED is a closed event further along the retention path, and money rows
+  // outlive the PII purge — so it must be excluded too, not just CLOSED.
+  await db.event.update({
+    where: { id: closedEvent.id }, data: { status: "PURGED" },
+  });
+  const afterPurge = await dash.getDailySales(org.id, 7);
+  check("a PURGED event is excluded as well",
+    afterPurge.reduce((n, d) => n + d.cents, 0) === expectCents);
+
+  await db.payment.deleteMany({ where: { orderId: closedOrder.id } });
+  await db.event.delete({ where: { id: closedEvent.id } });
+
 
   await cleanup(org.id);
 }

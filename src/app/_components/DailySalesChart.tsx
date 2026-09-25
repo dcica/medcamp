@@ -113,7 +113,7 @@ export function DailySalesChart({ days }: { days: DailySalesDay[] }) {
         <h2 className="text-lg font-semibold">Purchases</h2>
         <p className="mt-2 rounded-xl border border-gray-200 bg-white px-4 py-6 text-center text-sm text-gray-600">
           {active === 0
-            ? `Nothing sold in the last ${days.length} days.`
+            ? `Nothing sold by an open event in the last ${days.length} days.`
             : `${totalUnits} ${totalUnits === 1 ? "unit" : "units"} · ${formatCents(totalCents)} — all on one day, so there is no trend to plot yet.`}
         </p>
       </section>
@@ -124,7 +124,12 @@ export function DailySalesChart({ days }: { days: DailySalesDay[] }) {
     <section className="mt-8">
       <div className="flex items-baseline justify-between">
         <h2 className="text-lg font-semibold">Purchases</h2>
-        <p className="text-xs text-gray-500">last {days.length} days</p>
+        {/* Says which events, because the total would otherwise read as
+            all-time revenue. Closed events are excluded on purpose — see
+            FINISHED_EVENT_STATUSES. */}
+        <p className="text-xs text-gray-500">
+          last {days.length} days · open events
+        </p>
       </div>
 
       <div className="mt-2 rounded-xl border border-gray-200 bg-white px-4 py-3">

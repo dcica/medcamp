@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
 import { getCurrentEvent } from "@/server/events";
+import type { EventStatus } from "@prisma/client";
 import { venueDayKey } from "@/lib/eventTime";
 
 /**
@@ -179,6 +180,25 @@ export type DailySalesDay = {
 export const DAILY_SALES_DAYS = 14;
 
 /**
+ * Statuses that mean the event is OVER.
+ *
+ * The chart answers "is anything selling right now", so a finished event's
+ * takings do not belong in it: a camp that closed last week would keep its bars
+ * on the chart for another fortnight and read as current trade. CLOSED onward
+ * is the whole tail — PURGEABLE and PURGED are closed events further along the
+ * retention path, and money rows outlive the PII purge, so leaving them out of
+ * the list would quietly let a purged event back into the count.
+ *
+ * DRAFT and OPEN stay in: an event that has not started can absolutely have
+ * sold tickets, and that is exactly the trade a coordinator wants to see.
+ */
+export const FINISHED_EVENT_STATUSES = [
+  "CLOSED",
+  "PURGEABLE",
+  "PURGED",
+] as const satisfies readonly EventStatus[];
+
+/**
  * Purchases per day — units and money — for the sales chart.
  *
  * TWO DEFINITIONS, BOTH ALREADY SETTLED IN THIS REPO, and neither re-invented
@@ -220,7 +240,11 @@ export async function getDailySales(
     where: {
       status: "SUCCEEDED",
       createdAt: { gte: since },
-      order: { orgId },
+      order: {
+        orgId,
+        // Current trade only — see FINISHED_EVENT_STATUSES.
+        event: { status: { notIn: [...FINISHED_EVENT_STATUSES] } },
+      },
     },
     include: { order: { include: { lineItems: true } } },
     orderBy: { createdAt: "asc" },
