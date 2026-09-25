@@ -44,6 +44,11 @@ export default async function DashboardPage() {
             : "No event is live, and nothing is currently selling."}
         </p>
 
+        {/* FIRST, above the tracked-event list. On the quiet state this is the
+            only number that answers "is anything happening" -- the list below
+            says what exists, the chart says whether it is selling. */}
+        {dailySales.length > 0 && <DailySalesChart days={dailySales} />}
+
         {tracked.length > 0 && (
           <ul className="mt-6 space-y-3">
             {tracked.map((e) => (
@@ -91,8 +96,6 @@ export default async function DashboardPage() {
           </ul>
         )}
 
-        {dailySales.length > 0 && <DailySalesChart days={dailySales} />}
-
         <p className="mt-6 text-center text-sm">
           <Link href="/admin/camps" className="text-brand underline">
             All camps &amp; events →
@@ -136,6 +139,9 @@ export default async function DashboardPage() {
           },
         ]}
       />
+
+      {/* First content block: what is selling, before the queue depths. */}
+      {dailySales.length > 0 && <DailySalesChart days={dailySales} />}
 
       {/* Flow stats */}
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -226,8 +232,6 @@ export default async function DashboardPage() {
           )}
         </div>
       </section>
-
-      {dailySales.length > 0 && <DailySalesChart days={dailySales} />}
 
       <p className="mt-8 flex flex-wrap items-center justify-center gap-x-2 text-center text-xs text-gray-400">
         <Link
