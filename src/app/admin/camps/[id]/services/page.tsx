@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { ServicesManager } from "./ServicesManager";
+import { Breadcrumbs, campTrail } from "@/app/_components/Breadcrumbs";
 
 export const dynamic = "force-dynamic";
 
@@ -66,12 +67,9 @@ export default async function EventServicesPage({
       <div>
         {/* inline-flex + min-h-tap: as a bare inline link this back-out was an
             18px target, the smallest thing on the page. */}
-        <Link
-          href={`/admin/camps/${id}`}
-          className="inline-flex min-h-tap items-center text-sm text-brand underline"
-        >
-          ← {event.name}
-        </Link>
+        <Breadcrumbs
+          trail={campTrail({ campId: id, campName: event.name, leaf: "Services" })}
+        />
         <h2 className="mt-2 text-lg font-bold">What this event sells</h2>
         <p className="text-xs text-gray-500">
           Only these services appear in this event&apos;s registration. Prices and

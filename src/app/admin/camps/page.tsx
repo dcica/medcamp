@@ -6,6 +6,7 @@ import { formatVenueDate } from "@/lib/eventTime";
 import { STATUS_STYLE } from "@/lib/eventLifecycle";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { CreateCampForm } from "./CreateCampForm";
+import { Breadcrumbs, campTrail } from "@/app/_components/Breadcrumbs";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,10 @@ export default async function CampsPage() {
 
   return (
     <div className="space-y-5">
+      {/* This page had NO route back to the dashboard. Following
+          dashboard -> camp -> registrations and stepping back landed here
+          and stopped, one page short of where the trail started. */}
+      <Breadcrumbs trail={campTrail({})} />
       <PageHelp
         id="admin-camps"
         items={[

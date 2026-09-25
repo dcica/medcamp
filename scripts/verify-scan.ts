@@ -357,6 +357,62 @@ async function main(): Promise<void> {
   check("the banner uses no tenant brand token",
     !/bg-brand|text-brand|accent2?/.test(banner));
 
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§7 the admin trail reaches the dashboard");
+  // Each admin page used to carry its own single "back to parent" link, which
+  // is one hop and not a trail -- and /admin/camps carried NONE, so following
+  // dashboard -> camp -> registrations and stepping back landed there and
+  // stopped, one page short of where the trail started.
+  const crumbs = await import("../src/app/_components/Breadcrumbs");
+
+  const listTrail = crumbs.campTrail({});
+  eq("the camps list starts at the dashboard",
+    listTrail.map((c) => c.label), ["Dashboard", "Camps"]);
+  eq("...and the dashboard crumb actually links there",
+    listTrail[0].href, "/dashboard");
+
+  const leafTrail = crumbs.campTrail({
+    campId: "abc", campName: "Dandia Night", leaf: "Registrations",
+  });
+  // THE ROW. Start at the dashboard, end at the page you are on, every hop in
+  // between reachable.
+  eq("a leaf page shows the whole chain",
+    leafTrail.map((c) => c.label),
+    ["Dashboard", "Camps", "Dandia Night", "Registrations"]);
+  eq("every crumb but the last is a link",
+    leafTrail.slice(0, -1).every((c) => Boolean(c.href)), true);
+  // A link to the page you are already on is a control that does nothing, and
+  // on a phone it is a tap that reloads.
+  eq("the page you are on is NOT a link", leafTrail[leafTrail.length - 1].href, undefined);
+  eq("the camp crumb links to the camp", leafTrail[2].href, "/admin/camps/abc");
+
+  // On the camp page itself the camp IS the current page, so it must not link.
+  const campTrailOnly = crumbs.campTrail({ campName: "Dandia Night" });
+  eq("on the camp page the camp is the last crumb",
+    campTrailOnly.map((c) => c.label), ["Dashboard", "Camps", "Dandia Night"]);
+  eq("...and is not a link to itself", campTrailOnly[2].href, undefined);
+  // WITH an id supplied and still no leaf -- the case that actually exercises
+  // the rule. The row above omitted campId, so it passed whatever the condition
+  // said; this one fails the moment the camp crumb links to the page you are
+  // already standing on.
+  eq("a camp crumb with an id but no leaf is STILL not a link",
+    crumbs.campTrail({ campId: "abc", campName: "Dandia Night" })[2].href, undefined);
+
+  // Built from one place, so the dashboard hop cannot go missing on one page
+  // and be present on another -- which is how it went missing the first time.
+  for (const f of [
+    "src/app/admin/camps/page.tsx",
+    "src/app/admin/camps/[id]/page.tsx",
+    "src/app/admin/camps/[id]/registrations/page.tsx",
+    "src/app/admin/camps/[id]/services/page.tsx",
+    "src/app/admin/camps/[id]/stations/page.tsx",
+    "src/app/admin/camps/[id]/volunteers/page.tsx",
+  ]) {
+    const src = read(f);
+    check(`${f} uses the shared trail`, src.includes("campTrail("));
+    check(`${f} has no hand-rolled back link`, !src.includes("← "));
+  }
+
   console.log(
     failures === 0
       ? "\nAll checks passed."

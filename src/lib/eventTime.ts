@@ -319,8 +319,25 @@ export function venueInputToInstant(value: string): Date | null {
  * Negative once the target is in the past; 0 means "today, at the venue".
  */
 export function venueDaysUntil(target: Date, now: Date = new Date()): number {
-  const day = (d: Date) => Date.parse(`${instantToVenueInput(d).slice(0, 10)}T00:00:00Z`);
+  const day = (d: Date) => Date.parse(`${venueDayKey(d)}T00:00:00Z`);
   return Math.round((day(target) - day(now)) / 86_400_000);
+}
+
+/**
+ * The calendar day an instant falls on AT THE VENUE, as `YYYY-MM-DD`.
+ *
+ * The bucketing key for anything counted per day. It must be the venue's day
+ * and not UTC: a 7pm sale in Flower Mound is `2026-10-10T00:00:00Z` +5h, which
+ * in UTC is already the 11th — so a UTC key moves an entire evening's takings
+ * onto the next day's bar, and the busiest hours of an event are exactly the
+ * ones it would move. Same defect formatWhen and formatVenueIso were each fixed
+ * for, in a third place.
+ *
+ * Extracted from venueDaysUntil, which computed it inline, so there is one
+ * definition rather than two that can drift.
+ */
+export function venueDayKey(instant: Date): string {
+  return instantToVenueInput(instant).slice(0, 10);
 }
 
 /**

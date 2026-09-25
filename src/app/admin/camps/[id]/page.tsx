@@ -12,6 +12,7 @@ import { CampControls } from "./CampControls";
 import { EditEventForm } from "./EditEventForm";
 import { EventFlags } from "./EventFlags";
 import { PublicDoors } from "./PublicDoors";
+import { Breadcrumbs, campTrail } from "@/app/_components/Breadcrumbs";
 
 export const dynamic = "force-dynamic";
 
@@ -58,16 +59,7 @@ export default async function CampDetailPage({
 
   return (
     <div className="space-y-6">
-      {/* inline-flex + min-h-tap: as a bare inline link this back-out measured
-          61×18 on a phone — the smallest target on the page, and the one a
-          coordinator reaches for most. Same fix, same reason, as the one on the
-          services sub-screen. */}
-      <Link
-        href="/admin/camps"
-        className="inline-flex min-h-tap items-center text-sm text-brand underline"
-      >
-        ← Camps
-      </Link>
+      <Breadcrumbs trail={campTrail({ campName: camp.name })} />
 
       <div>
         <div className="flex items-center justify-between">
