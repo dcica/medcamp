@@ -9,6 +9,8 @@ import { signResumeProof, verifyResumeProof } from "@/lib/checkoutResume";
 import { sendConfirmationEmail } from "@/lib/email";
 import { newCampId } from "@/lib/campId";
 import { log } from "@/lib/logger";
+import { eventSlug } from "@/lib/seo";
+import { parseGaCookie, sendPurchaseEvent } from "@/lib/ga";
 
 /**
  * The single PaymentService (locked decision #6). Every billable thing is a
@@ -311,6 +313,31 @@ export async function isKnownOrder(orderId: string): Promise<boolean> {
   return hit !== null;
 }
 
+/**
+ * The buyer's GA client id, read from their first-party `_ga` cookie, or null.
+ *
+ * ── WHY THE try/catch IS NOT DEFENSIVE CLUTTER ──
+ * `cookies()` from next/headers THROWS when there is no request context, and
+ * this code is reached from two places that have none: scripts/verify-checkout.ts
+ * calls straight into resumeCheckoutForOrder, and any future CLI/cron caller
+ * would too. An uncaught throw here would take down checkout in the verify suite
+ * and, worse, would mean an analytics nicety could fail a payment. Catching it
+ * yields null, which the caller treats as "nothing to record" — the same state
+ * as a buyer with no `_ga` cookie at all.
+ *
+ * next/headers is imported lazily rather than at module scope so that importing
+ * this module never depends on the Next runtime being present.
+ */
+async function readGaClientId(): Promise<string | null> {
+  try {
+    const { cookies } = await import("next/headers");
+    const jar = await cookies();
+    return parseGaCookie(jar.get("_ga")?.value ?? null);
+  } catch {
+    return null;
+  }
+}
+
 /** Mint the Stripe session and record its PENDING Payment row. Shared by create and resume. */
 async function openCheckoutSession(
   order: {
@@ -370,6 +397,30 @@ async function openCheckoutSession(
       stripeCheckoutId: session.id,
     },
   });
+
+  // ── Capture the GA client id HERE, and only here ──
+  //
+  // This is the one function every checkout path funnels through (create and
+  // resume both call it), so no server action can forget to do it — which is
+  // exactly what happened to `cancelled=` in the return URL: two producers, and
+  // the contract had to be centralised in buildCheckoutReturn before it stopped
+  // rotting. The GA client id has the same shape of problem.
+  //
+  // It must be read NOW because now is the only moment it is readable: the
+  // cookie belongs to the request that is about to redirect the buyer to
+  // Stripe. Confirmation happens later, usually in the Stripe webhook, which is
+  // a server-to-server POST carrying no cookies at all.
+  //
+  // Written only when non-null, never cleared: a resume that happens to run
+  // without a request scope (or from a browser that has since dropped the
+  // cookie) must not erase an id captured on the first attempt.
+  const gaClientId = await readGaClientId();
+  if (gaClientId) {
+    await db.order.update({
+      where: { id: order.id },
+      data: { gaClientId },
+    });
+  }
 
   if (!session.url) throw new Error("Stripe did not return a checkout URL.");
   return { id: session.id, url: session.url };
@@ -777,6 +828,7 @@ export async function confirmOrderPaid(
         registrantName: order.registrantName,
         eventName: order.event.name,
         confirmUrl: `${env.NEXT_PUBLIC_APP_URL}/confirm/${order.id}`,
+        walletBaseUrl: env.NEXT_PUBLIC_APP_URL,
         campIds: result.campIds,
         // A FEE-kind entry admits nobody, so the wording must not call the
         // code a ticket or promise it admits anyone. The entry URL is keyed on
@@ -810,6 +862,45 @@ export async function confirmOrderPaid(
         startsAt: order.event.startsAt,
         endsAt: order.event.endsAt,
         allowsRefunds: order.event.allowsRefunds,
+      });
+
+      // ── GA4 `purchase`, same guard, same side of the transaction ──
+      //
+      // Under `!alreadyConfirmed` because that is the atomic claim's "only the
+      // winner acts" gate: the Stripe webhook and the confirm page's
+      // synchronous verify both race to confirm one order, and exactly one of
+      // them gets past the claim. Hooking the webhook route instead would miss
+      // every sale the confirm page won, and hooking both would double-count —
+      // GA4 dedupes on transaction_id, but not reliably across sessions.
+      //
+      // Outside the transaction for the same reason the email is: a slow third
+      // party must not hold a DB lock on the money path. sendPurchaseEvent
+      // never throws, so a Google outage cannot fail or roll back a sale that
+      // has already been paid for.
+      //
+      // The line items are passed in FULL, service names included, and
+      // src/lib/ga.ts decides what may leave the process. That is deliberate:
+      // the No-PHI redaction is one allowlist in one place rather than a rule
+      // every future caller has to remember, and scripts/verify-checkout.ts §10
+      // asserts over the serialized payload that a camp's clinical service
+      // names do not survive it.
+      await sendPurchaseEvent({
+        // Null for a cash walk-in — the till volunteer's browser is not the
+        // buyer's — which suppresses the event rather than inventing a session.
+        // See buildPurchasePayload for why that is the right trade.
+        clientId: order.gaClientId,
+        orderId: order.id,
+        eventType: order.event.type,
+        // The same slug the /e/<slug> page_view carries, so a landing page can
+        // be joined to the sale it produced.
+        eventSlug: eventSlug(order.event),
+        paymentMethod: input.method,
+        lineItems: order.lineItems.map((li) => ({
+          name: li.serviceType?.name ?? li.description,
+          key: li.serviceType?.key ?? null,
+          amountCents: li.amountCents,
+          quantity: li.quantity,
+        })),
       });
     }
     return result;

@@ -43,17 +43,19 @@ export type StaffDestination = {
 };
 
 /**
- * Mirrors of the server guards, as of 2026-08-21:
+ * Mirrors of the server guards, as of 2026-09-20:
  *   /register            public
- *   /checkin             REGISTRATION_TILL, REGISTRATION_NO_TILL, STATION_VOLUNTEER
+ *   /scan                REGISTRATION_TILL, REGISTRATION_NO_TILL, STATION_VOLUNTEER, POS_TILL
+ *   /checkin/[campId]    REGISTRATION_TILL, REGISTRATION_NO_TILL, STATION_VOLUNTEER
  *   /station             STATION_VOLUNTEER, DOCTOR
- *   /gate                REGISTRATION_TILL, REGISTRATION_NO_TILL, STATION_VOLUNTEER, POS_TILL
+ *   /gate, /checkin      redirect to /scan (no guard of their own, on purpose)
  *   /dashboard           COORDINATOR, COMMITTEE_ADMIN
  *   /volunteers          COORDINATOR, COMMITTEE_ADMIN, VOLUNTEER_COORDINATOR
  *   /volunteer/checkin   VOLUNTEER_COORDINATOR, COMMITTEE_ADMIN, STATION_VOLUNTEER
  *   /admin, /admin/camps, /admin/performances, /admin/services
  *                        COORDINATOR, COMMITTEE_ADMIN (requireAdmin)
- *   /admin/members, /admin/membership, /admin/email, /admin/settings
+ *   /admin/members, /admin/membership, /admin/email, /admin/settings,
+ *   /admin/errors
  *                        COORDINATOR only (requireCoordinator)
  */
 export const STAFF_DESTINATIONS: StaffDestination[] = [
@@ -83,15 +85,11 @@ export const STAFF_DESTINATIONS: StaffDestination[] = [
     group: "work",
   },
   {
-    href: "/checkin",
-    name: "Check in",
-    roles: ["REGISTRATION_TILL", "REGISTRATION_NO_TILL", "STATION_VOLUNTEER"],
-    group: "work",
-  },
-  {
-    // Absent from the old menu entirely, despite four roles being able to use it.
-    href: "/gate",
-    name: "Gate",
+    href: "/scan",
+    name: "Scan",
+    // The union of the two rows this replaces. /checkin's three roles plus
+    // POS_TILL, which could always staff a door. Narrower guards still apply
+    // further in: the camp back-half keeps CHECKIN_ROLES on its own route.
     roles: ["REGISTRATION_TILL", "REGISTRATION_NO_TILL", "STATION_VOLUNTEER", "POS_TILL"],
     group: "work",
   },
@@ -126,6 +124,9 @@ export const STAFF_DESTINATIONS: StaffDestination[] = [
   { href: "/admin/membership", name: "Membership", roles: [], group: "admin" },
   { href: "/admin/email", name: "Email", roles: [], group: "admin" },
   { href: "/admin/settings", name: "Settings", roles: [], group: "admin" },
+  // roles: [] means coordinator-only, per the note above. Rows carry
+  // scrubbed field data and stack traces.
+  { href: "/admin/errors", name: "Errors", roles: [], group: "admin" },
 ];
 
 /**
@@ -160,7 +161,7 @@ export function landingRouteFor(role: Role): string {
     case "DOCTOR":
       return "/station";
     case "POS_TILL":
-      return "/gate";
+      return "/scan";
     case "VOLUNTEER_COORDINATOR":
       return "/volunteers";
   }

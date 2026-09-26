@@ -282,6 +282,174 @@ async function main() {
       data.collectedCents,
   );
 
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§9 purchases per day, on the venue's calendar");
+  // The dashboard chart reads the SAME two definitions this file exists to pin,
+  // rather than inventing a third. A screen that disagrees with the
+  // registrations page about what was collected is worse than either alone.
+  const dash = await import("../src/server/dashboard");
+  const { venueDayKey } = await import("../src/lib/eventTime");
+
+  const series = await dash.getDailySales(org.id, 7);
+  check("one bucket per day, quiet days included", series.length === 7,
+    String(series.length));
+  // A chart that silently drops empty days compresses its own axis, so a gap in
+  // trading reads as activity.
+  const expectDays = Array.from({ length: 7 }, (_, i) =>
+    venueDayKey(new Date(Date.now() - (6 - i) * 86_400_000)),
+  ).join(",");
+  check("the buckets are consecutive venue days",
+    series.map((d) => d.day).join(",") === expectDays);
+  check("every bucket is a YYYY-MM-DD venue day",
+    series.every((d) => /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(d.day)));
+
+  // THE VENUE-DAY ROW, and it is deliberately NOT expressed in terms of
+  // venueDayKey on both sides -- an earlier version built its expectation with
+  // the same function it was testing, so swapping the implementation for
+  // toISOString moved both sides together and the row passed a broken build.
+  // A fixed instant with a known answer is the only version that can fail.
+  //
+  // 02:00Z on Oct 11 is 9pm on Oct 10 in Flower Mound (CDT, -5). An evening
+  // sale is already tomorrow in UTC, so a UTC key moves the busiest hours of an
+  // event onto the next day's bar.
+  const eveningSale = new Date("2026-10-11T02:00:00Z");
+  check("a 9pm sale buckets on the VENUE's day",
+    venueDayKey(eveningSale) === "2026-10-10", venueDayKey(eveningSale));
+  check("...and UTC would have put it on the next day",
+    eveningSale.toISOString().slice(0, 10) === "2026-10-11");
+  check("nothing is negative",
+    series.every((d) => d.units >= 0 && d.cents >= 0));
+
+  // THE ROW THAT KEEPS THE TWO SCREENS HONEST. Chart money must be SUCCEEDED
+  // payments -- the same rule as collectedCents -- never Payment rows and never
+  // order totals. A PENDING payment is a Stripe session somebody opened, which
+  // is the same class of mistake as counting an abandoned cart.
+  const windowStart = venueDayKey(new Date(Date.now() - 6 * 86_400_000));
+  const allPayments = await db.payment.findMany({
+    where: { order: { orgId: org.id } },
+    select: { amountCents: true, createdAt: true, status: true },
+  });
+  const inWindow = allPayments.filter(
+    (pay) => venueDayKey(pay.createdAt) >= windowStart,
+  );
+  const expectCents = inWindow
+    .filter((pay) => pay.status === "SUCCEEDED")
+    .reduce((n, pay) => n + pay.amountCents, 0);
+  check("chart money is SUCCEEDED payments, matching the registrations page",
+    series.reduce((n, d) => n + d.cents, 0) === expectCents,
+    `chart ${series.reduce((n, d) => n + d.cents, 0)} vs ${expectCents}`);
+  // ...and the fixture actually contains a non-SUCCEEDED payment, so the row
+  // above could fail if the filter were dropped.
+  check("there is a non-SUCCEEDED payment in range to get this wrong with",
+    inWindow.some((pay) => pay.status !== "SUCCEEDED"));
+
+  // Units are QUANTITIES, not rows: a five-stick line is one row worth five.
+  const paidLines = await db.lineItem.findMany({
+    where: { status: "PAID", order: { orgId: org.id } },
+    select: { quantity: true, isDonation: true },
+  });
+  check("a quantity>1 line exists, so summing rows would read differently",
+    paidLines.some((l) => l.quantity > 1));
+  // A donation is money, not a thing anybody bought, so it moves the money bar
+  // and must not move the unit bar.
+  check("a donation line exists, so excluding it is observable",
+    paidLines.some((l) => l.isDonation));
+  check("units are a non-negative integer count",
+    series.every((d) => Number.isInteger(d.units) && d.units >= 0));
+
+  // THE UNIT ROW. Counted from the same orders the money came from, so the two
+  // bars describe one set of purchases: quantity summed, donations dropped.
+  const paidInWindow = await db.payment.findMany({
+    where: { status: "SUCCEEDED", order: { orgId: org.id } },
+    select: { createdAt: true, orderId: true },
+    orderBy: { createdAt: "asc" },
+  });
+  const orderIds = [
+    ...new Set(
+      paidInWindow
+        .filter((pay) => venueDayKey(pay.createdAt) >= windowStart)
+        .map((pay) => pay.orderId)
+        .filter((id): id is string => id !== null),
+    ),
+  ];
+  const windowLines = await db.lineItem.findMany({
+    where: { status: "PAID", orderId: { in: orderIds } },
+    select: { quantity: true, isDonation: true },
+  });
+  const expectUnits = windowLines
+    .filter((l) => !l.isDonation)
+    .reduce((n, l) => n + l.quantity, 0);
+  check("units are PAID quantity with donations excluded",
+    series.reduce((n, d) => n + d.units, 0) === expectUnits,
+    `chart ${series.reduce((n, d) => n + d.units, 0)} vs ${expectUnits}`);
+  // Folding donations in would change the number, which is what makes the
+  // exclusion a real rule rather than a comment.
+  const withDonations = windowLines.reduce((n, l) => n + l.quantity, 0);
+  check("...and counting them would have read differently",
+    withDonations !== expectUnits, `${withDonations} vs ${expectUnits}`);
+
+  // CLOSED EVENTS ARE NOT CURRENT TRADE. The chart answers "is anything selling
+  // right now", so a camp that finished last week must not keep its bars on it
+  // for another fortnight and read as today's business.
+  const closedEvent = await db.event.create({
+    data: {
+      orgId: org.id, type: "GENERAL", status: "CLOSED", code: "VR-CLOSED",
+      name: "Finished Event", startsAt: new Date(Date.now() - 3 * 86_400_000),
+      endsAt: new Date(Date.now() - 3 * 86_400_000 + 3_600_000),
+    },
+  });
+  const closedOrder = await db.order.create({
+    data: {
+      orgId: org.id, eventId: closedEvent.id, status: "CONFIRMED", method: "CASH",
+      registrantName: "Past Buyer", registrantEmail: "past@example.test",
+      registrantPhone: "555-0199",
+      lineItems: {
+        create: [{
+          orgId: org.id, description: "Old ticket",
+          amountCents: 4242, quantity: 3, status: "PAID",
+        }],
+      },
+      payments: {
+        create: [{
+          orgId: org.id, status: "SUCCEEDED", method: "CASH",
+          amountCents: 12726, createdAt: new Date(Date.now() - 86_400_000),
+        }],
+      },
+    },
+  });
+
+  const afterClose = await dash.getDailySales(org.id, 7);
+  check("a CLOSED event's sale is not on the chart",
+    afterClose.reduce((n, d) => n + d.cents, 0) === expectCents,
+    `${afterClose.reduce((n, d) => n + d.cents, 0)} vs ${expectCents}`);
+  check("...nor are its units",
+    afterClose.reduce((n, d) => n + d.units, 0) === expectUnits);
+
+  // The same sale on an OPEN event IS current trade — otherwise the row above
+  // would pass for an unrelated reason (a filter that excludes everything).
+  await db.event.update({
+    where: { id: closedEvent.id }, data: { status: "OPEN" },
+  });
+  const afterOpen = await dash.getDailySales(org.id, 7);
+  check("...but the identical sale on an OPEN event IS counted",
+    afterOpen.reduce((n, d) => n + d.cents, 0) === expectCents + 12726,
+    `${afterOpen.reduce((n, d) => n + d.cents, 0)} vs ${expectCents + 12726}`);
+  check("...including its units", 
+    afterOpen.reduce((n, d) => n + d.units, 0) === expectUnits + 3);
+
+  // PURGED is a closed event further along the retention path, and money rows
+  // outlive the PII purge — so it must be excluded too, not just CLOSED.
+  await db.event.update({
+    where: { id: closedEvent.id }, data: { status: "PURGED" },
+  });
+  const afterPurge = await dash.getDailySales(org.id, 7);
+  check("a PURGED event is excluded as well",
+    afterPurge.reduce((n, d) => n + d.cents, 0) === expectCents);
+
+  await db.payment.deleteMany({ where: { orderId: closedOrder.id } });
+  await db.event.delete({ where: { id: closedEvent.id } });
+
+
   await cleanup(org.id);
 }
 

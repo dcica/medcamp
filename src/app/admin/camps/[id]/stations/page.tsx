@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { StationsManager } from "./StationsManager";
+import { Breadcrumbs, campTrail } from "@/app/_components/Breadcrumbs";
 
 export const dynamic = "force-dynamic";
 
@@ -30,9 +31,11 @@ export default async function CampStationsPage({
   return (
     <div className="space-y-5">
       <div>
-        <Link href={`/admin/camps/${id}`} className="text-sm text-brand underline">
-          ← {camp.name}
-        </Link>
+        {/* inline-flex + min-h-tap, matching the other sub-screens: as a bare
+            inline link this back-out measured 243×18 on a phone. */}
+        <Breadcrumbs
+          trail={campTrail({ campId: id, campName: camp.name, leaf: "Stations" })}
+        />
         <h2 className="mt-2 text-lg font-bold">Stations</h2>
         <p className="text-xs text-gray-500">
           Order is the default route applied to each attendee at confirmation.

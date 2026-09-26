@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { QrScanner } from "@/app/checkin/QrScanner";
+import { QrScanner } from "@/app/_components/QrScanner";
 
 /**
  * Volunteer sign in/out station (phone-first). Staff scan the volunteer's

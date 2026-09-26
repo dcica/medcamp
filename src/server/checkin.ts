@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
 import { normalizeCampId } from "@/lib/campId";
+import { PAYMENT_UNCONFIRMED, WAIVER_REQUIRED } from "@/lib/scanVerdict";
 
 /**
  * Check-in service (Module 2). All reads/writes are scoped to the active org
@@ -68,7 +69,11 @@ export type BadgeData = {
 export async function getBadge(rawCampId: string): Promise<BadgeData | null> {
   const org = await getActiveOrg();
   if (!org) return null;
-  const campId = rawCampId.trim().toUpperCase();
+  // normalizeCampId, NOT trim().toUpperCase(). The read path
+  // (getAttendeeForCheckin) already decodes Crockford confusables, so typing
+  // O for 0 used to let a volunteer VIEW an attendee and then fail to print
+  // their badge — the same id resolving on one screen and not the next.
+  const campId = normalizeCampId(rawCampId);
 
   const attendee = await db.attendee.findFirst({
     where: { orgId: org.id, campId },
@@ -98,7 +103,10 @@ export async function getBadge(rawCampId: string): Promise<BadgeData | null> {
 async function findAttendeeOrThrow(campId: string) {
   const org = await getActiveOrg();
   if (!org) throw new Error("No active organization.");
-  const normalized = campId.trim().toUpperCase();
+  // Must match getAttendeeForCheckin exactly: this backs signWaiver and
+  // checkInAttendee, so a looser rule here means an attendee you can see but
+  // cannot check in.
+  const normalized = normalizeCampId(campId);
   const attendee = await db.attendee.findFirst({
     where: { orgId: org.id, campId: normalized },
     include: { order: true },
@@ -122,22 +130,37 @@ export async function signWaiver(campId: string): Promise<void> {
  * Stamps checkedInAt and closes the "checkin" station visit so the route can
  * advance (Module 3 drives the rest). Idempotent — re-checking-in is a no-op.
  */
-export async function checkInAttendee(campId: string): Promise<void> {
+/**
+ * What one check-in attempt actually DID. Mirrors AdmitResult at the gate, and
+ * exists for the same reason: the desk has to tell "I just checked them in"
+ * apart from "someone already did", because only the first means print a badge.
+ */
+export type CheckinResult =
+  | { state: "checkedIn"; at: Date }
+  | { state: "already"; at: Date };
+
+export async function checkInAttendee(campId: string): Promise<CheckinResult> {
   const attendee = await findAttendeeOrThrow(campId);
 
-  if (attendee.checkedInAt) return; // already checked in
+  // Reported, not thrown -- see AdmitResult in src/server/gate.ts. The same
+  // early return as before, so a second call still writes nothing, still moves
+  // no headcount, and still reports the ORIGINAL time rather than now.
+  if (attendee.checkedInAt) {
+    return { state: "already", at: attendee.checkedInAt };
+  }
 
   if (attendee.order.status !== "CONFIRMED") {
-    throw new Error("Payment not confirmed — send to registration desk.");
+    throw new Error(PAYMENT_UNCONFIRMED);
   }
   if (!attendee.waiverSigned) {
-    throw new Error("Waiver must be signed before check-in.");
+    throw new Error(WAIVER_REQUIRED);
   }
 
+  const at = new Date();
   await db.$transaction(async (tx) => {
     await tx.attendee.update({
       where: { id: attendee.id },
-      data: { checkedInAt: new Date() },
+      data: { checkedInAt: at },
     });
     // Close the check-in station visit (route advances from here).
     await tx.stationVisit.updateMany({
@@ -145,7 +168,8 @@ export async function checkInAttendee(campId: string): Promise<void> {
         attendeeId: attendee.id,
         station: { key: "checkin" },
       },
-      data: { status: "DONE", doneAt: new Date() },
+      data: { status: "DONE", doneAt: at },
     });
   });
+  return { state: "checkedIn", at };
 }

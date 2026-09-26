@@ -2,20 +2,13 @@ import Link from "next/link";
 import { requireAdmin } from "@/server/admin";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
-import { VENUE_TIME_ZONE } from "@/lib/eventTime";
+import { formatVenueDate } from "@/lib/eventTime";
+import { STATUS_STYLE } from "@/lib/eventLifecycle";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { CreateCampForm } from "./CreateCampForm";
+import { Breadcrumbs, campTrail } from "@/app/_components/Breadcrumbs";
 
 export const dynamic = "force-dynamic";
-
-const STATUS_STYLE: Record<string, string> = {
-  DRAFT: "bg-gray-100 text-gray-600",
-  OPEN: "bg-green-100 text-green-700",
-  ACTIVE: "bg-blue-100 text-blue-700",
-  CLOSED: "bg-amber-100 text-amber-700",
-  PURGEABLE: "bg-orange-100 text-orange-700",
-  PURGED: "bg-gray-200 text-gray-500",
-};
 
 export default async function CampsPage() {
   await requireAdmin();
@@ -33,6 +26,10 @@ export default async function CampsPage() {
 
   return (
     <div className="space-y-5">
+      {/* This page had NO route back to the dashboard. Following
+          dashboard -> camp -> registrations and stepping back landed here
+          and stopped, one page short of where the trail started. */}
+      <Breadcrumbs trail={campTrail({})} />
       <PageHelp
         id="admin-camps"
         items={[
@@ -65,11 +62,11 @@ export default async function CampsPage() {
               </div>
               <div className="mt-1 text-xs text-gray-500">
                 {/* Venue day — an admin list must agree with the public page
-                    and the flyer about what date an event is on. */}
-                {c.code} ·{" "}
-                {c.startsAt.toLocaleDateString(undefined, {
-                  timeZone: VENUE_TIME_ZONE,
-                })}
+                    and the flyer about what date an event is on. Through the
+                    shared helper, not an inline `toLocaleDateString`: this row
+                    printed `3/14/2026` while the admin overview one tap away
+                    printed `Sep 19, 2026` for the same kind of row. */}
+                {c.code} · {formatVenueDate(c.startsAt)}
               </div>
             </Link>
           </li>

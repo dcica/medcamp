@@ -32,6 +32,9 @@
  *   §7  key the resume action on IP alone             → per-order bucket row fails
  *   §8  return early instead of setting a no-draft baseline → tab-loss row fails
  *   §9  drop the isKnownOrder guard from the webhook       → foreign-order row fails
+ *   §10 add "CAMP" to DETAIL_ALLOWED in src/lib/ga.ts     → every No-PHI row fails
+ *   §10 make toDollars return Math.round(cents)           → dollars/cents rows fail
+ *   §10 delete `if (!input.clientId) return null`          → cash-walk-in rows fail
  */
 import * as dotenv from "dotenv";
 import { readFileSync } from "node:fs";
@@ -490,6 +493,260 @@ async function main() {
   check("…and answers 200 for a foreign order, never a 5xx",
     /order not in this deployment/.test(hookSrc) &&
       !/order not in this deployment[\s\S]{0,200}status:\s*5/.test(hookSrc));
+
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log("\n§10 the GA4 purchase event reports money without reporting medicine");
+
+  // THE ROW THIS SECTION EXISTS FOR is the first one below.
+  //
+  // A camp's ServiceType.name values are real clinical service names — "Vision
+  // Screening", "Dental Check", "Bloodwork" (prisma/seed.ts). Sending those as
+  // GA4 item names would pin a per-visitor record of which health services a
+  // person bought to a persistent Google client_id: a breach of the platform's
+  // No-PHI/HIT constraint, a contradiction of the promise already published in
+  // docs/Privacy-Policy.md that no registration or payment data reaches
+  // Analytics, and a violation of Google's own prohibition on health data that
+  // can get a tenant's property terminated.
+  //
+  // Nothing at runtime would go red if that broke. The payload would send, GA4
+  // would accept it, revenue would look right, and the leak would be visible
+  // only inside Google's UI. So the assertion is made over the FULLY SERIALIZED
+  // payload — the actual bytes — rather than over the items array, because a
+  // service name smuggled into item_id, item_category, a param name, or a field
+  // added later must fail this too.
+  const ga = await import("../src/lib/ga");
+
+  const CAMP_LINES = [
+    { name: "Vision Screening", key: "vision", amountCents: 2500, quantity: 1 },
+    { name: "Bloodwork", key: "bloodwork", amountCents: 1999, quantity: 3 },
+  ];
+  const campPayload = ga.buildPurchasePayload({
+    clientId: "1234567890.1700000000",
+    orderId: "ord_camp",
+    eventType: "CAMP",
+    eventSlug: "winter-camp-mc-2026w",
+    paymentMethod: "STRIPE",
+    lineItems: CAMP_LINES,
+  });
+  const campJson = JSON.stringify(campPayload);
+  for (const forbidden of ["Vision Screening", "Bloodwork", "vision", "bloodwork"]) {
+    check(
+      `a CAMP payload contains no trace of "${forbidden}"`,
+      !campJson.includes(forbidden),
+      campPayload?.events[0].params.items.map((i) => i.item_name).join("|"),
+    );
+  }
+  check(
+    "…because the whole order collapses to ONE generic line",
+    campPayload?.events[0].params.items.length === 1,
+  );
+  check(
+    "…named for the registration, not the service",
+    campPayload?.events[0].params.items[0].item_name === ga.REDACTED_ITEM_NAME,
+  );
+  check(
+    "…still carrying the total unit count, so item volume is not lost",
+    campPayload?.events[0].params.items[0].quantity === 4,
+    String(campPayload?.events[0].params.items[0].quantity),
+  );
+
+  // Fail closed. CAMP is not the only redacted case: an event type that is
+  // absent, null, or an enum member added after this file was written must
+  // redact too, so adding a fourth EventType cannot leak by omission. The
+  // allowlist direction is the whole safety property.
+  for (const [label, type] of [
+    ["null", null],
+    ["undefined", undefined],
+    ["an unrecognised enum member", "SOME_FUTURE_TYPE"],
+    ["lower-case camp (not a real member)", "camp"],
+  ] as const) {
+    const p = ga.buildPurchasePayload({
+      clientId: "1.2",
+      orderId: "ord_x",
+      eventType: type,
+      eventSlug: null,
+      paymentMethod: "CASH",
+      lineItems: CAMP_LINES,
+    });
+    check(
+      `${label} as an event type redacts as if it were CAMP`,
+      !JSON.stringify(p).includes("Bloodwork") &&
+        p?.events[0].params.items.length === 1,
+    );
+  }
+
+  // The other half of the property: the redaction must be CONDITIONAL. A
+  // blanket "never send item names" would pass every row above while quietly
+  // destroying the merchandise and membership reporting this change exists to
+  // create, and nothing would notice.
+  const generalPayload = ga.buildPurchasePayload({
+    clientId: "1234567890.1700000000",
+    orderId: "ord_general",
+    eventType: "GENERAL",
+    eventSlug: "dandiya-night-dn-2026",
+    paymentMethod: "STRIPE",
+    lineItems: [
+      { name: "Garba Pass", key: "garba-pass", amountCents: 2500, quantity: 2 },
+      { name: "Dandiya Sticks", key: "sticks", amountCents: 500, quantity: 1 },
+    ],
+  });
+  const generalJson = JSON.stringify(generalPayload);
+  check("a GENERAL payload DOES name its items", generalJson.includes("Garba Pass"));
+  check("…all of them, not just the first", generalJson.includes("Dandiya Sticks"));
+  check("…one item per line", generalPayload?.events[0].params.items.length === 2);
+  check(
+    "…with per-unit prices in dollars and the real quantities",
+    generalPayload?.events[0].params.items[0].price === 25 &&
+      generalPayload?.events[0].params.items[0].quantity === 2,
+  );
+  const memberPayload = ga.buildPurchasePayload({
+    clientId: "1.2",
+    orderId: "ord_mem",
+    eventType: "MEMBERSHIP_DRIVE",
+    eventSlug: null,
+    paymentMethod: "CHECK",
+    lineItems: [{ name: "Family 2-year", key: "family-2yr", amountCents: 10000, quantity: 1 }],
+  });
+  check(
+    "a MEMBERSHIP_DRIVE payload names its terms too",
+    JSON.stringify(memberPayload).includes("Family 2-year"),
+  );
+
+  // Cents → dollars. The DB stores integer cents; GA4 reads `value` as a
+  // decimal currency amount, so shipping cents would inflate every reported
+  // sale by 100× and make the conversion-value numbers worse than absent.
+  // 2500×1 + 1999×3 = 8497 cents.
+  check(
+    "value is DOLLARS, not cents",
+    campPayload?.events[0].params.value === 84.97,
+    String(campPayload?.events[0].params.value),
+  );
+  check("currency is stated explicitly", campPayload?.events[0].params.currency === "USD");
+  check(
+    "transaction_id is the order id — GA4's dedupe key, so the webhook and the confirm page cannot double-count",
+    campPayload?.events[0].params.transaction_id === "ord_camp",
+  );
+  check("the event is named purchase", campPayload?.events[0].name === "purchase");
+  check(
+    "the custom dimensions are all present",
+    campPayload?.events[0].params.event_slug === "winter-camp-mc-2026w" &&
+      campPayload?.events[0].params.event_kind === "CAMP" &&
+      campPayload?.events[0].params.payment_method === "STRIPE",
+  );
+  check(
+    "a quantity-aware line total is amountCents × quantity",
+    ga.buildPurchasePayload({
+      clientId: "1.2",
+      orderId: "o",
+      eventType: "GENERAL",
+      eventSlug: null,
+      paymentMethod: "CASH",
+      lineItems: [{ name: "Pass", amountCents: 1000, quantity: 5 }],
+    })?.events[0].params.value === 50,
+  );
+
+  // A cash walk-in has no web session of their own — the till volunteer's
+  // browser is not the buyer's — so there is no client_id and NO event is sent.
+  // Synthesizing one would invent phantom Direct traffic and pin a morning's
+  // worth of sales on one "visitor", corrupting the channel attribution this is
+  // all for. Reconciliation, not GA, is the source of truth for money.
+  for (const [label, id] of [
+    ["a null", null],
+    ["an empty-string", ""],
+  ] as const) {
+    check(
+      `${label} client id produces NO payload at all`,
+      ga.buildPurchasePayload({
+        clientId: id,
+        orderId: "ord_cash",
+        eventType: "GENERAL",
+        eventSlug: null,
+        paymentMethod: "CASH",
+        lineItems: CAMP_LINES,
+      }) === null,
+    );
+  }
+  // …and the sender agrees, without touching the network. Either skip reason is
+  // acceptable — which one you get depends on whether the ambient .env happens
+  // to configure GA — but neither may be a request.
+  const sendResult = await ga.sendPurchaseEvent({
+    clientId: null,
+    orderId: "ord_cash",
+    eventType: "GENERAL",
+    eventSlug: null,
+    paymentMethod: "CASH",
+    lineItems: CAMP_LINES,
+  });
+  check(
+    "sendPurchaseEvent skips a null client id rather than posting",
+    sendResult === "skipped-no-client-id" || sendResult === "skipped-unconfigured",
+    sendResult,
+  );
+
+  // Both halves required, default off: this is open-source software a stranger
+  // self-hosts, and nobody may be made to configure Google anything to take a
+  // payment. The measurement id alone is worse than nothing — the Measurement
+  // Protocol discards a request with no api_secret, which looks exactly like
+  // analytics that works.
+  check("configured needs BOTH the id and the secret", ga.gaConfigured("G-ABC123", "s") === true);
+  check("…an id with no secret is not configured", ga.gaConfigured("G-ABC123", undefined) === false);
+  check("…a secret with no id is not configured", ga.gaConfigured(undefined, "s") === false);
+  check("…and neither is nothing at all", ga.gaConfigured(undefined, undefined) === false);
+
+  // The client id is the `<a>.<b>` TAIL of the `_ga` cookie, not the cookie.
+  // Sending "GA1.1.123.456" attributes the event to nothing at all, silently.
+  check("the _ga cookie yields its client id tail", ga.parseGaCookie("GA1.1.123.456") === "123.456");
+  check("…including an older domain-depth digit", ga.parseGaCookie("GA1.2.987.654") === "987.654");
+  check("a malformed cookie yields null, not a garbage id", ga.parseGaCookie("GA1.1.123") === null);
+  check("an empty cookie yields null", ga.parseGaCookie("") === null);
+  check("a missing cookie yields null", ga.parseGaCookie(undefined) === null);
+
+  // The column exists and is nullable — the additive-first half of this change.
+  // Prisma SELECTs every declared column, so had the migration not landed
+  // before the field was declared, every read of `orders` above would already
+  // have faulted with P2022 (the /register outage of 2026-08-21).
+  const gaOrder = await makeOrder("PENDING", []);
+  check(
+    "Order.gaClientId defaults to null, which is a permanent legitimate value",
+    (await db.order.findUniqueOrThrow({ where: { id: gaOrder } })).gaClientId === null,
+  );
+  await db.order.update({ where: { id: gaOrder }, data: { gaClientId: "111.222" } });
+  check(
+    "…and round-trips when a web checkout did capture one",
+    (await db.order.findUniqueOrThrow({ where: { id: gaOrder } })).gaClientId === "111.222",
+  );
+
+  // Structural, same reasoning as §7 and §9: the pure function above cannot
+  // prove the money path CALLS it, and it certainly cannot prove where. Both
+  // properties below are invisible at runtime if broken — the first would
+  // double-count every sale the confirm page and the webhook both reach, the
+  // second would put a Google round-trip inside the confirmation transaction,
+  // where a slow endpoint holds a DB lock on the money path.
+  const paySrc = readFileSync("src/server/payments.ts", "utf8");
+  const sendAt = paySrc.indexOf("sendPurchaseEvent({");
+  const guardAt = paySrc.indexOf("if (!result.alreadyConfirmed)");
+  const thenAt = paySrc.indexOf(".then(async (result)");
+  check("confirmOrderPaid sends the purchase event", sendAt > 0);
+  check(
+    "…exactly once, so there is one hook and not two",
+    paySrc.split("sendPurchaseEvent({").length - 1 === 1,
+  );
+  check(
+    "…under the same !alreadyConfirmed guard as the email, so only the winner of the atomic claim reports",
+    guardAt > 0 && sendAt > guardAt,
+  );
+  check(
+    "…and outside the transaction, so Google cannot hold a DB lock",
+    thenAt > 0 && sendAt > thenAt,
+  );
+  check(
+    "the client id is captured in openCheckoutSession — the one path every checkout takes",
+    /async function openCheckoutSession[\s\S]*?readGaClientId\(\)[\s\S]*?\n\}/.test(paySrc),
+  );
+  check(
+    "…and a missing request context yields null rather than throwing on the money path",
+    /catch \{\s*return null;\s*\}\s*\}\s*\n\s*\/\*\* Mint the Stripe session/.test(paySrc),
+  );
 
   await cleanup(org.id);
 }

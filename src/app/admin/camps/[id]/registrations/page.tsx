@@ -6,6 +6,7 @@ import { getActiveOrg } from "@/lib/tenant";
 import { formatCents } from "@/lib/money";
 import { VENUE_TIME_ZONE } from "@/lib/eventTime";
 import { getEventRegistrations } from "@/server/registrations";
+import { Breadcrumbs, campTrail } from "@/app/_components/Breadcrumbs";
 
 export const dynamic = "force-dynamic";
 
@@ -44,12 +45,13 @@ export default async function EventRegistrationsPage({
       <div>
         {/* inline-flex + min-h-tap, matching the other sub-screens: as a bare
             inline link this back-out is an 18px target on a phone. */}
-        <Link
-          href={`/admin/camps/${event.id}`}
-          className="inline-flex min-h-tap items-center text-sm text-brand underline"
-        >
-          ← {event.name}
-        </Link>
+        <Breadcrumbs
+          trail={campTrail({
+            campId: event.id,
+            campName: event.name,
+            leaf: "Registrations",
+          })}
+        />
         <h2 className="mt-2 text-lg font-bold">Registrations &amp; sales</h2>
         <p className="text-xs text-gray-500">
           Confirmed payments only. A registration counts once payment is

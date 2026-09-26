@@ -29,6 +29,14 @@ export type ConfirmationEmail = {
   registrantName: string;
   eventName: string;
   confirmUrl: string;
+  /**
+   * Origin for per-ticket wallet links (`<base>/t/<campId>`).
+   *
+   * Separate from confirmUrl because that one is an ORDER url keyed on a
+   * cuid; a wallet link is keyed on the campId, which is a 40-bit CSPRNG
+   * token and therefore safe to be the thing someone forwards.
+   */
+  walletBaseUrl: string;
   campIds: string[];
   /** Everything bought on this order, for the PAID block. */
   lineItems: ConfirmationLine[];
@@ -136,20 +144,48 @@ function heading(text: string): string {
   return `<div style="font:600 13px/1.4 ${FONT};letter-spacing:.08em;text-transform:uppercase;color:${MUTED};padding:0 0 8px 0;">${esc(text)}</div>`;
 }
 
-function ticketBlock(campId: string, index: number): string {
+/**
+ * One ticket, isolated so ONLY ONE can be in a camera frame at a time.
+ *
+ * The problem this solves is physical, not aesthetic. A party of five used to
+ * get five 220px QR codes stacked 12px apart; a phone held under a gate scanner
+ * then shows two at once and the camera takes whichever it decodes first. The
+ * station latches onto the wrong attendee, the volunteer acts on it, and the
+ * right person reads ALREADY IN later.
+ *
+ * The spacer row below is the whole fix, and it has to be a table row with an
+ * explicit height: email clients strip `<style>`, ignore viewport units, and
+ * drop most margins. `page-break-inside: avoid` keeps a printed sheet from
+ * breaking THROUGH a code rather than between two.
+ */
+function ticketBlock(
+  campId: string,
+  index: number,
+  total: number,
+  walletUrl: string,
+): string {
   const cid = qrCid(campId, index);
+  const ordinal = total > 1 ? `Ticket ${index + 1} of ${total}` : "Your ticket";
+  // Isolation only needs to come BETWEEN tickets, so the last one does not
+  // leave a stretch of blank paper under it.
+  const spacer =
+    index < total - 1
+      ? `<tr><td height="260" style="height:260px;line-height:260px;font-size:0;">&nbsp;</td></tr>`
+      : "";
   return `
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;border:1px solid ${RULE};background:#ffffff;margin:0 0 12px 0;">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;border:1px solid ${RULE};background:#ffffff;margin:0 0 12px 0;page-break-inside:avoid;">
   <tr>
     <td style="background:${SAFFRON};color:${INK};font:700 18px/1.3 ${FONT};padding:10px 16px;letter-spacing:.04em;">${esc(campId)}</td>
   </tr>
   <tr>
     <td align="center" style="padding:16px;">
+      <div style="font:600 13px/1.4 ${FONT};letter-spacing:.06em;text-transform:uppercase;color:${MUTED};padding:0 0 10px 0;">${esc(ordinal)}</div>
       <img src="cid:${esc(cid)}" width="220" height="220" alt="QR code for ticket ${esc(campId)}" style="display:block;width:220px;height:220px;border:0;outline:none;" />
       <div style="font:400 13px/1.5 ${FONT};color:${MUTED};padding:10px 0 0 0;">Show this at the gate. It works with no signal.</div>
+      <div style="font:400 13px/1.5 ${FONT};padding:6px 0 0 0;"><a href="${esc(walletUrl)}" style="color:${NAVY};">Open just this ticket</a></div>
     </td>
   </tr>
-</table>`;
+</table>${spacer}`;
 }
 
 function paidBlock(msg: ConfirmationEmail): string {
@@ -196,7 +232,10 @@ function merchBlock(msg: ConfirmationEmail): string {
 export function confirmationHtml(msg: ConfirmationEmail): string {
   const headcount = msg.campIds.length;
   const entry = msg.performanceEntry;
-  const tickets = msg.campIds.map((id, i) => ticketBlock(id, i)).join("");
+  const wallet = (id: string) => `${msg.walletBaseUrl}/t/${encodeURIComponent(id)}`;
+  const tickets = msg.campIds
+    .map((id, i) => ticketBlock(id, i, msg.campIds.length, wallet(id)))
+    .join("");
   // The venue timezone helper, not a bare Intl call: an email that states a
   // different time from the website is the defect Task G4 just fixed, coming
   // back in a channel nobody re-checks.
@@ -223,6 +262,16 @@ export function confirmationHtml(msg: ConfirmationEmail): string {
     ${heading(
       entry ? "Your entry code" : headcount === 1 ? "Your ticket" : `Your ${headcount} tickets`,
     )}
+    ${
+      msg.campIds.length > 0
+        ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;margin:0 0 16px 0;">
+  <tr><td align="center" style="background:${NAVY};padding:14px 16px;">
+    <a href="${esc(wallet(msg.campIds[0]))}" style="font:700 16px/1.3 ${FONT};color:#ffffff;text-decoration:none;display:block;">Open your tickets &rarr;</a>
+    <div style="font:400 13px/1.5 ${FONT};color:#cfe0dd;padding:4px 0 0 0;">One at a time, and it shows which have been used.</div>
+  </td></tr>
+</table>`
+        : ""
+    }
     ${tickets}
     ${
       entry

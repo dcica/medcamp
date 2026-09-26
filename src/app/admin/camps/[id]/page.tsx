@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireAdmin } from "@/server/admin";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
-import { instantToVenueInput, VENUE_TIME_ZONE } from "@/lib/eventTime";
+import { formatVenueZone, formatWhen, instantToVenueInput } from "@/lib/eventTime";
 import { STATUS_STYLE } from "@/lib/eventLifecycle";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { BANNER_MAX_BYTES, uploadsEnabled } from "@/lib/storage";
@@ -12,6 +12,7 @@ import { CampControls } from "./CampControls";
 import { EditEventForm } from "./EditEventForm";
 import { EventFlags } from "./EventFlags";
 import { PublicDoors } from "./PublicDoors";
+import { Breadcrumbs, campTrail } from "@/app/_components/Breadcrumbs";
 
 export const dynamic = "force-dynamic";
 
@@ -58,9 +59,7 @@ export default async function CampDetailPage({
 
   return (
     <div className="space-y-6">
-      <Link href="/admin/camps" className="text-sm text-brand underline">
-        ← Camps
-      </Link>
+      <Breadcrumbs trail={campTrail({ campName: camp.name })} />
 
       <div>
         <div className="flex items-center justify-between">
@@ -72,16 +71,17 @@ export default async function CampDetailPage({
           </span>
         </div>
         {/* Venue time. This is the header a coordinator checks a flyer against
-            before opening the doors, so it must not shift with the server. */}
+            before opening the doors, so it must not shift with the server.
+
+            THROUGH `formatWhen`, AND THE ZONE IS NAMED. Two raw
+            `toLocaleString` calls printed `6/5/2027, 8:00:00 AM → 6/5/2027,
+            2:00:00 PM` — seconds nobody needs, the date repeated, and no zone
+            on the one screen where the zone decides what day the event is on.
+            The zone label is derived per-instant, so it says CDT in June and
+            CST in December rather than a hardcoded half-truth. */}
         <p className="mt-1 text-sm text-gray-500">
-          {camp.code} ·{" "}
-          {camp.startsAt.toLocaleString(undefined, {
-            timeZone: VENUE_TIME_ZONE,
-          })}{" "}
-          →{" "}
-          {camp.endsAt.toLocaleString(undefined, {
-            timeZone: VENUE_TIME_ZONE,
-          })}
+          {camp.code} · {formatWhen(camp.startsAt, camp.endsAt)}{" "}
+          {formatVenueZone(camp.startsAt)}
         </p>
         {camp.location && (
           <p className="mt-1 text-sm text-gray-500">{camp.location}</p>

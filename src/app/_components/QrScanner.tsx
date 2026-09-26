@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { primeAudio } from "@/lib/scanTones";
 import { isDuplicateDecode, type LastDecode } from "@/lib/scanDebounce";
 
 /**
@@ -13,8 +14,11 @@ import { isDuplicateDecode, type LastDecode } from "@/lib/scanDebounce";
  *  - default (single-shot): stops after the first decode — the parent navigates.
  *    Used by medcamp check-in.
  *  - continuous: the camera stays live and emits every decode (debounced so the
- *    same code in-frame doesn't re-fire), beeping each time. Used by the gate so
- *    a volunteer can scan person after person without leaving the camera view.
+ *    same code in-frame doesn't re-fire). Used by the gate so a volunteer can
+ *    scan person after person without leaving the camera view.
+ *
+ * THIS COMPONENT MAKES NO SOUND and renders no verdict. It reports decodes; the
+ * station decides what they meant and says so, once the server has answered.
  */
 export function QrScanner({
   onScan,
@@ -53,7 +57,12 @@ export function QrScanner({
               // tested without a camera.
               if (isDuplicateDecode(lastRef.current, decoded, now)) return;
               lastRef.current = { text: decoded, at: now };
-              beep();
+              // NO SOUND HERE, deliberately. This fires on RAW DECODE, before
+              // the server has said anything, so a beep here means only "a QR
+              // was legible" — the audio twin of the library's green
+              // viewfinder, and it sounded identically for a valid ticket, an
+              // unknown code and a competition-fee receipt. The station plays
+              // playTone(verdict.tone) once it knows. See src/lib/scanTones.ts.
               onScanRef.current(decoded);
               return;
             }
@@ -84,6 +93,11 @@ export function QrScanner({
           onClick={() => {
             setError(null);
             setActive(true);
+            // iOS starts an AudioContext created outside a user gesture in
+            // `suspended`, and throttles rapid create/close cycles. This tap IS
+            // the gesture, so the station's tones work on the phones volunteers
+            // actually hold.
+            primeAudio();
           }}
           className="min-h-tap w-full rounded-lg bg-brand font-semibold text-brand-fg"
         >
@@ -102,27 +116,4 @@ export function QrScanner({
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
     </div>
   );
-}
-
-/** Short confirmation beep via WebAudio (no asset to load). Best-effort. */
-function beep() {
-  try {
-    const Ctx =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext: typeof AudioContext })
-        .webkitAudioContext;
-    const ctx = new Ctx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = "square";
-    osc.frequency.value = 880;
-    gain.gain.value = 0.05;
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.12);
-    osc.onended = () => ctx.close().catch(() => {});
-  } catch {
-    /* audio not available — silent is fine */
-  }
 }

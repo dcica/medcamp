@@ -52,6 +52,7 @@ export function ValidatedInput({
   type = "text",
   autoComplete,
   inputMode,
+  id,
   "aria-label": ariaLabel,
 }: {
   value: string;
@@ -79,6 +80,14 @@ export function ValidatedInput({
    * spinners and scroll-to-change behaviour).
    */
   inputMode?: "text" | "email" | "tel" | "numeric";
+  /**
+   * Put on the `<input>` itself so a parent can move the caret here after a
+   * failed submit — `getElementById(id).focus()`. Focus is the whole mechanism:
+   * the browser scrolls a focused input into view by itself, and it is what a
+   * screen reader announces, so "take the user to the field that needs data"
+   * needs no scroll maths and no extra ARIA.
+   */
+  id?: string;
   "aria-label"?: string;
 }) {
   const [error, setError] = useState<string | null>(null);
@@ -112,6 +121,7 @@ export function ValidatedInput({
   return (
     <div>
       <input
+        id={id}
         className={className ?? INPUT_CLASS}
         placeholder={placeholder}
         type={type}

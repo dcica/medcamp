@@ -8,6 +8,7 @@ import {
   testLoginPassword,
   findTestAccount,
 } from "@/lib/testAccounts";
+import { guard } from "@/server/requestGuard";
 
 /**
  * TEST-ONLY credential login. Gated by TEST_LOGIN_ENABLED (config entry), NOT by
@@ -20,6 +21,25 @@ import {
 export async function POST(req: NextRequest) {
   if (!testLoginEnabled) {
     return NextResponse.json({ error: "test login disabled" }, { status: 404 });
+  }
+
+  // ONE SHARED PASSWORD, NO LOCKOUT — so the only thing bounding a guessing run
+  // is this. Every other password on the platform is somebody's OIDC credential
+  // held by their identity provider, which does its own throttling; this is the
+  // single secret the app checks itself, it opens COORDINATOR, and the screen
+  // in front of it publishes all eight usernames. Ten attempts per 15 minutes is
+  // generous for a volunteer mistyping at a laptop and useless for a script.
+  //
+  // A refusal is a 429 with the limiter's own wording, and it is deliberately
+  // NOT folded into the 401 below: a tester who has hit the wall needs to be
+  // told to wait, not told their password is wrong.
+  try {
+    await guard("test-login", 10, 900);
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Too many attempts." },
+      { status: 429 },
+    );
   }
 
   const body = await req.json().catch(() => ({}));

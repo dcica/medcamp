@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireRole } from "@/server/session";
-import { getDashboard } from "@/server/dashboard";
+import { getDailySales, getDashboard } from "@/server/dashboard";
+import { DailySalesChart } from "@/app/_components/DailySalesChart";
 import { getTrackedEvents } from "@/server/events";
 import { getActiveOrg } from "@/lib/tenant";
 import { formatCents } from "@/lib/money";
@@ -21,6 +22,11 @@ export const metadata = PRIVATE_PAGE_METADATA;
 export default async function DashboardPage() {
   await requireRole("COORDINATOR", "COMMITTEE_ADMIN");
   const data = await getDashboard();
+  // Read once, before the branch. The chart belongs on BOTH states -- and most
+  // of all on the quiet one, because "nothing is running today" is precisely
+  // when a coordinator wants to know whether anything is selling.
+  const salesOrg = await getActiveOrg();
+  const dailySales = salesOrg ? await getDailySales(salesOrg.id) : [];
 
   // Nothing is RUNNING — the normal state for most of the year. That is not the
   // same as nothing happening: events are selling, deadlines are closing, and
@@ -28,8 +34,7 @@ export default async function DashboardPage() {
   // stop, which is how $238.50 of Garba sales and a 160-day-stale ACTIVE event
   // stayed invisible.
   if (!data) {
-    const org = await getActiveOrg();
-    const tracked = org ? await getTrackedEvents(org.id) : [];
+    const tracked = salesOrg ? await getTrackedEvents(salesOrg.id) : [];
     return (
       <main className="mx-auto max-w-screen-md px-4 py-8">
         <h1 className="text-2xl font-bold text-brand">Nothing running today</h1>
@@ -38,6 +43,11 @@ export default async function DashboardPage() {
             ? "No event is live right now. Here's what's being tracked."
             : "No event is live, and nothing is currently selling."}
         </p>
+
+        {/* FIRST, above the tracked-event list. On the quiet state this is the
+            only number that answers "is anything happening" -- the list below
+            says what exists, the chart says whether it is selling. */}
+        {dailySales.length > 0 && <DailySalesChart days={dailySales} />}
 
         {tracked.length > 0 && (
           <ul className="mt-6 space-y-3">
@@ -129,6 +139,9 @@ export default async function DashboardPage() {
           },
         ]}
       />
+
+      {/* First content block: what is selling, before the queue depths. */}
+      {dailySales.length > 0 && <DailySalesChart days={dailySales} />}
 
       {/* Flow stats */}
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">

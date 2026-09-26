@@ -78,6 +78,76 @@ export async function getCurrentEvent(
   return null;
 }
 
+/**
+ * How early a volunteer may open the scan station before doors.
+ *
+ * Six hours covers same-day setup in both directions the org actually runs —
+ * a 6pm dandiya opened at midday, a 8am camp opened at 6am — without ever
+ * reaching yesterday or tomorrow. Exported so the picker copy and the
+ * regression rows quote one number.
+ */
+export const SCAN_STATION_SETUP_HOURS = 6;
+
+/**
+ * The event whose door is being staffed at the scan station.
+ *
+ * `getCurrentEvent` answers "what is happening now", and both of its tiers
+ * require `startsAt <= now`. That is correct for a dashboard and wrong for a
+ * door: a volunteer opens the station at 3:45pm to test the camera for 4:30
+ * doors, and at 3:45pm tonight's event has not started. So this adds ONE tier
+ * in front of `null`, and it is deliberately narrow.
+ *
+ * WHAT IT MUST NOT BECOME. The tempting shape is
+ * `findFirst({ status: "ACTIVE", startsAt: { lte: now } }, orderBy desc)` as a
+ * catch-all underneath. That is precisely defect #1 in the header above: status
+ * is hand-set and drifts, and this database has carried a general event that
+ * was still ACTIVE 160 days after it ended, holding $541. A volunteer setting
+ * up at 3:45pm would be handed last season's event and every scan after that
+ * would resolve against the wrong one.
+ *
+ * This tier looks only FORWARD, which is what makes that impossible:
+ *
+ *   - `startsAt > now` — the stale $541 row started 160 days ago, so it can
+ *     never match here. This is the bound doing the work; the tempting shape
+ *     above differs from it by exactly one comparison operator.
+ *   - `startsAt <= now + SETUP` — a camp scheduled for next June is not tonight.
+ *   - `endsAt >= now` — belt and braces. Implied by `startsAt > now` for sane
+ *     data, and it refuses a row whose endsAt precedes its startsAt rather than
+ *     letting inconsistent dates open a door.
+ *
+ * RETURNING NULL IS STILL A CORRECT ANSWER. Most of the year nothing is running
+ * and the station must say so and offer an explicit picker, rather than reach
+ * for the nearest plausible row. That is the rule the header states, and this
+ * function is an exception carved for one stated need, not a loosening of it.
+ *
+ * No `type` filter, which is the actual merge: one station serves a camp
+ * check-in desk and a dandiya door.
+ */
+export async function getScanStationEvent(
+  orgId: string,
+  opts?: { now?: Date },
+): Promise<EventRecord | null> {
+  const now = opts?.now ?? new Date();
+
+  // Tiers 1 and 2, unchanged and undiluted.
+  const running = await getCurrentEvent(orgId, { now });
+  if (running) return running;
+
+  // Tier 3: starting soon, and not already over.
+  const setupOpensBy = new Date(now.getTime() + SCAN_STATION_SETUP_HOURS * 3600_000);
+  return db.event.findFirst({
+    where: {
+      orgId,
+      status: "ACTIVE",
+      startsAt: { gt: now, lte: setupOpensBy },
+      endsAt: { gte: now },
+    },
+    // Soonest first: with two doors tonight, the one opening next is the one
+    // being set up. `getCurrentEvent` orders ascending for the same reason.
+    orderBy: { startsAt: "asc" },
+  });
+}
+
 export type TrackedEvent = {
   id: string;
   code: string;

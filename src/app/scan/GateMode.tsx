@@ -1,0 +1,1042 @@
+"use client";
+
+import { useEffect, useRef, useState, useTransition } from "react";
+import { formatCents } from "@/lib/money";
+import { formatVenueTime } from "@/lib/eventTime";
+import { expandTicketCode, MIN_TOKEN_PREFIX } from "@/lib/ticketCode";
+import { GATE_MAX_QTY_PER_LINE, type GateSaleItem } from "@/lib/ticketMinting";
+import { QrScanner } from "@/app/_components/QrScanner";
+import { ScanVerdictBanner } from "@/app/_components/ScanVerdictBanner";
+import {
+  verdictFor,
+  signalForError,
+  isVoidOrder,
+  type ScanVerdict,
+} from "@/lib/scanVerdict";
+import { playTone } from "@/lib/scanTones";
+import {
+  acceptsDecode,
+  shouldNudge,
+  nextPhase,
+  INITIAL_PHASE,
+  type StationPhase,
+} from "@/lib/scanLatch";
+import type { GateView } from "@/server/gate";
+import {
+  resolveGate,
+  admit,
+  fulfill,
+  comp,
+  sellAndAdmit,
+  sellMerch,
+  confirmUnpaidAndAdmit,
+  searchGuests,
+} from "@/app/gate/actions";
+
+type CatalogItem = { id: string; name: string; priceCents: number };
+
+/** id -> quantity. A Set could not hold a duplicate, which is exactly why
+    the gate could never sell two of anything. */
+type Basket = Map<string, number>;
+
+function basketItems(b: Basket): GateSaleItem[] {
+  return [...b.entries()].map(([serviceTypeId, quantity]) => ({ serviceTypeId, quantity }));
+}
+
+function basketTotal(items: CatalogItem[], b: Basket): number {
+  return items.reduce((s, it) => s + it.priceCents * (b.get(it.id) ?? 0), 0);
+}
+
+/**
+ * How many PEOPLE this basket admits.
+ *
+ * NOT the number of things in it. Three admissions plus two dandiya sticks
+ * is five items and THREE people, and the button used to say "admit 5" while
+ * the server correctly admitted 3 — a number on a button that did not match
+ * what happened, which is the exact defect class this screen exists to fix.
+ *
+ * Mirrors admissionUnits() in src/lib/ticketMinting.ts, which is what the
+ * server actually mints from; admitsCount is why a "family of 4" chip counts
+ * four and not one.
+ */
+function admitsCountFor(
+  admission: (CatalogItem & { admitsCount?: number })[],
+  b: Basket,
+): number {
+  return admission.reduce(
+    (s, it) => s + (b.get(it.id) ?? 0) * Math.max(1, it.admitsCount ?? 1),
+    0,
+  );
+}
+type MerchItem = CatalogItem & { colorHex: string };
+// Must name every bucket getGateCatalog sends — structural typing let `fees`
+// go missing here before and the compiler never caught it (see task A3).
+type AdmissionItem = CatalogItem & { admitsCount: number };
+type Catalog = { admission: AdmissionItem[]; merch: MerchItem[]; fees: CatalogItem[] };
+
+// `Flash` is gone. It was a 32px tinted strip that sat BELOW the camera, was
+// set to null on success (so a successful scan said nothing at all), and used
+// the SAME green for "just admitted" and "already admitted". The three
+// meanings are now one ScanVerdict; see src/lib/scanVerdict.ts.
+
+/**
+ * Gate station (phone-first, continuous scan). The camera stays live; each scan
+ * resolves a guest and lights up the relevant action blocks — admit / pay-now,
+ * will-call pickup, buy-more — plus a member-comp and a walk-up path that don't
+ * need a scan. Headcount is the cumulative number admitted.
+ */
+export function GateMode({
+  eventId,
+  eventName,
+  eventCode,
+  initialHeadcount,
+  catalog,
+  canTakeCash,
+}: {
+  eventId: string;
+  eventName: string;
+  eventCode: string;
+  initialHeadcount: number;
+  catalog: Catalog;
+  /**
+   * Whether THIS volunteer may record cash. A capability on the membership,
+   * not a role. The server is still the gate (requireTill); this only stops
+   * the screen offering a control that would bounce them to /403 and lose
+   * the guest they had resolved.
+   */
+  canTakeCash: boolean;
+}) {
+  const [headcount, setHeadcount] = useState(initialHeadcount);
+  const [view, setView] = useState<GateView | null>(null);
+  // The standing verdict, if any. Only a deliberate tap moves this.
+  const [phase, setPhase] = useState<StationPhase>(INITIAL_PHASE);
+  const [nudge, setNudge] = useState(false);
+  const [hits, setHits] = useState<GateView[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [pending, startTransition] = useTransition();
+
+  const [pickupSel, setPickupSel] = useState<Set<string>>(new Set());
+  const [buySel, setBuySel] = useState<Basket>(new Map());
+  const [compCount, setCompCount] = useState(1);
+  const [walkUp, setWalkUp] = useState(false);
+  /** Bumped to remount WalkUpForm with empty state, without hiding it. */
+  const [walkUpNonce, setWalkUpNonce] = useState(0);
+
+  function run(fn: () => Promise<void>) {
+    startTransition(fn);
+  }
+
+  /**
+   * Land a verdict and sound it. ONE place, so no path can show a banner
+   * without the matching tone, or play a tone with nothing on screen.
+   */
+  function settle(verdict: ScanVerdict, event: "resolved" | "acted" = "acted") {
+    setPhase((prev) => nextPhase(prev, { type: event, verdict }));
+    playTone(verdict.tone);
+  }
+
+  /**
+   * A completed hand-over. Tone `go` because the action succeeded, but it
+   * deliberately does NOT reuse the ADMITTED verdict: nobody was admitted,
+   * and "give wristband" under a merch pickup is how someone walks in free.
+   */
+  function handedOver(headline: string): ScanVerdict {
+    return {
+      outcome: "ADMITTED",
+      tone: "go",
+      glyph: "✓",
+      headline,
+      detail: view?.name ?? null,
+      instruction: "Goods given to the guest",
+    };
+  }
+
+  /**
+   * Turn an admit outcome into the verdict. ONE place, so a single guest and
+   * a family of five cannot end up described by different rules.
+   */
+  function applyAdmit(out: {
+    admitted: number;
+    already: number;
+    headcount: number;
+    at: Date | null;
+  }) {
+    setHeadcount(out.headcount);
+    settle(
+      verdictFor({
+        kind: "party",
+        admitted: out.admitted,
+        already: out.already,
+        at: out.at ? formatVenueTime(out.at) : null,
+      }),
+    );
+  }
+
+  function doAdmitMany(attendeeIds: string[]) {
+    return (async () => {
+      const res = await admit(attendeeIds, eventId);
+      if (!res.ok) return settle(verdictFor(signalForError(res.error)));
+      applyAdmit(res.data);
+    })();
+  }
+
+  /** Debounced by the input; this just runs the query and keeps the last one. */
+  function runSearch(q: string) {
+    setSearching(true);
+    void (async () => {
+      const res = await searchGuests(eventId, q, eventCode);
+      setSearching(false);
+      setHits(res.ok ? res.data : []);
+    })();
+  }
+
+  /** "Next guest" - the only exit from a standing verdict. */
+  function resetWalkUp() {
+    setWalkUpNonce((n) => n + 1);
+  }
+
+  function release() {
+    setPhase(INITIAL_PHASE);
+    setNudge(false);
+    setHits(null);
+    clearGuest();
+  }
+
+  /**
+   * A tapped search result IS a resolved guest -- searchGuests returns the
+   * same GateView a scan does, so the whole card below renders unchanged and
+   * there is no second admit path to keep in step.
+   */
+  function pickHit(hit: GateView) {
+    setHits(null);
+    setPickupSel(new Set());
+    setBuySel(new Map());
+    setView(hit);
+    if (hit.alreadyAdmitted) {
+      settle(
+        verdictFor({
+          kind: "already",
+          flow: "gate",
+          at: hit.admittedAt ? formatVenueTime(new Date(hit.admittedAt)) : null,
+        }),
+        "acted",
+      );
+    }
+  }
+
+  function clearGuest() {
+    setView(null);
+    setPickupSel(new Set());
+    setBuySel(new Map());
+  }
+
+  function onScan(code: string) {
+    // THE LATCH. A standing verdict is not replaced by the next badge that
+    // drifts into frame - see src/lib/scanLatch.ts. The drop is announced,
+    // and deliberately makes no sound: silence means "ignored on purpose".
+    if (!acceptsDecode(phase)) {
+      if (shouldNudge(phase, { type: "decoded" })) setNudge(true);
+      return;
+    }
+    setNudge(false);
+    setPhase((prev) => nextPhase(prev, { type: "decoded" }));
+    run(async () => {
+      const res = await resolveGate(code);
+      if (!res.ok) {
+        clearGuest();
+        return settle(verdictFor(signalForError(res.error)), "resolved");
+      }
+      if (!res.data) {
+        clearGuest();
+        return settle(verdictFor({ kind: "noMatch", code }), "resolved");
+      }
+      const g = res.data;
+      setPickupSel(new Set());
+      setBuySel(new Map());
+      setView(g);
+
+      // A resolve is already a verdict for every state the volunteer cannot
+      // simply act on. Only "paid, here, not yet admitted" leaves the station
+      // quiet and waiting for the Admit tap, because nothing has happened yet.
+      if (g.eventId !== eventId) {
+        return settle(
+          verdictFor({ kind: "wrongEvent", eventName: g.eventName }),
+          "resolved",
+        );
+      }
+      // Money already went back, or the sale was called off. Neither is
+      // payable, and both used to read as "owes $0.00" because a REFUNDED
+      // line is not a PENDING_PAYMENT one.
+      if (isVoidOrder(g.orderStatus)) {
+        return settle(
+          verdictFor({ kind: "voidOrder", status: g.orderStatus as "REFUNDED" | "CANCELLED" }),
+          "resolved",
+        );
+      }
+      if (g.alreadyAdmitted) {
+        return settle(
+          verdictFor({
+            kind: "already",
+            flow: "gate",
+            at: g.admittedAt ? formatVenueTime(new Date(g.admittedAt)) : null,
+          }),
+          "resolved",
+        );
+      }
+      if (!g.isPaid) {
+        return settle(
+          verdictFor({ kind: "unpaid", owed: formatCents(g.amountOwedCents) }),
+          "resolved",
+        );
+      }
+      setPhase(INITIAL_PHASE);
+    });
+  }
+
+  async function refresh(campId: string | null) {
+    if (!campId) return;
+    const res = await resolveGate(campId);
+    if (res.ok && res.data) setView(res.data);
+  }
+
+  function doAdmit() {
+    if (!view) return;
+    run(async () => {
+      await doAdmitMany([view.attendeeId]);
+    });
+  }
+
+  function doPayUnpaid() {
+    if (!view) return;
+    run(async () => {
+      const res = await confirmUnpaidAndAdmit(view.orderId, view.attendeeId, eventId);
+      if (!res.ok) return settle(verdictFor(signalForError(res.error)));
+      applyAdmit(res.data);
+    });
+  }
+
+  function doPickup() {
+    if (!view || pickupSel.size === 0) return;
+    const campId = view.campId;
+    run(async () => {
+      const res = await fulfill([...pickupSel]);
+      if (!res.ok) return settle(verdictFor(signalForError(res.error)));
+      settle(handedOver("Handed over"));
+      setPickupSel(new Set());
+      await refresh(campId);
+    });
+  }
+
+  function doBuyMore() {
+    if (!view || buySel.size === 0) return;
+    const campId = view.campId;
+    run(async () => {
+      const res = await sellMerch(eventId, basketItems(buySel), view.attendeeId);
+      if (!res.ok) return settle(verdictFor(signalForError(res.error)));
+      settle(handedOver("Sold and handed over"));
+      setBuySel(new Map());
+      await refresh(campId);
+    });
+  }
+
+  function doComp() {
+    run(async () => {
+      const res = await comp(eventId, compCount);
+      if (!res.ok) return settle(verdictFor(signalForError(res.error)));
+      setHeadcount(res.data);
+      settle({
+        ...verdictFor({ kind: "admitted" }),
+        headline: "Comped",
+        detail: `${compCount} guest${compCount > 1 ? "s" : ""}`,
+        instruction: `Give ${compCount} wristband${compCount > 1 ? "s" : ""}`,
+      });
+      setCompCount(1);
+    });
+  }
+
+  return (
+    <div className="mt-4 space-y-5">
+      {/* Headcount */}
+      <div className="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-gray-500">Admitted</p>
+          <p className="text-3xl font-bold tabular-nums">{headcount}</p>
+        </div>
+        <p className="max-w-[55%] text-right text-xs text-gray-400">{eventName}</p>
+      </div>
+
+      {/* ABOVE the camera, on purpose. The strip this replaces sat below
+          both the scanner and the manual box, so a tall guest card pushed
+          the one thing the volunteer needed off the bottom of the screen. */}
+      {phase.phase === "held" && (
+        <ScanVerdictBanner
+          verdict={phase.verdict}
+          onRelease={release}
+          nudge={nudge}
+        />
+      )}
+
+      {phase.phase === "reading" && (
+        // Grey and SILENT. The volunteer needs to know the tap registered,
+        // not that it succeeded - a tone here would pre-announce a verdict
+        // the server has not given yet, which is the old beep all over again.
+        <p className="rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600">
+          Reading…
+        </p>
+      )}
+
+      {/* Continuous scanner */}
+      <QrScanner onScan={onScan} continuous />
+
+      {/* ONE box for every "the scan did not work" path: a partial code, a
+          whole code, a name, an email, a phone number. Two adjacent inputs
+          doing almost the same thing is a choice a volunteer should not
+          have to make with a queue waiting. */}
+      <GuestFinder
+        eventCode={eventCode}
+        disabled={pending}
+        searching={searching}
+        hits={hits}
+        onLookup={onScan}
+        onSearch={runSearch}
+        onPick={pickHit}
+      />
+
+      {/* Resolved guest */}
+      {view && (
+        <div className="space-y-4 rounded-xl border border-gray-300 bg-white p-4">
+          <div className="flex items-baseline justify-between">
+            <span className="text-lg font-bold">{view.name ?? "Guest"}</span>
+            <span className="font-mono text-xs text-gray-500">{view.campId}</span>
+          </div>
+
+          {/* Admission */}
+          {/* THE WHOLE PARTY. A family of five is one order with five tickets,
+              and scanning one of their codes used to admit exactly one person —
+              five scans for five people standing together. */}
+          {view.party.length > 1 &&
+            (() => {
+              const pending2 = view.party.filter((t) => !t.alreadyAdmitted);
+              return (
+                <div className="rounded-lg border border-gray-300 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    {view.party.length} tickets on this order
+                  </p>
+                  <ul className="mt-2 space-y-1">
+                    {view.party.map((t) => (
+                      <li
+                        key={t.attendeeId}
+                        className="flex items-center justify-between gap-2 text-sm"
+                      >
+                        <span className={t.scanned ? "font-semibold" : ""}>
+                          {t.name ?? "Guest"}
+                          {t.scanned && (
+                            <span className="ml-1 text-xs text-gray-500">(scanned)</span>
+                          )}
+                        </span>
+                        {t.alreadyAdmitted ? (
+                          <span className="shrink-0 text-xs text-gray-500">
+                            in
+                            {t.admittedAt
+                              ? ` ${formatVenueTime(new Date(t.admittedAt))}`
+                              : ""}
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={pending || !view.isPaid}
+                            onClick={() => run(() => doAdmitMany([t.attendeeId]))}
+                            className="min-h-tap shrink-0 rounded-lg border border-gray-300 px-3 text-xs font-medium disabled:opacity-50"
+                          >
+                            Admit
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  {pending2.length > 0 && view.isPaid && (
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={() =>
+                        run(() => doAdmitMany(pending2.map((t) => t.attendeeId)))
+                      }
+                      className="mt-3 min-h-tap w-full rounded-lg bg-brand font-semibold text-brand-fg disabled:opacity-50"
+                    >
+                      {/* Says REMAINING, not the party size, when some are already
+                          in — the number on the button is the number of
+                          wristbands to hand over. */}
+                      Admit {pending2.length === view.party.length ? "all " : "remaining "}
+                      {pending2.length}
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+
+          {view.alreadyAdmitted ? (
+            // NOT GREEN, and no longer shouting. This used to be
+            // This was a green tint - the SAME one the fresh-admit flash used,
+            // which is half of why green meant four different things. The amber
+            // banner above now carries the verdict; this is just the record,
+            // in venue time because the volunteer will compare it against the
+            // clock on the wall.
+            <p className="rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-700">
+              Wristband issued
+              {view.admittedAt
+                ? ` at ${formatVenueTime(new Date(view.admittedAt))}`
+                : ""}
+              .
+            </p>
+          ) : isVoidOrder(view.orderStatus) ? (
+            // Not payable at any price. The banner above says which.
+            <p className="rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-700">
+              {view.orderStatus === "REFUNDED" ? "Refunded" : "Cancelled"} — this
+              ticket cannot be settled here.
+            </p>
+          ) : view.isPaid ? (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={doAdmit}
+              className="min-h-tap w-full rounded-lg bg-brand font-semibold text-brand-fg disabled:opacity-50"
+            >
+              Paid ✓ — Admit &amp; wristband
+            </button>
+          ) : (
+            // No tint here: the banner above already says UNPAID, the amount
+            // and what to do about it, at full size. Saying it twice in two
+            // different wordings is how the two drift apart.
+            <div className="space-y-2">
+              {/* HIDDEN, not greyed out: staffNav's rule is that a control
+                  you cannot use should not spend your attention. One line of
+                  explanation instead, so a volunteer knows to fetch someone
+                  rather than wondering where the button went. */}
+              {!canTakeCash && (
+                <p className="rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-700">
+                  Owes {formatCents(view.amountOwedCents)} — a till holder has to
+                  take this.
+                </p>
+              )}
+              {canTakeCash && (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={doPayUnpaid}
+                className="min-h-tap w-full rounded-lg bg-brand font-semibold text-brand-fg disabled:opacity-50"
+              >
+                Take cash {formatCents(view.amountOwedCents)} &amp; admit
+              </button>
+              )}
+            </div>
+          )}
+
+          {/* Pickup */}
+          {view.pickupItems.length > 0 && (
+            <div className="rounded-lg border border-gray-200 p-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Pre-bought — hand over
+              </p>
+              <ul className="space-y-1.5">
+                {view.pickupItems.map((it) => (
+                  <li key={it.lineItemId}>
+                    {it.fulfilledAt ? (
+                      <span className="flex items-center gap-2 text-sm text-gray-500">
+                        <span className="text-green-600">✓</span> {it.name} — handed over
+                      </span>
+                    ) : (
+                      <label className="flex min-h-tap items-center gap-3 text-sm">
+                        <input
+                          type="checkbox"
+                          className="h-5 w-5"
+                          checked={pickupSel.has(it.lineItemId)}
+                          onChange={(e) => {
+                            const next = new Set(pickupSel);
+                            if (e.target.checked) next.add(it.lineItemId);
+                            else next.delete(it.lineItemId);
+                            setPickupSel(next);
+                          }}
+                        />
+                        {it.name}
+                      </label>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              {pickupSel.size > 0 && (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={doPickup}
+                  className="mt-2 min-h-tap w-full rounded-lg border border-brand font-semibold text-brand disabled:opacity-50"
+                >
+                  Hand over selected ({pickupSel.size})
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Buy more */}
+          {canTakeCash && catalog.merch.length > 0 && (
+            <div className="rounded-lg border border-gray-200 p-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Buy more
+              </p>
+              <ItemPicker items={catalog.merch} basket={buySel} onChange={setBuySel} />
+              {buySel.size > 0 && (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={doBuyMore}
+                  className="mt-2 min-h-tap w-full rounded-lg bg-brand font-semibold text-brand-fg disabled:opacity-50"
+                >
+                  Take cash {formatCents(basketTotal(catalog.merch, buySel))} &amp; hand over
+                </button>
+              )}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={clearGuest}
+            className="min-h-tap w-full rounded-lg border border-gray-300 text-sm"
+          >
+            Done — next guest
+          </button>
+        </div>
+      )}
+
+      {/* Member comp */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+          Member comp
+        </p>
+        <p className="mt-1 text-xs text-gray-400">
+          Check the membership card. Covers up to 4.
+        </p>
+        <div className="mt-3 flex items-center gap-3">
+          <Stepper value={compCount} onChange={setCompCount} min={1} max={4} />
+          <button
+            type="button"
+            disabled={pending}
+            onClick={doComp}
+            className="min-h-tap flex-1 rounded-lg bg-brand font-semibold text-brand-fg disabled:opacity-50"
+          >
+            Comp {compCount} &amp; admit
+          </button>
+        </div>
+      </div>
+
+      {/* Walk-up (no ticket). A cash path, so it is hidden without a till for
+          the same reason as the others: tapping it would resolve nothing and
+          bounce the volunteer to /403. */}
+      {canTakeCash && !walkUp ? (
+        <button
+          type="button"
+          onClick={() => setWalkUp(true)}
+          className="min-h-tap w-full rounded-lg border border-dashed border-gray-300 text-sm font-medium text-brand"
+        >
+          No ticket — walk-up sale
+        </button>
+      ) : canTakeCash ? (
+        <WalkUpForm
+          key={walkUpNonce}
+          catalog={catalog}
+          pending={pending}
+          onCancel={() => setWalkUp(false)}
+          onSubmit={(items, name) =>
+            run(async () => {
+              const res = await sellAndAdmit(eventId, items, name);
+              if (!res.ok) return settle(verdictFor(signalForError(res.error)));
+              setHeadcount(res.data);
+              settle(verdictFor({ kind: "admitted", name: name || "Walk-up" }));
+              // The form STAYS MOUNTED. It used to unmount itself after every
+              // sale, so a volunteer re-tapped "No ticket - walk-up sale" for
+              // each customer in the queue. Clearing it is the same reset
+              // without the extra tap.
+              resetWalkUp();
+            })
+          }
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Fallback entry for when a scan won't take — a scuffed badge, a dead camera,
+ * a phone screen someone can't get to brighten.
+ *
+ * The event prefix is shown as fixed text rather than typed. One door is
+ * staffed for one event, the page already knows which, and re-typing
+ * `DANDIYA-2026-` for every manual lookup is 13 characters of transcription
+ * risk per ticket with a queue waiting. What's left is the random token, which
+ * is the only part that actually varies.
+ *
+ * A complete id pasted or scanned into the box is still honoured as-is. Tokens
+ * never contain a hyphen, so its presence is an unambiguous signal that the
+ * operator has a whole id rather than a token — and that case genuinely
+ * happens: someone arrives at the Dandiya door holding a Garba ticket. Blindly
+ * prefixing would turn that into a "not found", when what staff need to see is
+ * the ticket resolving against the wrong event so they can say so.
+ *
+ * The rule itself is `expandTicketCode` in `@/lib/ticketCode` — it outlives any
+ * particular arrangement of this form and is pinned by scripts/verify-gate.ts.
+ */
+/**
+ * One box for every way a scan can fail.
+ *
+ * Replaces two adjacent controls that did almost the same thing: a fixed-prefix
+ * manual-entry field, and (as of this change) a guest search. Deciding which to
+ * use is not a decision a volunteer should make with a queue waiting.
+ *
+ * What the characters mean, in order:
+ *   - looks like a WHOLE token (>= 8 chars, no hyphen) -> exact lookup, which
+ *     also resolves across events so a wrong-event ticket names its real event
+ *     instead of reporting "no match";
+ *   - shorter, or contains a space or an @ -> search: token PREFIX within this
+ *     event, plus name, email and phone.
+ * Both run as you type; the exact lookup needs Enter, because firing an admit
+ * path on a partial code would be its own bug.
+ */
+function GuestFinder({
+  eventCode,
+  disabled,
+  searching,
+  hits,
+  onLookup,
+  onSearch,
+  onPick,
+}: {
+  eventCode: string;
+  disabled: boolean;
+  searching: boolean;
+  hits: GateView[] | null;
+  onLookup: (code: string) => void;
+  onSearch: (q: string) => void;
+  onPick: (hit: GateView) => void;
+}) {
+  const [q, setQ] = useState("");
+  const seq = useRef(0);
+
+  // 250ms, and a sequence guard so a slow early response cannot overwrite a
+  // later one. Same pattern MemberSearch already uses.
+  useEffect(() => {
+    const value = q.trim();
+    if (value.length < MIN_TOKEN_PREFIX) return;
+    const mine = ++seq.current;
+    const t = setTimeout(() => {
+      if (mine === seq.current) onSearch(value);
+    }, 250);
+    return () => clearTimeout(t);
+    // onSearch is stable enough for this; re-running on identity would re-fire
+    // every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
+
+  return (
+    <div className="space-y-2">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          const code = expandTicketCode(eventCode, q);
+          if (!code) return;
+          onLookup(code);
+          setQ("");
+        }}
+        className="flex gap-2"
+      >
+        {/* Prefix and field share one bordered box so they read as a single
+            control. The border lives here, not on the input. It stays visible
+            because it is what makes the short form obvious — but it is a hint
+            now, not a constraint: a name typed here works too. */}
+        <div className="flex min-h-tap w-full flex-1 items-center overflow-hidden rounded-lg border border-gray-300 bg-white px-3">
+          <span className="shrink-0 select-none whitespace-nowrap text-base text-gray-500">
+            {eventCode}-
+          </span>
+          <input
+            className="w-full min-w-0 bg-transparent py-2 text-base outline-none"
+            placeholder="K7M2XQ9T, or a name"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
+            enterKeyHint="search"
+            aria-label={`Ticket ID after the ${eventCode}- prefix, or a guest name`}
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={disabled}
+          className="min-h-tap shrink-0 rounded-lg border border-gray-300 px-4 text-sm font-medium disabled:opacity-50"
+        >
+          Look up
+        </button>
+      </form>
+
+      {searching && <p className="text-sm text-gray-500">Searching…</p>}
+
+      {hits !== null && !searching && (
+        hits.length === 0 ? (
+          <p className="text-sm text-gray-500">No guest matches that.</p>
+        ) : (
+          <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200">
+            {hits.map((h) => (
+              <li key={h.attendeeId}>
+                <button
+                  type="button"
+                  onClick={() => onPick(h)}
+                  className="flex min-h-tap w-full items-center justify-between gap-2 px-3 py-2 text-left"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium">
+                      {h.name ?? "Guest"}
+                    </span>
+                    <span className="block truncate font-mono text-xs text-gray-500">
+                      {h.campId ?? "no code yet"}
+                    </span>
+                  </span>
+                  {/* Status BEFORE the tap, so a volunteer scanning the list
+                      knows which row is the one they want. */}
+                  <span className="shrink-0 text-xs font-semibold">
+                    {h.alreadyAdmitted ? (
+                      <span className="text-gray-500">
+                        in
+                        {h.admittedAt
+                          ? ` ${formatVenueTime(new Date(h.admittedAt))}`
+                          : ""}
+                      </span>
+                    ) : isVoidOrder(h.orderStatus) ? (
+                      // NOT "owes $0.00". A refunded order owes nothing because
+                      // every line is REFUNDED rather than PENDING_PAYMENT, so
+                      // the amount is a true zero and a badly misleading one:
+                      // it reads as "nothing to pay, let them in".
+                      <span className="text-red-700">
+                        {h.orderStatus === "REFUNDED" ? "refunded" : "cancelled"}
+                      </span>
+                    ) : h.isPaid ? (
+                      <span className="text-gray-700">paid</span>
+                    ) : (
+                      <span className="text-red-700">
+                        owes {formatCents(h.amountOwedCents)}
+                      </span>
+                    )}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )
+      )}
+    </div>
+  );
+}
+
+/**
+ * Pick items AND how many of each.
+ *
+ * Tapping a chip still takes it 0 -> 1, so selling one of something is the same
+ * single tap it has always been. At >= 1 the chip grows a stepper. The old
+ * control wrote into a Set, which cannot hold a duplicate — that, not the
+ * server, is why "three pairs of sticks" was unsellable at a door.
+ */
+function ItemPicker({
+  items,
+  basket,
+  onChange,
+}: {
+  items: (CatalogItem & { colorHex?: string; remaining?: number | null })[];
+  basket: Basket;
+  onChange: (next: Basket) => void;
+}) {
+  function setQty(id: string, qty: number) {
+    const next = new Map(basket);
+    if (qty <= 0) next.delete(id);
+    else next.set(id, qty);
+    onChange(next);
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.map((it) => {
+        const qty = basket.get(it.id) ?? 0;
+        // Advisory only — the server still claims capacity atomically at
+        // confirmation. Showing it stops the volunteer taking cash for six
+        // when three are left, which is the failure this would otherwise
+        // create far more often than it used to happen.
+        const soldOut = it.remaining === 0;
+        const ceiling = Math.min(
+          GATE_MAX_QTY_PER_LINE,
+          it.remaining ?? GATE_MAX_QTY_PER_LINE,
+        );
+        if (qty === 0) {
+          return (
+            <button
+              key={it.id}
+              type="button"
+              disabled={soldOut}
+              onClick={() => setQty(it.id, 1)}
+              className="min-h-tap rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 disabled:opacity-40"
+            >
+              {it.colorHex && (
+                <span
+                  className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full align-middle"
+                  style={{ backgroundColor: it.colorHex }}
+                />
+              )}
+              {it.name} · {formatCents(it.priceCents)}
+              {soldOut && <span className="ml-1 text-xs">· sold out</span>}
+            </button>
+          );
+        }
+        return (
+          <div
+            key={it.id}
+            className="flex min-h-tap items-center gap-1 rounded-full border border-brand bg-brand px-2 py-1 text-sm text-brand-fg"
+          >
+            <button
+              type="button"
+              aria-label={`One fewer ${it.name}`}
+              onClick={() => setQty(it.id, qty - 1)}
+              className="h-9 w-9 rounded-full text-lg font-bold"
+            >
+              −
+            </button>
+            <span className="min-w-[2ch] text-center tabular-nums font-semibold">
+              {qty}
+            </span>
+            <button
+              type="button"
+              aria-label={`One more ${it.name}`}
+              disabled={qty >= ceiling}
+              onClick={() => setQty(it.id, qty + 1)}
+              className="h-9 w-9 rounded-full text-lg font-bold disabled:opacity-40"
+            >
+              +
+            </button>
+            <span className="px-1">
+              {it.name} · {formatCents(it.priceCents * qty)}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function WalkUpForm({
+  catalog,
+  pending,
+  onCancel,
+  onSubmit,
+}: {
+  catalog: Catalog;
+  pending: boolean;
+  onCancel: () => void;
+  onSubmit: (items: GateSaleItem[], name: string) => void;
+}) {
+  const [name, setName] = useState("");
+  const [basket, setBasket] = useState<Basket>(new Map());
+  const all = [...catalog.admission, ...catalog.merch, ...catalog.fees];
+  const total = basketTotal(all, basket);
+
+  return (
+    <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+        Walk-up sale
+      </p>
+      <input
+        className="min-h-tap w-full rounded-lg border border-gray-300 px-3 py-2 text-base"
+        placeholder="Name (optional)"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+      />
+      {catalog.admission.length > 0 && (
+        <div>
+          <p className="mb-1 text-xs text-gray-500">Admission</p>
+          <ItemPicker items={catalog.admission} basket={basket} onChange={setBasket} />
+        </div>
+      )}
+      {catalog.merch.length > 0 && (
+        <div>
+          <p className="mb-1 text-xs text-gray-500">Merch</p>
+          <ItemPicker items={catalog.merch} basket={basket} onChange={setBasket} />
+        </div>
+      )}
+      {/* Fees (e.g. dance-competition entry): neither admission nor merch — buying
+          one mints no ticket and hands over nothing, so it gets its own visually
+          loud block. A volunteer who mistakes this for a ticket lets a group onto
+          the floor without paying for it. Colors are the handoff's exact fee
+          treatment, not the shared brand palette. */}
+      {catalog.fees.length > 0 && (
+        <div
+          className="rounded-lg border p-3"
+          style={{ backgroundColor: "#fff7e6", borderColor: "#a86800", borderWidth: 3 }}
+        >
+          <p
+            className="mb-1 text-xs font-semibold uppercase tracking-wide"
+            style={{ color: "#a86800" }}
+          >
+            Fees
+          </p>
+          <ItemPicker items={catalog.fees} basket={basket} onChange={setBasket} />
+          <p className="mt-2 text-xs font-semibold" style={{ color: "#a86800" }}>
+            NOT A TICKET · NO FLOOR ACCESS
+          </p>
+        </div>
+      )}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={pending || basket.size === 0}
+          onClick={() => onSubmit(basketItems(basket), name)}
+          className="min-h-tap flex-1 rounded-lg bg-brand font-semibold text-brand-fg disabled:opacity-50"
+        >
+          Take cash {formatCents(total)} &amp; admit{" "}
+          {admitsCountFor(catalog.admission, basket)}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="min-h-tap rounded-lg border border-gray-300 px-4 text-sm"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Stepper({
+  value,
+  onChange,
+  min,
+  max,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  min: number;
+  max: number;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => onChange(Math.max(min, value - 1))}
+        className="h-11 w-11 rounded-lg border border-gray-300 text-lg font-bold"
+      >
+        −
+      </button>
+      <span className="w-6 text-center text-lg font-semibold tabular-nums">{value}</span>
+      <button
+        type="button"
+        onClick={() => onChange(Math.min(max, value + 1))}
+        className="h-11 w-11 rounded-lg border border-gray-300 text-lg font-bold"
+      >
+        +
+      </button>
+    </div>
+  );
+}
+

@@ -1,0 +1,34 @@
+-- Carry the buyer's GA4 client id on the order, so the server-side `purchase`
+-- event sent at confirmation can be attributed to the session that produced it.
+--
+-- WHY A COLUMN AND NOT A LOOKUP. The GA client id lives in the buyer's
+-- first-party `_ga` cookie, which only exists inside the request that redirects
+-- them to Stripe. Confirmation happens later and elsewhere — usually in the
+-- Stripe webhook, which is a server-to-server POST with no cookies at all — so
+-- the value has to be captured at checkout and stored, or it is gone. See
+-- openCheckoutSession in src/server/payments.ts (the single capture point) and
+-- src/lib/ga.ts (the sender).
+--
+-- ADDITIVE-FIRST, and it matters here. Prisma SELECTs every declared column, so
+-- this migration must be applied BEFORE the deploy that declares `gaClientId`
+-- — otherwise every read of `orders` faults with P2022, which is exactly how
+-- /register went down on 2026-08-21. Nullable with no default and no backfill:
+-- existing orders keep NULL, and NULL is a legitimate permanent value (a cash
+-- walk-in has no web session of their own — the till volunteer's browser is not
+-- the buyer's), so nothing is ever tightened later and there is no follow-up
+-- constraint migration waiting to be forgotten.
+--
+-- DELIBERATELY UNINDEXED. It is not a foreign key and nothing queries by it:
+-- written once at checkout by primary key, read once at confirmation by primary
+-- key. The every-FK-child-gets-a-covering-index policy (PR #6, enforced by
+-- `npm run verify:schema`) does not reach a plain nullable scalar, and an index
+-- here would only be write amplification on the money path.
+--
+-- Hand-trimmed on purpose. `prisma migrate diff` against the local datasource
+-- also emitted a DROP of an `audit_entries` table, two enums, and
+-- `ledger_entries.createdById` — none of which appear in schema.prisma OR in
+-- any committed migration, i.e. they are local-database drift from something
+-- authored out of band, not part of this change. This is the "migrate diff
+-- diffs the WHOLE schema" trap CLAUDE.md warns about, and the same one that
+-- forced 20260822140000_stage_schema_and_event_access to be hand-written.
+ALTER TABLE "orders" ADD COLUMN "gaClientId" TEXT;

@@ -161,27 +161,54 @@ and are safe. The forbidding comment at `src/server/payments.ts:242-260` stays.
 
 ### Verification
 
-- `npx tsc --noEmit` after every task, then `npm run verify`. Baseline as of 2026-08-24:
-  **13 suites, 1129 assertions, all green** — schema 54, pricing 39, validation 62,
-  storage 31, branding 325, performance 125, gate 101, readiness 91, checkout 81,
-  csv 26, home 69, seo 100, registrations 25. (`pricing` and `validation` print
+- `npx tsc --noEmit` after every task, then `npm run verify`. Baseline as of 2026-09-25,
+  re-counted from the runner rather than carried forward: **17 suites, 1689 assertions,
+  all green** — schema 54, pricing 42, validation 62, storage 31, branding 323,
+  performance 140, gate 227, scan 128, logging 62, readiness 91, checkout 123, csv 26,
+  testlogin 35, home 76, seo 100, registrations 43, analytics 126. (`pricing` and `validation` print
   `PASS`; the rest print `ok` — count both when reporting totals. Four suites also
   print a third status, `..`, for a row a Central-time box or a local-disk adapter
   cannot distinguish: storage, performance, gate and home have one each. A `..` is
   a SKIP and is excluded from the counts above — include them and every one of
   those four reads one higher.)
-  `verify:registrations` is new: what "N registered" is allowed to mean — an
+  `verify:registrations` pins what "N registered" is allowed to mean — an
   abandoned cart is not a registration, collected money is `SUCCEEDED` payments
   and not `Payment` rows, and a line total is `amountCents × quantity`.
-  **`verify:csv` and `verify:registrations` are BOTH in the chain and NEITHER is
-  committed yet.** A chain entry naming an uncommitted script fails on a clean
-  clone — which is exactly why csv was held out of the chain for two rounds
-  running. Both scripts exist in this working tree. Land them together with the
-  package.json change, or take both entries back out; do not commit the chain
-  without the files. Strip both and the count is 11 suites and 1078.
+  `verify:scan` covers the scan station: the verdict table, the latch state
+  machine, the tone vocabulary and the CSS override that neutralises
+  html5-qrcode's own green. It needs no database, so it runs on a clean clone.
+  Its §5 reads `node_modules/html5-qrcode` AS TEXT and goes red if the library
+  renames its shader region or changes its match colour — without that the
+  override rots silently on the next `npm update`.
+  `verify:logging` covers the error table. Every row there is about the ERROR
+  PATH, which only misbehaves once something else already has: the sink must
+  not throw, must not recurse (it never calls `log`, and guards re-entry), must
+  not block a request, and must not carry a secret into a table that outlives
+  it.
+  `verify:analytics` executes the REAL gtag snippet, read as text out of
+  `_components/Analytics.tsx`, inside a `node:vm` with a fake `window`, then asserts on
+  gtag's actual command queue and on which loader elements got appended. The staff-route
+  guard and the `page_location` scrubber are therefore checked as they ship, rather than
+  reimplemented in a copy that could rot. Its §6 exists for one specific regression: it
+  fails if anyone "simplifies" the query-param denylist into a wholesale strip of the
+  query string, which would silently delete every `utm_*` campaign attribution while
+  leaving the acquisition reports rendering, every session merely relabelled Direct.
+  **`verify:analytics` and `verify:testlogin` are committed** as of bfe3054, with
+  the package.json chain entries, so this instance of the trap is closed — as the
+  `verify:csv` / `verify:registrations` instance was before it. The trap itself is
+  not closed and re-arms every time: a chain entry naming an untracked script
+  fails on a clean clone while passing for whoever wrote it, because the file is
+  sitting in their working tree. Both of these read the source they assert
+  against AS TEXT, so neither could land without it — which is why they went in
+  as one large commit rather than two tidy ones. **Before adding any suite to the
+  chain, commit the script in the same commit as the package.json line.**
   **Numbers here go stale on their own**, which is the recurring failure this
   paragraph keeps having: checkout had grown 76 → 81 with nobody updating this
-  line, exactly as branding had grown 310 → 325 the time before. Re-count from
+  line, exactly as branding had grown 310 → 325 the time before — and again at
+  the 2026-09-25 release, where scan 88 → 128, registrations 25 → 43 and gate
+  225 → 227 had all landed since the previous re-count four commits earlier.
+  Note the shape of it: the line was corrected on 2026-09-20 and was wrong again
+  within a week, so "it was just re-counted" is not evidence. Re-count from
   the runner rather than trusting the line above; if it disagrees with what you
   measure, the line is what is wrong.
 - **Never make the chain green by weakening a check.** Report before/after assertion counts.

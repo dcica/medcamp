@@ -23,6 +23,10 @@ const supabaseHost = (() => {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Traced, self-contained server bundle for the container image. Without this
+  // the image has to carry the whole node_modules tree (~1GB) instead of only
+  // what the build actually reaches.
+  output: "standalone",
   // The dev-only Next badge is OFF, and this is a phone-first consequence rather
   // than a preference. Every screen here puts a 48px primary button at the
   // bottom of the card or form, so a floating badge pinned to a bottom corner

@@ -53,6 +53,40 @@ function emit(level: LogLevel, msg: string, fields?: LogFields): void {
   if (level === "error") console.error(line);
   else if (level === "warn") console.warn(line);
   else console.log(line);
+
+  // AND, for the two levels worth keeping, a row in the database.
+  //
+  // Vercel retains runtime logs for roughly two hours on this plan. An event
+  // ends at 10pm and the first "what happened at the gate?" arrives the next
+  // morning, by which time stdout is the only record and it is gone.
+  //
+  // FIRE AND FORGET, and `emit` stays synchronous. Every caller is a request
+  // handler, a webhook or a transaction, and none of them should wait on — or
+  // be able to fail because of — a log write.
+  //
+  // The import is DYNAMIC and inside the sink, not at the top of this file:
+  // src/middleware.ts runs on the edge runtime and this module is imported
+  // widely, so a static Prisma import would pull the client into that bundle.
+  // It also keeps logger.ts dependency-free at module scope, which is the
+  // property that let it be imported from lib/env during env validation.
+  if (level === "error" || level === "warn") {
+    void persistQuietly(level, msg, fields);
+  }
+}
+
+/** Never throws, never awaited, never logs about itself. */
+async function persistQuietly(
+  level: "warn" | "error",
+  msg: string,
+  fields?: LogFields,
+): Promise<void> {
+  try {
+    const { persistLogEntry } = await import("@/lib/errorSink");
+    await persistLogEntry({ level, message: msg, fields });
+  } catch {
+    // Deliberately silent. Logging a logging failure is the recursion the sink
+    // is shaped to avoid; stdout above already has the original line.
+  }
 }
 
 export const log = {

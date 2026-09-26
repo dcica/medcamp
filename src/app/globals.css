@@ -39,3 +39,27 @@ body {
     border: none !important;
   }
 }
+
+/* The scanner's own green is a LIE — see src/lib/scanVerdict.ts.
+
+   html5-qrcode paints the four viewfinder corner shaders rgb(90, 193, 56) the
+   instant a QR is merely PARSEABLE in frame: before any lookup, and identically
+   for a valid ticket, a Wi-Fi QR taped to the wall, and another event's code.
+   A volunteer reads that as "it worked". It is the single biggest contributor
+   to the reported bug — "it showd green boundary, but the action was not very
+   clear" — because the verdict banner then has to argue with it.
+
+   The banner is the only thing on this screen allowed to say green, so the
+   corners are pinned to one neutral colour in BOTH the match and no-match
+   states. An author-origin !important outranks a NON-important inline style,
+   which is all the library ever writes, so this wins without forking it or
+   fighting it with a MutationObserver (which would repaint on every frame and
+   burn battery on a phone held up for four hours).
+
+   Scoped under #qr-reader, an id we choose ourselves, so it can never reach
+   anything else. scripts/verify-scan.ts §5 reads the library as text and goes
+   red if it renames the region or changes the colour — otherwise this rots
+   silently on the next npm update. */
+#qr-reader #qr-shaded-region > div {
+  background-color: #ffffff !important;
+}

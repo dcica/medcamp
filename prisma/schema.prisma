@@ -107,8 +107,8 @@ model Membership {
 
   @@unique([orgId, userId])
   @@index([orgId])
-  @@map("memberships")
   @@index([userId])
+  @@map("memberships")
 }
 
 /// A per-EVENT override of a person's role and capabilities, for one event.
@@ -166,8 +166,8 @@ model Account {
   session_state     String?
 
   @@unique([provider, providerAccountId])
-  @@map("accounts")
   @@index([userId])
+  @@map("accounts")
 }
 
 model Session {
@@ -177,8 +177,8 @@ model Session {
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expires      DateTime
 
-  @@map("sessions")
   @@index([userId])
+  @@map("sessions")
 }
 
 model VerificationToken {
@@ -436,8 +436,8 @@ model ServiceCap {
 
   @@unique([eventId, serviceTypeId])
   @@index([eventId])
-  @@map("service_caps")
   @@index([serviceTypeId])
+  @@map("service_caps")
 }
 
 // ── Family membership (platform-level — NOT camp-scoped, NOT PHI) ────────────
@@ -486,8 +486,8 @@ model Member {
 
   @@unique([orgId, email])
   @@index([orgId])
-  @@map("members")
   @@index([planId])
+  @@map("members")
 }
 
 // ── Orders / Attendees ───────────────────────────────────────────────────────
@@ -527,6 +527,25 @@ model Order {
   method         PaymentMethod @default(STRIPE)
   /// Idempotency key for resilient day-of writes (decision #3).
   idempotencyKey String?       @unique
+
+  /// The buyer's Google Analytics client id (`<a>.<b>`, lifted from the
+  /// first-party `_ga` cookie at checkout), so the server-side GA4 purchase
+  /// event can be attributed to the session and channel that produced the sale.
+  /// See src/lib/ga.ts.
+  ///
+  /// NULL is a first-class, expected value and must stay nullable:
+  ///   - a walk-in paying cash at the desk has no web session of their own (the
+  ///     till volunteer's browser is not the buyer's), so there is nothing
+  ///     honest to record and no purchase event is sent;
+  ///   - a buyer with analytics blocked, or a self-hoster who configures no
+  ///     Google anything, never has a `_ga` cookie to read.
+  /// Reconciliation is the source of truth for money; this column exists only
+  /// for acquisition measurement.
+  ///
+  /// NOT a foreign key and deliberately UNINDEXED: nothing queries orders by
+  /// it — it is written once at checkout and read once at confirmation, both by
+  /// primary key. verify:schema enforces covering indexes on FK children only.
+  gaClientId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -573,8 +592,8 @@ model Attendee {
 
   @@index([orgId, eventId])
   @@index([eventId])
-  @@map("attendees")
   @@index([orderId])
+  @@map("attendees")
 }
 
 // ── Billing: every billable thing is a LineItem ──────────────────────────────
@@ -633,9 +652,9 @@ model LineItem {
   @@index([orgId])
   @@index([orderId])
   @@index([attendeeId])
-  @@map("line_items")
   @@index([serviceTypeId])
   @@index([membershipPlanId])
+  @@map("line_items")
 }
 
 // ── Competition / showcase entries ───────────────────────────────────────────
@@ -838,9 +857,9 @@ model LedgerEntry {
   createdAt DateTime @default(now())
 
   @@index([orgId, createdAt])
-  @@map("ledger_entries")
   @@index([paymentId])
   @@index([lineItemId])
+  @@map("ledger_entries")
 }
 
 // ── Stations & routing (one stored route per attendee — decision #5) ─────────
@@ -865,8 +884,8 @@ model Station {
 
   @@unique([eventId, key])
   @@index([eventId])
-  @@map("stations")
   @@index([orgId])
+  @@map("stations")
 }
 
 enum VisitStatus {
@@ -1086,8 +1105,8 @@ model VolunteerSignup {
   @@unique([volunteerId, eventId])
   @@index([roleId])
   @@index([eventId, status])
-  @@map("volunteer_signups")
   @@index([counselorId])
+  @@map("volunteer_signups")
 }
 
 // ── Operations checklist (Module 7) ──────────────────────────────────────────
@@ -1130,8 +1149,8 @@ model ChecklistItem {
   completedAt       DateTime?
 
   @@index([eventId, phase])
-  @@map("checklist_items")
   @@index([orgId])
+  @@map("checklist_items")
 }
 
 // ── Member invites (admin portal) ────────────────────────────────────────────
@@ -1156,4 +1175,60 @@ model Invite {
   @@unique([orgId, email])
   @@index([orgId])
   @@map("invites")
+}
+
+// ── Error log (operations) ───────────────────────────────────────────────────
+
+/// A server-side error or warning, kept where it can still be read tomorrow.
+///
+/// WHY A TABLE AND NOT THE PLATFORM LOG. Vercel retains runtime logs for about
+/// two hours on the plan this runs on. An event finishes at 10pm; the first
+/// person to ask "what happened at the gate" does so the next morning, by which
+/// time the only record of it is gone. This is the smallest thing that survives
+/// the night.
+///
+/// NOT A FOREIGN KEY, deliberately. `orgId` is a plain nullable column with its
+/// own index, following the `Order.gaClientId` precedent: an error must be
+/// recordable BEFORE a tenant is resolved (env validation, the health check,
+/// middleware) and must outlive the org it mentions. A cascade here would
+/// delete the evidence along with the thing being investigated.
+model ErrorLog {
+  id String @id @default(cuid())
+
+  /// Tenant, when one was resolved. NULL is expected and common.
+  orgId String?
+
+  /// "error" or "warn". Everything quieter stays in stdout.
+  level String
+
+  /// The log message, which is a stable short string by convention.
+  message String
+
+  /// name + message of an attached Error, when there was one.
+  errorName    String?
+  errorMessage String?
+
+  /// Truncated stack, when available.
+  stack String?
+
+  /// Structured fields, SCRUBBED and size-capped before they get here.
+  /// See src/lib/errorScrub.ts — this column must never carry a token, a
+  /// password, a signature, a cookie or an Authorization header.
+  fields Json?
+
+  /// Where it happened, for grouping by surface.
+  route String?
+
+  /// Stable hash of level + message + errorName, so repeats group in the UI
+  /// instead of burying everything else.
+  fingerprint String
+
+  createdAt DateTime @default(now())
+
+  /// Newest-first listing, and the retention sweep, both read this.
+  @@index([createdAt])
+  /// Grouping in the admin view.
+  @@index([fingerprint, createdAt])
+  @@index([orgId])
+  @@map("error_logs")
 }

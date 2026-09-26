@@ -7,7 +7,7 @@ import { db } from "@/lib/db";
 import { getActiveOrg, getActiveBranding } from "@/lib/tenant";
 import { offeringKindsByEvent } from "@/server/performance";
 import { saleSummaryByEvent } from "@/server/eventSales";
-import { eventActions, TYPE_LABEL } from "@/lib/eventActions";
+import { eventActions, isPaidDoor, TYPE_LABEL } from "@/lib/eventActions";
 import {
   formatWhen,
   formatVenueMonthDay,
@@ -23,6 +23,7 @@ import {
   resolveEventSlug,
 } from "@/lib/seo";
 import { JsonLd } from "@/app/_components/JsonLd";
+import { ViewItemTracker } from "./ViewItemTracker";
 
 export const dynamic = "force-dynamic";
 
@@ -207,7 +208,19 @@ export default async function EventPage({
   const primary = actions[0];
   // Same rule the card applies, and for the same reason: a price is only honest
   // when there is a door to pay it at. See EventPosterCard for the live case.
-  const sellable = primary?.key === "register" || primary?.key === "perform";
+  const paidDoor = isPaidDoor(primary);
+  const soldOut = sale?.offer?.soldOut === true;
+  const sellable = paidDoor && !soldOut;
+  // Capacity survives a sell-out; the price does not. "Class Entry is sold out"
+  // is the sentence this page most needs to carry once it is.
+  const showCapacity = paidDoor;
+  /**
+   * EVERY paid door goes, not just the first. This page renders the whole
+   * action list rather than one primary, so an event selling both a competition
+   * entry and floor admission would otherwise keep its second money button
+   * alive after the offering behind it sold out. Volunteer and vendor stay.
+   */
+  const visibleActions = soldOut ? actions.filter((a) => !isPaidDoor(a)) : actions;
 
   const canonical = `/e/${eventSlug(e)}`;
   const isPast = e.endsAt < now;
@@ -243,6 +256,16 @@ export default async function EventPage({
                 }
               : null,
         })}
+      />
+      {/* GA4 funnel step 1. Client-only, renders nothing — see ViewItemTracker
+          for why this page stays a Server Component. The reported value is
+          gated by the same `sellable && sale?.offer` rule the JSON-LD offer
+          above uses, so the funnel cannot report a price the page itself
+          refuses to print. */}
+      <ViewItemTracker
+        eventSlug={eventSlug(e)}
+        eventKind={e.type}
+        valueCents={sellable && sale?.offer ? sale.offer.priceCents : null}
       />
       <JsonLd
         data={breadcrumbLd([
@@ -323,7 +346,7 @@ export default async function EventPage({
               {sale.priceLine}
             </p>
           )}
-          {sellable && sale?.capacityLine && (
+          {showCapacity && sale?.capacityLine && (
             <p className="text-sm font-semibold text-gray-700">
               {sale.capacityLine}
             </p>
@@ -334,9 +357,9 @@ export default async function EventPage({
         </div>
       )}
 
-      {!isPast && actions.length > 0 && (
+      {!isPast && visibleActions.length > 0 && (
         <div className="mt-6 space-y-2">
-          {actions.map((a, i) => (
+          {visibleActions.map((a, i) => (
             <Link
               key={a.key}
               href={a.href}
