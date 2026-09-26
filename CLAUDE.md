@@ -161,11 +161,11 @@ and are safe. The forbidding comment at `src/server/payments.ts:242-260` stays.
 
 ### Verification
 
-- `npx tsc --noEmit` after every task, then `npm run verify`. Baseline as of 2026-09-20,
-  re-counted from the runner rather than carried forward: **17 suites, 1629 assertions,
+- `npx tsc --noEmit` after every task, then `npm run verify`. Baseline as of 2026-09-25,
+  re-counted from the runner rather than carried forward: **17 suites, 1689 assertions,
   all green** — schema 54, pricing 42, validation 62, storage 31, branding 323,
-  performance 140, gate 225, scan 88, logging 62, readiness 91, checkout 123, csv 26,
-  testlogin 35, home 76, seo 100, registrations 25, analytics 126. (`pricing` and `validation` print
+  performance 140, gate 227, scan 128, logging 62, readiness 91, checkout 123, csv 26,
+  testlogin 35, home 76, seo 100, registrations 43, analytics 126. (`pricing` and `validation` print
   `PASS`; the rest print `ok` — count both when reporting totals. Four suites also
   print a third status, `..`, for a row a Central-time box or a local-disk adapter
   cannot distinguish: storage, performance, gate and home have one each. A `..` is
@@ -204,7 +204,11 @@ and are safe. The forbidding comment at `src/server/payments.ts:242-260` stays.
   chain, commit the script in the same commit as the package.json line.**
   **Numbers here go stale on their own**, which is the recurring failure this
   paragraph keeps having: checkout had grown 76 → 81 with nobody updating this
-  line, exactly as branding had grown 310 → 325 the time before. Re-count from
+  line, exactly as branding had grown 310 → 325 the time before — and again at
+  the 2026-09-25 release, where scan 88 → 128, registrations 25 → 43 and gate
+  225 → 227 had all landed since the previous re-count four commits earlier.
+  Note the shape of it: the line was corrected on 2026-09-20 and was wrong again
+  within a week, so "it was just re-counted" is not evidence. Re-count from
   the runner rather than trusting the line above; if it disagrees with what you
   measure, the line is what is wrong.
 - **Never make the chain green by weakening a check.** Report before/after assertion counts.
