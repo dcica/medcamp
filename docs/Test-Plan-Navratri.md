@@ -191,9 +191,17 @@ Note for whoever runs this: until Task B2 fixes the fixtures, **this test cannot
 
 4 pairs, collected 2 now and 2 later. Assert `fulfilledQty` goes 0 → 2 → 4, that `fulfilledAt` is set **only** on reaching 4, that a 5th is clamped or refused, and that the second volunteer's screen reads "2 left" rather than "×4" (Tasks E7, F3).
 
-### C-3 · Undo
+### C-3 · Undo — **NOT BUILT, do not test**
 
-Mis-scan, then undo inside the 2-minute window. Assert `checkedInAt` returns to null, the code becomes valid again, the headcount drops by one, and an `UNDO_ADMIT` audit row exists naming the actor. Past the window, assert a coordinator is required.
+> This describes a feature that does not exist and never did. There is no
+> `UNDO_ADMIT`, no 2-minute window, and no path anywhere in the app that clears
+> `checkedInAt`. **A mis-admit is permanent from the UI**, which is a real
+> operational risk the door staff must be briefed on rather than a test case.
+>
+> Kept here, struck through, because "test the undo" was asked for twice on the
+> strength of this paragraph.
+
+~~Mis-scan, then undo inside the 2-minute window. Assert `checkedInAt` returns to null, the code becomes valid again, the headcount drops by one, and an `UNDO_ADMIT` audit row exists naming the actor. Past the window, assert a coordinator is required.~~
 
 ### C-4 · A door sale admits only what it sold
 
@@ -247,7 +255,19 @@ Run after every purchase suite, and once against the full night's data before si
 
 ## Suite F — Rehearsal (L3)
 
-Small, specific, and irreplaceable. Two real phones, the real venue if possible:
+**Now a document of its own: [Day-of Rehearsal](Rehearsal-Day-Of.md)** — a
+two-hour script for eight people on their own phones, written for volunteers
+rather than for a developer, with a setup script (`scripts/setup-rehearsal.ts`)
+that stands the event up in one command.
+
+It covers the four items this suite originally listed, and adds the drills that
+only exist because of defects found since: the latching verdict and its
+`Done — next guest` trap, nameless party admit (Dandiya sets
+`collectsAttendeeDetails = false`, so the door sees ten identical rows), the
+refunded-ticket path across all three surfaces, till vs no-till, printed
+multi-QR sheets, and volunteer sign-in.
+
+The originals, all still in scope there:
 
 1. **Two doors at once.** Both phones scan different members of the same party simultaneously. Watch for diverging headcounts and for both volunteers being offered the same unfulfilled sticks.
 2. **Network loss mid-scan.** Turn off WiFi during an admit. Assert nothing is half-committed. Then decide, in writing, who owns the "network is down, take cash and write names" call — and print the paper roster.
