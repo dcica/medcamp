@@ -443,4 +443,20 @@ capacity, and skips anyone already ticketed.
 **Never** run `npm run verify` against the test database — several of its suites
 delete events and users.
 
+### ⚠️ When the rehearsal is over
+
+**Turn test-login back off.** While it is on, anyone who reaches
+`test.dcica.org/test-login` with the shared password can assume **any staff
+role**, including Coordinator — on an environment holding a copy of real
+ticket-buyers' names and email addresses. The password will have been sent to
+twelve people over ordinary email.
+
+On the `medcamp-test` Vercel project, set `TEST_LOGIN_ENABLED` to `false`
+(or blank the password), then **redeploy** — an env change does not reach a
+running deployment until it is rebuilt. Verify by loading
+`test.dcica.org/test-login` and confirming it 404s again.
+
+Prod is unaffected either way: `TEST_LOGIN_ENABLED` is empty on `medcamp-prod`,
+and the gate fails closed on anything that is not exactly the string `true`.
+
 </details>
