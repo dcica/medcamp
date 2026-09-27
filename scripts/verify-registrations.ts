@@ -46,6 +46,8 @@
  *   §4  drop the `isDonation` branch                 → break-out rows fail
  */
 import * as dotenv from "dotenv";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { PrismaClient } from "@prisma/client";
 
 // Same reasoning as verify-checkout.ts: the machine has a global DATABASE_URL
@@ -448,6 +450,55 @@ async function main() {
 
   await db.payment.deleteMany({ where: { orderId: closedOrder.id } });
   await db.event.delete({ where: { id: closedEvent.id } });
+
+
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§10 the table lists days that sold; the bars list every day");
+  // Read AS TEXT, so this asserts what SHIPS rather than a reimplementation
+  // that could rot -- same approach as verify:scan §5 and verify:analytics.
+  //
+  // THE REGRESSION THIS EXISTS FOR: making the bars use `soldDays` too. That
+  // reads like a tidy-up and is silent -- the chart still renders, but the
+  // x-axis compresses and a gap in trading becomes indistinguishable from
+  // activity. The bars must stay on `days`.
+  const chartSrc = readFileSync(
+    join(process.cwd(), "src/app/_components/DailySalesChart.tsx"),
+    "utf8",
+  );
+  const PREDICATE = /d\.units > 0 \|\| d\.cents > 0/g;
+
+  check("the quiet-day predicate is defined exactly once",
+    (chartSrc.match(PREDICATE) ?? []).length === 1,
+    String((chartSrc.match(PREDICATE) ?? []).length));
+  check("soldDays is that predicate applied to days",
+    /const soldDays = days\.filter/.test(chartSrc));
+  check("the stat-tile threshold reads off soldDays, not a second filter",
+    /const active = soldDays\.length/.test(chartSrc));
+
+  // The table body maps soldDays...
+  check("the table body maps soldDays", chartSrc.includes("{soldDays.map("));
+  check("the table body does NOT map days", !chartSrc.includes("{days.map("));
+
+  // ...while BOTH bar charts are still handed the full series.
+  const barsEls = chartSrc.match(/<Bars[\s\S]*?\/>/g) ?? [];
+  check("there are two Bars elements (units and money)", barsEls.length === 2,
+    String(barsEls.length));
+  check("every Bars gets days={days}, never soldDays",
+    barsEls.every((b) => b.includes("days={days}") && !b.includes("soldDays")));
+
+  // The bucket builder must keep emitting quiet days, or the filter above has
+  // nothing to filter and the axis is already compressed upstream.
+  const dashSrc = readFileSync(
+    join(process.cwd(), "src/server/dashboard.ts"),
+    "utf8",
+  );
+  check("getDailySales still seeds a bucket for EVERY day in range",
+    dashSrc.includes("for (let i = days - 1; i >= 0; i--)"));
+  const quiet = series.filter((d) => d.units === 0 && d.cents === 0);
+  check("the live series really does contain a quiet day to drop",
+    quiet.length > 0, quiet.length + " quiet of " + series.length);
+  check("...and at least one day that sold, so the table is not empty",
+    series.some((d) => d.units > 0 || d.cents > 0));
 
 
   await cleanup(org.id);
