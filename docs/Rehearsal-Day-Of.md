@@ -394,15 +394,37 @@ The three that matter most:
 <details>
 <summary>Technical — before and after the rehearsal</summary>
 
+**First, compose the env file.** `.env.test` holds the database strings and
+*nothing else*, so on its own the app URL would default to `localhost` (dead
+links in every ticket) and email would silently log to console instead of
+sending. Both fail quietly. Keep this file **outside the repo**:
+
+```bash
+SP=/tmp/rehearsal            # any path that is not inside the repo
+{
+  grep -E '^(DATABASE_URL|DIRECT_URL)=' .env.test
+  echo 'NEXT_PUBLIC_APP_URL=https://test.dcica.org'
+  echo 'NEXT_PUBLIC_ROOT_DOMAIN=test.dcica.org'
+  echo 'TENANT_ROUTING=path'
+  echo 'DEFAULT_ORG_SLUG=dcica'
+  grep -E '^(EMAIL_PROVIDER|AWS_REGION|EMAIL_FROM|AWS_PROFILE)=' .env
+} > "$SP/.env.rehearsal"
+```
+
 **The practice event's scan window is six hours long.** Re-run the setup on the
 morning of the rehearsal or the station will say *"Nothing to scan right now"*:
 
 ```bash
-ENV_FILE=<composed env> npx tsx scripts/setup-rehearsal.ts --commit
+ENV_FILE="$SP/.env.rehearsal" npx tsx scripts/setup-rehearsal.ts --commit
 ```
 
-Add `--send` to mint and email the roster tickets. Without it, nothing is sent.
-Re-running is safe — already-confirmed orders are skipped.
+Run it with no flags first — that is a dry run and writes nothing. Add `--send`
+to mint and email the roster tickets; without it nothing is sent. Re-running is
+always safe: already-confirmed orders are skipped, so it never double-mints.
+
+`--send` refuses outright on a localhost app URL, a non-test host, a non-SES
+provider, or a sandboxed SES account — each of those would otherwise confirm
+twelve orders and deliver nothing, with no error anywhere.
 
 **Pre-flight, the day before:**
 
