@@ -5,16 +5,16 @@ import { formatCents } from "@/lib/money";
 import { formatVenueTime } from "@/lib/eventTime";
 import { expandTicketCode, MIN_TOKEN_PREFIX } from "@/lib/ticketCode";
 import { GATE_MAX_QTY_PER_LINE, type GateSaleItem } from "@/lib/ticketMinting";
+import Link from "next/link";
+
 import { QrScanner } from "@/app/_components/QrScanner";
-import {
-  ScanVerdictBanner,
-  TONE_FRAME,
-} from "@/app/_components/ScanVerdictBanner";
+import { TONE_BAND, TONE_WORD } from "@/lib/scanToneStyles";
 import {
   verdictFor,
   signalForError,
   isVoidOrder,
   type ScanVerdict,
+  type ScanTone,
 } from "@/lib/scanVerdict";
 import { playTone } from "@/lib/scanTones";
 import {
@@ -122,6 +122,11 @@ export function GateMode({
   const [buySel, setBuySel] = useState<Basket>(new Map());
   const [compCount, setCompCount] = useState(1);
   const [walkUp, setWalkUp] = useState(false);
+  // Which task, if any, currently owns the screen. Only one at a time, and
+  // each one collapses the camera rather than unmounting it.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [compOpen, setCompOpen] = useState(false);
+  const [buyOpen, setBuyOpen] = useState(false);
   /** Bumped to remount WalkUpForm with empty state, without hiding it. */
   const [walkUpNonce, setWalkUpNonce] = useState(0);
 
@@ -357,354 +362,538 @@ export function GateMode({
     });
   }
 
+  // ── SCREEN MODE ────────────────────────────────────────────────────────
+  // The redesign's central idea: ONE LAYOUT PER STATE, not every function
+  // stacked at once. A 6" phone cannot hold scan + resolve + admit + search
+  // + comp + sale simultaneously, so it holds whichever of them is the
+  // volunteer's current job and nothing else.
+  //
+  //   scan   — camera takes the screen; dock offers the ways in
+  //   held   — camera SHOWS the verdict; dock offers this guest's actions
+  //   task   — camera collapses to a 52px strip; the task gets the space
+  //
+  // The whole thing is a fixed-height flex column that never scrolls: the
+  // header and dock are flex-none, the camera is flex-1 and absorbs all the
+  // slack. That is the mechanism, not the styling — it is why no CTA can end
+  // up below the fold regardless of how tall a guest's actions get.
+  const task: "none" | "search" | "comp" | "walkup" | "buy" =
+    searchOpen ? "search"
+    : compOpen ? "comp"
+    : walkUp ? "walkup"
+    : buyOpen ? "buy"
+    : "none";
+  const held = phase.phase === "held";
+  const reading = phase.phase === "reading";
+  const tone = held ? phase.verdict.tone : null;
+  const camCollapsed = task !== "none";
+
+  function closeTask() {
+    setSearchOpen(false);
+    setCompOpen(false);
+    setWalkUp(false);
+    setBuyOpen(false);
+  }
+
+  const pendingParty = view?.party.filter((t) => !t.alreadyAdmitted) ?? [];
+  const unfulfilled = view?.pickupItems.filter((it) => !it.fulfilledAt) ?? [];
+
+  /**
+   * The one primary action for this guest, or null when there is nothing to
+   * do but move on. Computed in ONE place so the button that admits and the
+   * button that takes cash can never both appear, and so "no action" reliably
+   * promotes "Next guest" to the full-width primary.
+   */
+  const primary: { label: string; onClick: () => void } | null = (() => {
+    if (!view) return null;
+    if (isVoidOrder(view.orderStatus)) return null;
+    if (pickupSel.size > 0)
+      return { label: `Hand over selected (${pickupSel.size})`, onClick: doPickup };
+    if (buySel.size > 0 && canTakeCash)
+      return {
+        label: `Take cash ${formatCents(basketTotal(catalog.merch, buySel))} & hand over`,
+        onClick: doBuyMore,
+      };
+    if (view.party.length > 1 && pendingParty.length > 0 && view.isPaid)
+      return {
+        label: `Admit ${pendingParty.length === view.party.length ? "all" : "remaining"} ${pendingParty.length}`,
+        onClick: () => run(() => doAdmitMany(pendingParty.map((t) => t.attendeeId))),
+      };
+    if (view.alreadyAdmitted) return null;
+    if (view.isPaid) return { label: "Admit & wristband", onClick: doAdmit };
+    if (canTakeCash)
+      return {
+        label: `Take cash ${formatCents(view.amountOwedCents)} & admit`,
+        onClick: doPayUnpaid,
+      };
+    return null;
+  })();
+
   return (
-    <div className="mt-4 space-y-5">
-      {/* Headcount */}
-      <div className="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-gray-500">Admitted</p>
-          <p className="text-3xl font-bold tabular-nums">{headcount}</p>
+    /* FIXED, FULL VIEWPORT. The gate is a kiosk: the site header, footer and
+       help panel are what was eating the room the dock needs, and a volunteer
+       at a door is not browsing the site. Navigation lives in the menu button
+       in this screen's own header. `dvh` not `vh` — mobile browser chrome
+       shrinks the viewport and `vh` would put the dock under it. */
+    <div className="fixed inset-0 z-50 flex flex-col bg-gray-50">
+      {/* ── Header, 56px, flex-none ───────────────────────────────────── */}
+      <header className="flex h-14 flex-none items-center gap-2 border-b border-gray-200 bg-white pl-4 pr-1">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[15px] font-bold leading-tight">{eventName}</p>
+          <p className="text-xs leading-tight text-gray-500">Gate</p>
         </div>
-        <p className="max-w-[55%] text-right text-xs text-gray-400">{eventName}</p>
+        <div className="flex flex-col items-end pr-1">
+          {/* "HERE", not "Admitted". The count is this device's own tally and
+              does not sync between doors, so the unqualified word invited a
+              coordinator to read one phone as the event total. */}
+          <p className="text-[11px] font-semibold uppercase leading-none tracking-wide text-gray-500">
+            Admitted here
+          </p>
+          <p className="text-2xl font-bold leading-tight tabular-nums">{headcount}</p>
+        </div>
+        <Link
+          href="/staff"
+          aria-label="Menu"
+          className="flex h-12 w-12 items-center justify-center rounded-lg text-gray-600"
+        >
+          <span aria-hidden className="text-2xl leading-none">
+            ☰
+          </span>
+        </Link>
+      </header>
+
+      {/* ── The camera band ───────────────────────────────────────────────
+          [ x { y } x ] — the band IS the verdict. The colour surrounds the
+          scan surface rather than sitting in a separate strip above it,
+          because the volunteer's eyes are on the viewfinder: that is what
+          they are aiming.
+
+          The camera is NEVER UNMOUNTED, only collapsed, because tearing down
+          html5-qrcode and re-acquiring the stream costs about a second and a
+          permission round-trip on every state change. */}
+      <div
+        className={`mx-2 mt-2 flex min-h-0 flex-col rounded-2xl transition-colors ${
+          camCollapsed ? "hidden" : "flex-1"
+        } ${TONE_BAND[tone ?? "idle"]}`}
+      >
+        {/* Status chip row. THIS is where the latch becomes visible: a live
+            feed that has stopped listening is indistinguishable from one that
+            is, which is why the nudge existed at all. */}
+        <div className="flex h-11 flex-none items-center justify-between gap-2 px-2.5">
+          <span className="inline-flex h-7 items-center gap-1.5 rounded-full bg-black px-2.5 text-xs font-bold uppercase tracking-wide text-white">
+            {reading ? (
+              <>
+                <span aria-hidden className="inline-block animate-spin">
+                  ◠
+                </span>
+                Checking…
+              </>
+            ) : held ? (
+              <>
+                <span aria-hidden>❙❙</span>
+                Camera paused
+              </>
+            ) : (
+              <>
+                <span aria-hidden className="animate-pulse">
+                  ●
+                </span>
+                Scanning
+              </>
+            )}
+          </span>
+          {held && (
+            <span className="inline-flex h-7 items-center rounded-full bg-black px-2.5 text-xs font-extrabold tracking-wide text-white">
+              {TONE_WORD[phase.verdict.tone]}
+            </span>
+          )}
+        </div>
+
+        {/* The scan surface itself, plus the verdict that replaces it. */}
+        <div className="relative mx-2.5 mb-2.5 min-h-0 flex-1 overflow-hidden rounded-xl bg-gray-900">
+          <QrScanner onScan={onScan} continuous />
+          {held && (
+            /* The verdict covers the feed rather than sitting beside it. It
+               is opaque on purpose: a live picture behind a standing answer
+               reads as "still working", which is the misunderstanding the
+               latch exists to prevent. */
+            <div
+              role="status"
+              aria-live="assertive"
+              
+              className="absolute inset-0 flex flex-col gap-2.5 overflow-hidden bg-black/[.85] p-4"
+            >
+              <div className="flex items-center gap-3">
+                <ToneGlyph tone={phase.verdict.tone} />
+                <p className="text-[26px] font-extrabold leading-none tracking-tight text-white">
+                  {phase.verdict.headline}
+                </p>
+              </div>
+              {phase.verdict.detail && (
+                <p className="text-base leading-snug text-gray-100">
+                  {phase.verdict.detail}
+                </p>
+              )}
+              {view && view.party.length > 1 && (
+                /* PIPS, NOT A LIST. This event does not collect attendee
+                   names, so ten tickets render as ten identical rows that a
+                   volunteer cannot tell apart and cannot fit on screen. A row
+                   of filled/empty circles answers the only question the door
+                   actually has: how many, and how many are already in. */
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {view.party.map((t) => (
+                    <span
+                      key={t.attendeeId}
+                      className={`h-5 w-5 rounded-full border-2 border-white ${
+                        t.alreadyAdmitted ? "bg-white" : "bg-transparent"
+                      }`}
+                    />
+                  ))}
+                  <span className="ml-1 text-sm font-semibold text-gray-100">
+                    {view.party.filter((t) => t.alreadyAdmitted).length} of{" "}
+                    {view.party.length} in
+                  </span>
+                </div>
+              )}
+              {view?.campId && (
+                <p className="font-mono text-xs text-gray-400">{view.campId}</p>
+              )}
+              <div className="flex-1" />
+              {nudge && (
+                <p className="flex items-start gap-2 rounded-lg border border-gray-600 bg-gray-800 px-3 py-2.5 text-sm leading-snug text-gray-100">
+                  <span aria-hidden>⃠</span>
+                  Another code was scanned and ignored — finish this guest first.
+                </p>
+              )}
+              {phase.verdict.instruction && (
+                <p className="rounded-lg bg-white px-3.5 py-3 text-[17px] font-bold leading-snug text-gray-900">
+                  {phase.verdict.instruction}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* ABOVE the camera, on purpose. The strip this replaces sat below
-          both the scanner and the manual box, so a tall guest card pushed
-          the one thing the volunteer needed off the bottom of the screen. */}
-      {phase.phase === "held" && (
-        <ScanVerdictBanner
-          verdict={phase.verdict}
-          onRelease={release}
-          nudge={nudge}
-        />
+      {/* ── Collapsed camera strip, while a task has the screen ─────────── */}
+      {camCollapsed && (
+        <button
+          type="button"
+          onClick={closeTask}
+          className="mx-2 mt-2 flex h-[52px] flex-none items-center gap-2.5 rounded-xl bg-gray-700 px-3.5 text-left text-sm font-semibold text-white"
+        >
+          <span aria-hidden className="text-lg">
+            ❙❙
+          </span>
+          <span className="flex-1">Camera paused</span>
+          <span className="font-bold underline underline-offset-2">Resume</span>
+        </button>
       )}
 
-      {phase.phase === "reading" && (
-        // Grey and SILENT. The volunteer needs to know the tap registered,
-        // not that it succeeded - a tone here would pre-announce a verdict
-        // the server has not given yet, which is the old beep all over again.
-        <p className="rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600">
-          Reading…
-        </p>
-      )}
-
-      {/* THE RESOLVED GUEST COMES BEFORE THE CAMERA, and that is the whole
-          point of this ordering.
-
-          The banner moved above the camera once already, for exactly this
-          reason. It was not enough: the ACTION — "Paid ✓ — Admit & wristband"
-          — still sat below a ~300px viewfinder and the finder box, so on a 6"
-          phone a volunteer scanned a ticket, saw a verdict, and then had to
-          scroll to admit. Reported on 2026-09-27 as "it is turning on the
-          paid/admit CTA, but it is not visible".
-
-          When nothing is resolved this renders null, so the camera is still
-          the first thing under the banner and the idle screen is unchanged.
-          Moving the camera down rather than the card up keeps DOM order equal
-          to visual order, which `order-*` classes would have broken for a
-          screen reader. */}
-      {view && (
-        <div className="space-y-4 rounded-xl border border-gray-300 bg-white p-4">
-          <div className="flex items-baseline justify-between">
-            <span className="text-lg font-bold">{view.name ?? "Guest"}</span>
-            <span className="font-mono text-xs text-gray-500">{view.campId}</span>
+      {/* ── The dock ──────────────────────────────────────────────────────
+          flex-none and last, so it is pinned above the bottom edge where the
+          thumb already rests, and cannot be pushed off by anything above. */}
+      {task === "none" && !held && (
+        <div className="flex flex-none flex-col gap-2 p-2 pb-3">
+          <button
+            type="button"
+            onClick={() => setSearchOpen(true)}
+            className="flex h-[52px] items-center gap-2.5 rounded-lg border border-gray-400 bg-white px-3.5 text-left text-[15px] text-gray-500"
+          >
+            <span aria-hidden className="text-gray-700">
+              ⌕
+            </span>
+            Ticket code or name
+          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setCompOpen(true)}
+              className="flex h-[52px] flex-1 items-center justify-center gap-2 rounded-lg border border-gray-400 bg-white text-[15px] font-semibold"
+            >
+              Member comp
+            </button>
+            {canTakeCash && (
+              <button
+                type="button"
+                onClick={() => setWalkUp(true)}
+                className="flex h-[52px] flex-1 items-center justify-center gap-2 rounded-lg border border-gray-400 bg-white text-[15px] font-semibold"
+              >
+                Walk-up sale
+              </button>
+            )}
           </div>
+        </div>
+      )}
 
-          {/* Admission */}
-          {/* THE WHOLE PARTY. A family of five is one order with five tickets,
-              and scanning one of their codes used to admit exactly one person —
-              five scans for five people standing together. */}
-          {view.party.length > 1 &&
-            (() => {
-              const pending2 = view.party.filter((t) => !t.alreadyAdmitted);
-              return (
-                <div className="rounded-lg border border-gray-300 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    {view.party.length} tickets on this order
-                  </p>
-                  <ul className="mt-2 space-y-1">
-                    {view.party.map((t) => (
-                      <li
-                        key={t.attendeeId}
-                        className="flex items-center justify-between gap-2 text-sm"
-                      >
-                        <span className={t.scanned ? "font-semibold" : ""}>
-                          {t.name ?? "Guest"}
-                          {t.scanned && (
-                            <span className="ml-1 text-xs text-gray-500">(scanned)</span>
-                          )}
-                        </span>
-                        {t.alreadyAdmitted ? (
-                          <span className="shrink-0 text-xs text-gray-500">
-                            in
-                            {t.admittedAt
-                              ? ` ${formatVenueTime(new Date(t.admittedAt))}`
-                              : ""}
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={pending || !view.isPaid}
-                            onClick={() => run(() => doAdmitMany([t.attendeeId]))}
-                            className="min-h-tap shrink-0 rounded-lg border border-gray-300 px-3 text-xs font-medium disabled:opacity-50"
-                          >
-                            Admit
-                          </button>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                  {pending2.length > 0 && view.isPaid && (
-                    <button
-                      type="button"
-                      disabled={pending}
-                      onClick={() =>
-                        run(() => doAdmitMany(pending2.map((t) => t.attendeeId)))
-                      }
-                      className="mt-3 min-h-tap w-full rounded-lg bg-brand font-semibold text-brand-fg disabled:opacity-50"
+      {task === "none" && held && (
+        <div className="flex flex-none flex-col gap-2 p-2 pb-3">
+          {/* Pre-bought merch, as tappable rows rather than checkboxes: a
+              20px checkbox is not a 48px target. */}
+          {view && unfulfilled.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <p className="pl-1 text-xs font-bold uppercase tracking-wide text-gray-500">
+                Pre-bought — hand over
+              </p>
+              {unfulfilled.map((it) => {
+                const on = pickupSel.has(it.lineItemId);
+                return (
+                  <button
+                    key={it.lineItemId}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => {
+                      const next = new Set(pickupSel);
+                      if (on) next.delete(it.lineItemId);
+                      else next.add(it.lineItemId);
+                      setPickupSel(next);
+                    }}
+                    className="flex h-[52px] items-center gap-3 rounded-lg border border-gray-200 bg-white px-3.5 text-left text-[15px]"
+                  >
+                    <span
+                      aria-hidden
+                      className={`flex h-6 w-6 flex-none items-center justify-center rounded-md border-2 border-gray-900 text-sm ${
+                        on ? "bg-gray-900 text-white" : "text-transparent"
+                      }`}
                     >
-                      {/* Says REMAINING, not the party size, when some are already
-                          in — the number on the button is the number of
-                          wristbands to hand over. */}
-                      Admit {pending2.length === view.party.length ? "all " : "remaining "}
-                      {pending2.length}
-                    </button>
-                  )}
-                </div>
-              );
-            })()}
+                      ✓
+                    </span>
+                    <span className="flex-1 font-semibold">{it.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
-          {view.alreadyAdmitted ? (
-            // NOT GREEN, and no longer shouting. This used to be
-            // This was a green tint - the SAME one the fresh-admit flash used,
-            // which is half of why green meant four different things. The amber
-            // banner above now carries the verdict; this is just the record,
-            // in venue time because the volunteer will compare it against the
-            // clock on the wall.
-            <p className="rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-700">
-              Wristband issued
-              {view.admittedAt
-                ? ` at ${formatVenueTime(new Date(view.admittedAt))}`
-                : ""}
-              .
-            </p>
-          ) : isVoidOrder(view.orderStatus) ? (
-            // Not payable at any price. The banner above says which.
-            <p className="rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-700">
+          {/* Selling merch to a guest already at the door. A cash path, so
+              it is hidden outright without a till. */}
+          {view &&
+            canTakeCash &&
+            catalog.merch.length > 0 &&
+            !isVoidOrder(view.orderStatus) && (
+              <button
+                type="button"
+                onClick={() => setBuyOpen(true)}
+                className="flex h-[52px] items-center justify-center gap-2 rounded-lg border border-gray-400 bg-white text-[15px] font-semibold"
+              >
+                Buy merch
+              </button>
+            )}
+
+          {view && isVoidOrder(view.orderStatus) && (
+            <p className="rounded-lg border border-gray-400 bg-white px-3.5 py-3 text-[15px] font-semibold leading-snug">
               {view.orderStatus === "REFUNDED" ? "Refunded" : "Cancelled"} — this
               ticket cannot be settled here.
             </p>
-          ) : view.isPaid ? (
-            <button
-              type="button"
-              disabled={pending}
-              onClick={doAdmit}
-              className="min-h-tap w-full rounded-lg bg-brand font-semibold text-brand-fg disabled:opacity-50"
-            >
-              Paid ✓ — Admit &amp; wristband
-            </button>
-          ) : (
-            // No tint here: the banner above already says UNPAID, the amount
-            // and what to do about it, at full size. Saying it twice in two
-            // different wordings is how the two drift apart.
-            <div className="space-y-2">
-              {/* HIDDEN, not greyed out: staffNav's rule is that a control
-                  you cannot use should not spend your attention. One line of
-                  explanation instead, so a volunteer knows to fetch someone
-                  rather than wondering where the button went. */}
-              {!canTakeCash && (
-                <p className="rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-700">
-                  Owes {formatCents(view.amountOwedCents)} — a till holder has to
-                  take this.
-                </p>
-              )}
-              {canTakeCash && (
+          )}
+
+          {/* Hidden, not greyed: a control you cannot use should not spend
+              your attention, and tapping one would 403 and lose the guest. */}
+          {view && !view.isPaid && !canTakeCash && !isVoidOrder(view.orderStatus) && (
+            <p className="rounded-lg border border-gray-400 bg-white px-3.5 py-3 text-[15px] font-semibold leading-snug">
+              Owes {formatCents(view.amountOwedCents)} — a till holder has to take
+              this.
+            </p>
+          )}
+
+          {primary ? (
+            <div className="flex gap-2">
+              {/* Next guest is the SMALLER, left-hand, secondary button and
+                  the primary is wider on the right. There is no undo at this
+                  door, so the destructive-by-omission tap (moving on) must not
+                  be the one the thumb finds first. */}
+              <button
+                type="button"
+                onClick={release}
+                className="flex h-14 flex-[0_0_34%] items-center justify-center gap-1.5 rounded-lg border border-gray-400 bg-white text-[15px] font-semibold"
+              >
+                Next guest
+              </button>
               <button
                 type="button"
                 disabled={pending}
-                onClick={doPayUnpaid}
-                className="min-h-tap w-full rounded-lg bg-brand font-semibold text-brand-fg disabled:opacity-50"
+                onClick={primary.onClick}
+                className="flex h-14 min-w-0 flex-1 items-center justify-center rounded-lg bg-gray-900 px-3 text-center text-[15px] font-bold leading-tight text-white disabled:opacity-50"
               >
-                Take cash {formatCents(view.amountOwedCents)} &amp; admit
+                {primary.label}
               </button>
-              )}
             </div>
+          ) : (
+            /* ONE release control. "Done — next guest" is gone: it cleared the
+               guest WITHOUT releasing the latch, so tapping it left the camera
+               deaf with no sign of why. */
+            <button
+              type="button"
+              onClick={release}
+              className="flex h-14 items-center justify-center gap-2 rounded-lg bg-gray-900 text-base font-bold text-white"
+            >
+              Next guest
+            </button>
           )}
-
-          {/* Pickup */}
-          {view.pickupItems.length > 0 && (
-            <div className="rounded-lg border border-gray-200 p-3">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Pre-bought — hand over
-              </p>
-              <ul className="space-y-1.5">
-                {view.pickupItems.map((it) => (
-                  <li key={it.lineItemId}>
-                    {it.fulfilledAt ? (
-                      <span className="flex items-center gap-2 text-sm text-gray-500">
-                        <span className="text-green-600">✓</span> {it.name} — handed over
-                      </span>
-                    ) : (
-                      <label className="flex min-h-tap items-center gap-3 text-sm">
-                        <input
-                          type="checkbox"
-                          className="h-5 w-5"
-                          checked={pickupSel.has(it.lineItemId)}
-                          onChange={(e) => {
-                            const next = new Set(pickupSel);
-                            if (e.target.checked) next.add(it.lineItemId);
-                            else next.delete(it.lineItemId);
-                            setPickupSel(next);
-                          }}
-                        />
-                        {it.name}
-                      </label>
-                    )}
-                  </li>
-                ))}
-              </ul>
-              {pickupSel.size > 0 && (
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={doPickup}
-                  className="mt-2 min-h-tap w-full rounded-lg border border-brand font-semibold text-brand disabled:opacity-50"
-                >
-                  Hand over selected ({pickupSel.size})
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Buy more */}
-          {canTakeCash && catalog.merch.length > 0 && (
-            <div className="rounded-lg border border-gray-200 p-3">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Buy more
-              </p>
-              <ItemPicker items={catalog.merch} basket={buySel} onChange={setBuySel} />
-              {buySel.size > 0 && (
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={doBuyMore}
-                  className="mt-2 min-h-tap w-full rounded-lg bg-brand font-semibold text-brand-fg disabled:opacity-50"
-                >
-                  Take cash {formatCents(basketTotal(catalog.merch, buySel))} &amp; hand over
-                </button>
-              )}
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={clearGuest}
-            className="min-h-tap w-full rounded-lg border border-gray-300 text-sm"
-          >
-            Done — next guest
-          </button>
         </div>
       )}
 
-      {/* THE CAMERA IS THE GATE'S MAIN INSTRUMENT, so it carries the verdict
-          colour rather than only reporting into a strip above itself. The
-          volunteer's eyes are on the viewfinder — that is where they are
-          pointing it — so the answer has to be there too.
+      {/* ── Task: find a guest ────────────────────────────────────────── */}
+      {task === "search" && (
+        <div className="flex min-h-0 flex-1 flex-col gap-2 p-2">
+          <GuestFinder
+            eventCode={eventCode}
+            disabled={pending}
+            searching={searching}
+            hits={hits}
+            onLookup={(code) => {
+              closeTask();
+              onScan(code);
+            }}
+            onSearch={runSearch}
+            onPick={(hit) => {
+              closeTask();
+              pickHit(hit);
+            }}
+          />
+        </div>
+      )}
 
-          This does NOT undo the override in globals.css. That one suppresses
-          html5-qrcode's own green, which fires on mere PARSEABILITY, before
-          any lookup, identically for a real ticket and a Wi-Fi QR on the wall.
-          This frame is painted only once the SERVER has answered, and it reads
-          its colour from the same TONE_FRAME table the banner's TONE_STYLE
-          sits beside — so a green frame can never appear around an amber
-          banner. Idle is a neutral grey: "no answer yet" must not look like an
-          answer. */}
-      {/* [ x { y } x ] — a heavy colour band on every side of the scan
-          surface. 12px, because this has to be readable at arm's length in
-          gym lighting by someone not looking directly at it; a hairline
-          border is invisible at that distance.
-
-          THE WIDTH IS CONSTANT AND ONLY THE COLOUR CHANGES. A frame that grew
-          on a verdict would reflow the <video> element mid-scan, which on a
-          phone means the camera re-lays-out while a queue is waiting. */}
-      <div
-        className={`rounded-xl border-[12px] p-1 transition-colors duration-150 ${
-          TONE_FRAME[phase.phase === "held" ? phase.verdict.tone : "idle"]
-        }`}
-      >
-        <QrScanner onScan={onScan} continuous />
-      </div>
-
-      {/* ONE box for every "the scan did not work" path: a partial code, a
-          whole code, a name, an email, a phone number. Two adjacent inputs
-          doing almost the same thing is a choice a volunteer should not
-          have to make with a queue waiting. */}
-      <GuestFinder
-        eventCode={eventCode}
-        disabled={pending}
-        searching={searching}
-        hits={hits}
-        onLookup={onScan}
-        onSearch={runSearch}
-        onPick={pickHit}
-      />
-
-      {/* Member comp */}
-      <div className="rounded-xl border border-gray-200 bg-white p-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-          Member comp
-        </p>
-        <p className="mt-1 text-xs text-gray-400">
-          Check the membership card. Covers up to 4.
-        </p>
-        <div className="mt-3 flex items-center gap-3">
-          <Stepper value={compCount} onChange={setCompCount} min={1} max={4} />
+      {/* ── Task: member comp ─────────────────────────────────────────── */}
+      {task === "comp" && (
+        <TaskSheet title="Member comp" desc="Check the membership card. Covers up to 4." onClose={closeTask}>
+          <div className="flex flex-1 items-center justify-center gap-6">
+            <Stepper value={compCount} onChange={setCompCount} min={1} max={4} />
+          </div>
           <button
             type="button"
             disabled={pending}
-            onClick={doComp}
-            className="min-h-tap flex-1 rounded-lg bg-brand font-semibold text-brand-fg disabled:opacity-50"
+            onClick={() => {
+              closeTask();
+              doComp();
+            }}
+            className="flex h-14 flex-none items-center justify-center rounded-lg bg-gray-900 text-base font-bold text-white disabled:opacity-50"
           >
             Comp {compCount} &amp; admit
           </button>
-        </div>
-      </div>
+        </TaskSheet>
+      )}
 
-      {/* Walk-up (no ticket). A cash path, so it is hidden without a till for
-          the same reason as the others: tapping it would resolve nothing and
-          bounce the volunteer to /403. */}
-      {canTakeCash && !walkUp ? (
-        <button
-          type="button"
-          onClick={() => setWalkUp(true)}
-          className="min-h-tap w-full rounded-lg border border-dashed border-gray-300 text-sm font-medium text-brand"
-        >
-          No ticket — walk-up sale
-        </button>
-      ) : canTakeCash ? (
-        <WalkUpForm
-          key={walkUpNonce}
-          catalog={catalog}
-          pending={pending}
-          onCancel={() => setWalkUp(false)}
-          onSubmit={(items, name) =>
-            run(async () => {
-              const res = await sellAndAdmit(eventId, items, name);
-              if (!res.ok) return settle(verdictFor(signalForError(res.error)));
-              setHeadcount(res.data);
-              settle(verdictFor({ kind: "admitted", name: name || "Walk-up" }));
-              // The form STAYS MOUNTED. It used to unmount itself after every
-              // sale, so a volunteer re-tapped "No ticket - walk-up sale" for
-              // each customer in the queue. Clearing it is the same reset
-              // without the extra tap.
-              resetWalkUp();
-            })
-          }
-        />
-      ) : null}
+      {/* ── Task: buy merch for a resolved guest ──────────────────────── */}
+      {task === "buy" && canTakeCash && (
+        <TaskSheet title="Buy merch" onClose={closeTask}>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <ItemPicker items={catalog.merch} basket={buySel} onChange={setBuySel} />
+          </div>
+          <button
+            type="button"
+            disabled={pending || buySel.size === 0}
+            onClick={() => {
+              closeTask();
+              doBuyMore();
+            }}
+            className="flex h-14 flex-none items-center justify-center rounded-lg bg-gray-900 text-base font-bold text-white disabled:opacity-50"
+          >
+            Take cash {formatCents(basketTotal(catalog.merch, buySel))} &amp; hand over
+          </button>
+        </TaskSheet>
+      )}
+
+      {/* ── Task: walk-up sale ────────────────────────────────────────── */}
+      {task === "walkup" && canTakeCash && (
+        <TaskSheet title="Walk-up sale" onClose={closeTask}>
+          <WalkUpForm
+            key={walkUpNonce}
+            catalog={catalog}
+            pending={pending}
+            onCancel={closeTask}
+            onSubmit={(items, name) =>
+              run(async () => {
+                const res = await sellAndAdmit(eventId, items, name);
+                if (!res.ok) return settle(verdictFor(signalForError(res.error)));
+                setHeadcount(res.data);
+                closeTask();
+                settle(verdictFor({ kind: "admitted", name: name || "Walk-up" }));
+                resetWalkUp();
+              })
+            }
+          />
+        </TaskSheet>
+      )}
     </div>
   );
 }
+
+/**
+ * The verdict glyph, as a SHAPE and not only a colour.
+ *
+ * Green/amber/red alone fails for the ~1 in 12 men with a red-green
+ * deficiency, and on a phone at minimum brightness in daylight the whole
+ * screen is close to greyscale. Circle / triangle / octagon are the road-sign
+ * vocabulary — they read at a glance, they read in monochrome, and they read
+ * for someone who has never seen this screen before.
+ */
+function ToneGlyph({ tone }: { tone: ScanTone }) {
+  if (tone === "go") {
+    return (
+      <span
+        aria-hidden
+        className="flex h-14 w-14 flex-none items-center justify-center rounded-full bg-green-600 text-3xl font-black text-white"
+      >
+        ✓
+      </span>
+    );
+  }
+  if (tone === "hold") {
+    return (
+      <span
+        aria-hidden
+        className="flex h-14 w-14 flex-none items-center justify-center bg-amber-400 text-3xl font-black text-gray-900"
+        style={{ clipPath: "polygon(50% 4%, 96% 92%, 4% 92%)" }}
+      >
+        <span className="mt-2">!</span>
+      </span>
+    );
+  }
+  return (
+    <span
+      aria-hidden
+      className="flex h-14 w-14 flex-none items-center justify-center bg-red-600 text-3xl font-black text-white"
+      style={{
+        clipPath:
+          "polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%)",
+      }}
+    >
+      ✕
+    </span>
+  );
+}
+
+/** A full-height task panel. The camera is a strip above it, not gone. */
+function TaskSheet({
+  title,
+  desc,
+  onClose,
+  children,
+}: {
+  title: string;
+  desc?: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="m-2 flex min-h-0 flex-1 flex-col gap-2 overflow-hidden rounded-2xl border border-gray-200 bg-white p-3">
+      <div className="flex h-12 flex-none items-center justify-between">
+        <p className="text-[17px] font-bold">{title}</p>
+        <button
+          type="button"
+          aria-label="Close"
+          onClick={onClose}
+          className="flex h-12 w-12 items-center justify-center text-xl text-gray-500"
+        >
+          ✕
+        </button>
+      </div>
+      {desc && <p className="-mt-1.5 text-sm leading-snug text-gray-600">{desc}</p>}
+      {children}
+    </div>
+  );
+}
+
 
 /**
  * Fallback entry for when a scan won't take — a scuffed badge, a dead camera,

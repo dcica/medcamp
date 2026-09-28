@@ -306,9 +306,22 @@ async function main(): Promise<void> {
   // a bg-green-50 flash for "just admitted", and a second bg-green-50 block
   // inside the guest card for "already admitted by someone else".
   const gateMode = read("src/app/scan/GateMode.tsx");
-  const banner = read("src/app/_components/ScanVerdictBanner.tsx");
+  const banner = read("src/lib/scanToneStyles.ts");
 
-  check("the station renders the shared banner", gateMode.includes("ScanVerdictBanner"));
+  // The station no longer renders the banner COMPONENT -- the verdict is
+  // drawn inside the camera now -- but it must still read its colours and its
+  // words from the shared tables, which is what "one place owns colour" meant
+  // all along. CampMode still renders the banner itself.
+  // ONE table, imported, not re-typed per screen. The gate draws the verdict
+  // around the camera and nothing else draws one today, but the moment a
+  // second screen does, it must read these and not invent a parallel set --
+  // that is how a green band ends up over an amber headline.
+  check("the tone tables live in one shared module",
+    banner.includes("TONE_BAND") && banner.includes("TONE_WORD"));
+  check("...and the station imports them rather than re-typing them",
+    /import \{[^}]*TONE_BAND[^}]*\} from "@\/lib\/scanToneStyles"/.test(gateMode));
+  check("the tone tables are not routed through the tenant theme",
+    !/var\(--brand|var\(--accent/.test(banner));
   check("the station plays the verdict tone", gateMode.includes("playTone"));
   check("the station asks the latch before accepting a decode",
     gateMode.includes("acceptsDecode"));
@@ -323,13 +336,15 @@ async function main(): Promise<void> {
   // above it. That is a SECOND coloured surface, so it has to be provably the
   // same colour source as the first -- a green frame around an amber banner
   // would be worse than no frame at all.
-  check("the frame colour comes from the shared table, not literals",
-    gateMode.includes("TONE_FRAME"));
+  check("the band colour comes from the shared table, not literals",
+    gateMode.includes("TONE_BAND"));
+  // The tone also reaches the volunteer as WORDS. Colour fails in a bright
+  // doorway, the glyph fails on a cracked screen; "LET IN" fails in neither.
+  check("the tone is also stated in words", gateMode.includes("TONE_WORD"));
   check("the station hard-codes no border colour of its own",
     !/border-(green|amber|red)-[0-9]/.test(gateMode),
     (gateMode.match(/border-(green|amber|red)-[0-9]+/g) ?? []).join(" "));
-  check("TONE_FRAME is exported next to TONE_STYLE, so the two cannot drift",
-    banner.includes("TONE_FRAME") && banner.includes("TONE_STYLE"));
+
   // Idle must not borrow a status colour: "no answer yet" must not look like
   // an answer, which is the exact mistake the library's own green makes.
   const idleLine = (banner.match(/idle:\s*"([^"]+)"/) ?? [])[1] ?? "";
@@ -338,22 +353,55 @@ async function main(): Promise<void> {
   // The frame must not resize on a verdict: a growing border reflows the
   // <video> mid-scan, which on a phone re-lays-out the camera with a queue
   // waiting. One width, stated once.
-  check("the frame width is constant, set outside the tone lookup",
-    /border-\[\d+px\][^`]*TONE_FRAME|TONE_FRAME[^`]*border-\[\d+px\]/s.test(gateMode)
-      || /border-\[\d+px\]/.test(gateMode));
+  // THE SCREEN DOES NOT SCROLL, and that is structural rather than cosmetic:
+  // a fixed full-viewport flex column whose camera is flex-1 and whose dock
+  // is flex-none cannot push a control off the bottom, however tall a guest's
+  // actions get. That is the actual fix for "the CTA is not visible", so it
+  // is the thing pinned -- not the pixel sizes on top of it.
+  check("the station is a fixed full-viewport column",
+    /fixed inset-0[^"]*flex flex-col/.test(gateMode));
+  check("the camera absorbs the slack (flex-1), so the dock cannot be pushed off",
+    /camCollapsed \? "hidden" : "flex-1"/.test(gateMode));
+  check("the dock is flex-none", /flex flex-none flex-col/.test(gateMode));
+  // One layout per state. Every function on one screen is what made it
+  // overflow in the first place.
+  check("a task collapses the camera rather than unmounting it",
+    gateMode.includes("camCollapsed") && !/\{!camCollapsed && <QrScanner/.test(gateMode));
+  // TAILWIND GENERATES NO h-13, AND SILENTLY GENERATES NOTHING FOR IT.
+  // A class that does not exist is not an error -- the control just renders
+  // at content height, which on a door screen means a sub-48px tap target
+  // that looks fine on a desktop and is unusable in a queue. Written after
+  // exactly that: the redesign shipped h-13 on six controls.
+  // No \b in this pattern ON PURPOSE. The first version used one, it was
+  // written through a shell heredoc that collapsed the backslash, and
+  // Python then turned the surviving \b into a real BACKSPACE byte. The
+  // regex became /<0x08>h-(13|...)/ which matches nothing -- a check that
+  // could not fail, which is worse than no check at all. It was caught
+  // only by mutation-testing it. A leading space-or-quote and a negative
+  // lookahead do the same job with characters no shell will touch.
+  const ghostHeights =
+    gateMode.match(/[\s"']h-(?:13|15|17|18|19|21|22|23)(?![\d[])/g) ?? [];
+  check("no height class Tailwind does not generate", ghostHeights.length === 0,
+    ghostHeights.join(" "));
+
+  check("there is exactly one QrScanner, mounted in every state",
+    (gateMode.match(/<QrScanner/g) ?? []).length === 1,
+    String((gateMode.match(/<QrScanner/g) ?? []).length));
 
   // THE ACTION MUST OUTRANK THE CAMERA. The resolved guest card carries
   // "Admit", and it used to render BELOW a ~300px viewfinder and the finder
   // box -- so a volunteer scanned, saw a verdict, and had to scroll one-handed
   // to act on it. Reported 2026-09-27. Ordering is load-bearing, so it is
   // pinned by position rather than left to whoever edits the JSX next.
-  const iCard = gateMode.indexOf("{view && (");
-  const iCam = gateMode.indexOf("<QrScanner");
-  const iFinder = gateMode.indexOf("<GuestFinder");
-  check("the resolved guest card renders before the camera",
-    iCard > -1 && iCam > -1 && iCard < iCam, `card@${iCard} camera@${iCam}`);
-  check("...and before the finder", iCard > -1 && iFinder > -1 && iCard < iFinder,
-    `card@${iCard} finder@${iFinder}`);
+  // THE ONE RELEASE CONTROL. "Done — next guest" cleared the guest WITHOUT
+  // releasing the latch, so tapping it left the camera deaf with nothing on
+  // screen explaining why. Two controls whose labels differ by one word, one
+  // of which silently broke the station, is the defect -- not the wording.
+  check("the dead second release button is gone",
+    !/onClick=\{clearGuest\}/.test(gateMode));
+  check("release is reachable in every held state",
+    (gateMode.match(/onClick=\{release\}/g) ?? []).length >= 2,
+    String((gateMode.match(/onClick=\{release\}/g) ?? []).length));
 
   // THE MID-FLOW 403. requireTill is the real gate and stays the real gate,
   // but the screen used to render every cash control to a volunteer without
@@ -363,11 +411,13 @@ async function main(): Promise<void> {
   check("the screen knows whether this volunteer holds a till",
     gateMode.includes("canTakeCash"));
   check("...the pay-unpaid control is gated on it",
-    /canTakeCash &&[\s\S]{0,400}doPayUnpaid/.test(gateMode));
-  check("...so is the walk-up sale",
-    /canTakeCash && !walkUp/.test(gateMode));
-  check("...and buy-more merch",
-    /canTakeCash && catalog\.merch/.test(gateMode));
+    /canTakeCash[\s\S]{0,200}doPayUnpaid/.test(gateMode));
+  check("...so is the walk-up sale, at both the way in and the sheet",
+    /canTakeCash &&[\s\S]{0,300}setWalkUp\(true\)/.test(gateMode)
+      && /task === "walkup" && canTakeCash/.test(gateMode));
+  check("...and buy-more merch, at both the way in and the sheet",
+    /canTakeCash &&[\s\S]{0,120}catalog\.merch/.test(gateMode)
+      && /task === "buy" && canTakeCash/.test(gateMode));
   // Hidden, with a reason -- not a disabled button.
   check("a no-till volunteer is told who can take it",
     gateMode.includes("a till holder has to"));
@@ -385,11 +435,11 @@ async function main(): Promise<void> {
 
   // The banner must not be dismissable by anything but a tap, and must not
   // quietly time out - the volunteer is looking at a wristband, not a phone.
-  check("the banner has an explicit release control", banner.includes("Next guest"));
+  check("the station has an explicit release control", gateMode.includes("Next guest"));
   check("the banner never auto-dismisses",
     !banner.includes("setTimeout") && !banner.includes("setInterval"));
-  check("the banner announces itself to a screen reader",
-    banner.includes(String.raw`aria-live="assertive"`));
+  check("the verdict announces itself to a screen reader",
+    /role="status"[\s\S]{0,80}aria-live="assertive"/.test(gateMode));
   // Status colour is meaning, not identity - CLAUDE.md, verify-branding §8.
   check("the banner uses no tenant brand token",
     !/bg-brand|text-brand|accent2?/.test(banner));
