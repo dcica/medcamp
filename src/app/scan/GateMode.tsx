@@ -6,7 +6,10 @@ import { formatVenueTime } from "@/lib/eventTime";
 import { expandTicketCode, MIN_TOKEN_PREFIX } from "@/lib/ticketCode";
 import { GATE_MAX_QTY_PER_LINE, type GateSaleItem } from "@/lib/ticketMinting";
 import { QrScanner } from "@/app/_components/QrScanner";
-import { ScanVerdictBanner } from "@/app/_components/ScanVerdictBanner";
+import {
+  ScanVerdictBanner,
+  TONE_FRAME,
+} from "@/app/_components/ScanVerdictBanner";
 import {
   verdictFor,
   signalForError,
@@ -385,24 +388,21 @@ export function GateMode({
         </p>
       )}
 
-      {/* Continuous scanner */}
-      <QrScanner onScan={onScan} continuous />
+      {/* THE RESOLVED GUEST COMES BEFORE THE CAMERA, and that is the whole
+          point of this ordering.
 
-      {/* ONE box for every "the scan did not work" path: a partial code, a
-          whole code, a name, an email, a phone number. Two adjacent inputs
-          doing almost the same thing is a choice a volunteer should not
-          have to make with a queue waiting. */}
-      <GuestFinder
-        eventCode={eventCode}
-        disabled={pending}
-        searching={searching}
-        hits={hits}
-        onLookup={onScan}
-        onSearch={runSearch}
-        onPick={pickHit}
-      />
+          The banner moved above the camera once already, for exactly this
+          reason. It was not enough: the ACTION — "Paid ✓ — Admit & wristband"
+          — still sat below a ~300px viewfinder and the finder box, so on a 6"
+          phone a volunteer scanned a ticket, saw a verdict, and then had to
+          scroll to admit. Reported on 2026-09-27 as "it is turning on the
+          paid/admit CTA, but it is not visible".
 
-      {/* Resolved guest */}
+          When nothing is resolved this renders null, so the camera is still
+          the first thing under the banner and the idle screen is unchanged.
+          Moving the camera down rather than the card up keeps DOM order equal
+          to visual order, which `order-*` classes would have broken for a
+          screen reader. */}
       {view && (
         <div className="space-y-4 rounded-xl border border-gray-300 bg-white p-4">
           <div className="flex items-baseline justify-between">
@@ -605,6 +605,49 @@ export function GateMode({
           </button>
         </div>
       )}
+
+      {/* THE CAMERA IS THE GATE'S MAIN INSTRUMENT, so it carries the verdict
+          colour rather than only reporting into a strip above itself. The
+          volunteer's eyes are on the viewfinder — that is where they are
+          pointing it — so the answer has to be there too.
+
+          This does NOT undo the override in globals.css. That one suppresses
+          html5-qrcode's own green, which fires on mere PARSEABILITY, before
+          any lookup, identically for a real ticket and a Wi-Fi QR on the wall.
+          This frame is painted only once the SERVER has answered, and it reads
+          its colour from the same TONE_FRAME table the banner's TONE_STYLE
+          sits beside — so a green frame can never appear around an amber
+          banner. Idle is a neutral grey: "no answer yet" must not look like an
+          answer. */}
+      {/* [ x { y } x ] — a heavy colour band on every side of the scan
+          surface. 12px, because this has to be readable at arm's length in
+          gym lighting by someone not looking directly at it; a hairline
+          border is invisible at that distance.
+
+          THE WIDTH IS CONSTANT AND ONLY THE COLOUR CHANGES. A frame that grew
+          on a verdict would reflow the <video> element mid-scan, which on a
+          phone means the camera re-lays-out while a queue is waiting. */}
+      <div
+        className={`rounded-xl border-[12px] p-1 transition-colors duration-150 ${
+          TONE_FRAME[phase.phase === "held" ? phase.verdict.tone : "idle"]
+        }`}
+      >
+        <QrScanner onScan={onScan} continuous />
+      </div>
+
+      {/* ONE box for every "the scan did not work" path: a partial code, a
+          whole code, a name, an email, a phone number. Two adjacent inputs
+          doing almost the same thing is a choice a volunteer should not
+          have to make with a queue waiting. */}
+      <GuestFinder
+        eventCode={eventCode}
+        disabled={pending}
+        searching={searching}
+        hits={hits}
+        onLookup={onScan}
+        onSearch={runSearch}
+        onPick={pickHit}
+      />
 
       {/* Member comp */}
       <div className="rounded-xl border border-gray-200 bg-white p-4">

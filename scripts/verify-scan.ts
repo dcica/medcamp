@@ -318,6 +318,43 @@ async function main(): Promise<void> {
     (gateMode.match(/bg-(green|amber|red)-(50|100)/g) ?? []).join(" "));
   check("the old flash strip is gone", !gateMode.includes("setFlash"));
 
+  // THE CAMERA FRAME. Added 2026-09-27: the viewfinder now carries the verdict
+  // colour, because the volunteer is looking at the camera, not at a strip
+  // above it. That is a SECOND coloured surface, so it has to be provably the
+  // same colour source as the first -- a green frame around an amber banner
+  // would be worse than no frame at all.
+  check("the frame colour comes from the shared table, not literals",
+    gateMode.includes("TONE_FRAME"));
+  check("the station hard-codes no border colour of its own",
+    !/border-(green|amber|red)-[0-9]/.test(gateMode),
+    (gateMode.match(/border-(green|amber|red)-[0-9]+/g) ?? []).join(" "));
+  check("TONE_FRAME is exported next to TONE_STYLE, so the two cannot drift",
+    banner.includes("TONE_FRAME") && banner.includes("TONE_STYLE"));
+  // Idle must not borrow a status colour: "no answer yet" must not look like
+  // an answer, which is the exact mistake the library's own green makes.
+  const idleLine = (banner.match(/idle:\s*"([^"]+)"/) ?? [])[1] ?? "";
+  check("the idle frame is neutral, not a status colour",
+    idleLine.length > 0 && !/(green|amber|red)/.test(idleLine), idleLine);
+  // The frame must not resize on a verdict: a growing border reflows the
+  // <video> mid-scan, which on a phone re-lays-out the camera with a queue
+  // waiting. One width, stated once.
+  check("the frame width is constant, set outside the tone lookup",
+    /border-\[\d+px\][^`]*TONE_FRAME|TONE_FRAME[^`]*border-\[\d+px\]/s.test(gateMode)
+      || /border-\[\d+px\]/.test(gateMode));
+
+  // THE ACTION MUST OUTRANK THE CAMERA. The resolved guest card carries
+  // "Admit", and it used to render BELOW a ~300px viewfinder and the finder
+  // box -- so a volunteer scanned, saw a verdict, and had to scroll one-handed
+  // to act on it. Reported 2026-09-27. Ordering is load-bearing, so it is
+  // pinned by position rather than left to whoever edits the JSX next.
+  const iCard = gateMode.indexOf("{view && (");
+  const iCam = gateMode.indexOf("<QrScanner");
+  const iFinder = gateMode.indexOf("<GuestFinder");
+  check("the resolved guest card renders before the camera",
+    iCard > -1 && iCam > -1 && iCard < iCam, `card@${iCard} camera@${iCam}`);
+  check("...and before the finder", iCard > -1 && iFinder > -1 && iCard < iFinder,
+    `card@${iCard} finder@${iFinder}`);
+
   // THE MID-FLOW 403. requireTill is the real gate and stays the real gate,
   // but the screen used to render every cash control to a volunteer without
   // a till -- who tapped one, lost the guest they had resolved, and landed

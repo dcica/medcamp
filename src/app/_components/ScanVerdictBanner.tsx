@@ -30,6 +30,29 @@ const TONE_STYLE: Record<ScanTone, string> = {
   stop: "bg-red-600 text-white",
 };
 
+/**
+ * The same three tones, as a frame around the camera.
+ *
+ * WHY THE CAMERA IS TINTED AT ALL, given globals.css spends twenty lines
+ * killing html5-qrcode's own green. That green fires on mere PARSEABILITY —
+ * before any lookup, identically for a valid ticket and a Wi-Fi QR on the wall
+ * — so it is a lie and stays suppressed. This is the opposite: it is painted
+ * only once the SERVER has answered, from the same tone the banner uses.
+ *
+ * It lives next to TONE_STYLE, and is exported rather than re-typed at the
+ * call site, because two independent colour tables for one meaning is exactly
+ * how a green frame ends up over an amber banner.
+ *
+ * `null` is the idle frame — deliberately a neutral, so "no answer yet" never
+ * looks like an answer.
+ */
+export const TONE_FRAME: Record<ScanTone | "idle", string> = {
+  go: "border-green-600",
+  hold: "border-amber-400",
+  stop: "border-red-600",
+  idle: "border-gray-200",
+};
+
 export function ScanVerdictBanner({
   verdict,
   onRelease,
