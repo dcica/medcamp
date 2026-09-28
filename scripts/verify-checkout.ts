@@ -38,6 +38,7 @@
  */
 import * as dotenv from "dotenv";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { PrismaClient } from "@prisma/client";
 
 // Same reasoning as verify-performance.ts: the machine has a global
@@ -767,6 +768,45 @@ async function cleanup(orgId: string): Promise<void> {
   }
   await db.serviceType.deleteMany({ where: { orgId, key: SERVICE_KEY } });
 }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§X confirmOrderPaid budgets for a big party");
+  // Read AS TEXT: this is about the transaction OPTIONS, which no amount
+  // of calling the function proves unless the box happens to be slow.
+  //
+  // campId assignment cannot be batched -- every attendee gets a different
+  // random token -- so a party of N costs N uniqueness SELECTs plus N
+  // UPDATEs, sequentially, inside ONE transaction. Prisma's default budget
+  // is 5s. Measured against the deployed test DB on 2026-09-28: a party of
+  // 4 took 6969ms and a party of 10 took 10203ms. Both rolled back, and the
+  // rollback is the expensive part -- Stripe has the money, the webhook
+  // 500s, the order sits PENDING with no ticket.
+  const pay = readFileSync(
+    join(process.cwd(), "src/server/payments.ts"),
+    "utf8",
+  );
+  const confirmIdx = pay.indexOf("export async function confirmOrderPaid");
+  check("confirmOrderPaid exists where expected", confirmIdx > -1);
+  // Bounded by the NEXT top-level export, not by a character count. The
+  // options sit after a ~275-line transaction body, and a fixed window that
+  // happened to stop short read as "no timeout set" — a check that fails for
+  // the wrong reason is only marginally better than one that cannot fail.
+  const afterConfirm = pay.indexOf("\nexport ", confirmIdx + 1);
+  const confirmBody = pay.slice(
+    confirmIdx,
+    afterConfirm > -1 ? afterConfirm : pay.length,
+  );
+  const m = confirmBody.match(/timeout:\s*([0-9_]+)/);
+  const budget = m ? Number(m[1].replace(/_/g, "")) : 0;
+  check("its transaction sets an explicit timeout, not the 5s default",
+    budget > 0, String(budget));
+  // 10203ms is the measured worst case seen so far. A budget at or under
+  // it would have failed that exact order, so the floor is set above it
+  // rather than at a round number that merely looks generous.
+  check("...and the budget clears the measured worst case (10203ms)",
+    budget > 10_203, String(budget));
+  check("maxWait is set too, so a busy pool waits rather than throwing",
+    /maxWait:\s*[0-9_]+/.test(confirmBody));
 
 main()
   .then(async () => {

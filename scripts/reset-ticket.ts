@@ -32,6 +32,8 @@ const args = process.argv.slice(2);
 const COMMIT = args.includes("--commit");
 /** Reset every ticket on the same order, not just the one named. */
 const WHOLE_ORDER = args.includes("--order");
+/** Reset the WHOLE active event — between rehearsal runs. */
+const ALL = args.includes("--all");
 const codes = args
   .filter((a) => !a.startsWith("--"))
   .map((c) => c.trim().toUpperCase());
@@ -39,8 +41,59 @@ const codes = args
 async function main(): Promise<void> {
   const { db } = await import("../src/lib/db");
 
+  if (ALL) {
+    // The whole active event, back to the top. This is the between-runs
+    // reset: everyone walks out and queues again. Money is untouched for the
+    // same reason as below — reconciliation has to still mean something.
+    const ev = await db.event.findFirst({
+      where: { status: "ACTIVE" },
+      select: { id: true, code: true, name: true },
+    });
+    if (!ev) {
+      console.error("\nNo ACTIVE event to reset.\n");
+      process.exit(1);
+    }
+    const admitted = await db.attendee.count({
+      where: { eventId: ev.id, checkedInAt: { not: null } },
+    });
+    const handed = await db.lineItem.count({
+      where: {
+        order: { eventId: ev.id },
+        fulfilledAt: { not: null },
+        serviceType: { kind: "MERCH" },
+      },
+    });
+    console.log(`\n  ${ev.code} "${ev.name}"`);
+    console.log(`    admitted tickets : ${admitted}`);
+    console.log(`    merch handed over: ${handed}`);
+    if (!COMMIT) {
+      console.log(`\n  DRY RUN — nothing written. Re-run with --commit.\n`);
+      await db.$disconnect();
+      return;
+    }
+    const [a, m] = await db.$transaction([
+      db.attendee.updateMany({
+        where: { eventId: ev.id, checkedInAt: { not: null } },
+        data: { checkedInAt: null },
+      }),
+      db.lineItem.updateMany({
+        where: {
+          order: { eventId: ev.id },
+          fulfilledAt: { not: null },
+          serviceType: { kind: "MERCH" },
+        },
+        data: { fulfilledAt: null, fulfilledByUserId: null },
+      }),
+    ]);
+    console.log(`\n  reset: ${a.count} ticket(s), ${m.count} merch line(s)\n`);
+    await db.$disconnect();
+    return;
+  }
+
   if (codes.length === 0) {
-    console.error("\nGive at least one campId, e.g. DANDIYA-2026-BNQMCTGXN\n");
+    console.error(
+      "\nGive at least one campId (e.g. DANDIYA-2026-BNQMCTGXN), or --all\n",
+    );
     process.exit(1);
   }
 
