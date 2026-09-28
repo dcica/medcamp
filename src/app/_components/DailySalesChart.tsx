@@ -97,6 +97,15 @@ export function DailySalesChart({ days }: { days: DailySalesDay[] }) {
   const soldDays = days.filter((d) => d.units > 0 || d.cents > 0);
   const active = soldDays.length;
 
+  // NEWEST FIRST, and only here. The question a coordinator opens this table
+  // to answer is "how did today go" — a table that starts a fortnight ago
+  // makes them scroll past thirteen answered questions to reach it.
+  //
+  // The BARS stay oldest-to-newest. A time axis running right-to-left is a
+  // different chart, and reversing one without the other is how a reader ends
+  // up matching the tallest bar to the wrong row.
+  const tableRows = [...soldDays].reverse();
+
   const label = (iso: string) => {
     // Parsed as UTC noon: the key is already a venue calendar day, and letting
     // the browser re-interpret it in ITS zone would shift the label by a day
@@ -183,7 +192,9 @@ export function DailySalesChart({ days }: { days: DailySalesDay[] }) {
             bars. */}
         <details className="mt-3">
           <summary className="min-h-tap cursor-pointer text-xs text-gray-600">
-            Show the numbers ({soldDays.length} {soldDays.length === 1 ? "day" : "days"} with sales)
+            Show the numbers ({soldDays.length}{" "}
+            {soldDays.length === 1 ? "day" : "days"} with sales
+            {soldDays.length > 1 ? ", newest first" : ""})
           </summary>
           <table className="mt-2 w-full text-xs tabular-nums">
             <thead>
@@ -194,7 +205,7 @@ export function DailySalesChart({ days }: { days: DailySalesDay[] }) {
               </tr>
             </thead>
             <tbody>
-              {soldDays.map((d) => (
+              {tableRows.map((d) => (
                 <tr key={d.day} className="border-t border-gray-100">
                   <td className="py-1">{label(d.day)}</td>
                   <td className="py-1 text-right">{d.units}</td>

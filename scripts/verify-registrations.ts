@@ -475,9 +475,21 @@ async function main() {
   check("the stat-tile threshold reads off soldDays, not a second filter",
     /const active = soldDays\.length/.test(chartSrc));
 
-  // The table body maps soldDays...
-  check("the table body maps soldDays", chartSrc.includes("{soldDays.map("));
+  // The table body maps the REVERSED rows...
+  check("the table body maps tableRows", chartSrc.includes("{tableRows.map("));
   check("the table body does NOT map days", !chartSrc.includes("{days.map("));
+  check("the table body does NOT map soldDays directly",
+    !chartSrc.includes("{soldDays.map("));
+
+  // NEWEST FIRST in the table, OLDEST FIRST in the bars. Reversing one without
+  // the other would have a reader matching the tallest bar to the wrong row,
+  // so both halves are pinned rather than just the one that changed.
+  check("tableRows is soldDays reversed, on a copy",
+    /const tableRows = \[\.\.\.soldDays\]\.reverse\(\)/.test(chartSrc));
+  // .reverse() mutates. Reversing soldDays in place would silently reverse the
+  // stat-tile fallback and anything else reading it.
+  check("soldDays itself is never reversed in place",
+    !/soldDays\.reverse\(\)/.test(chartSrc));
 
   // ...while BOTH bar charts are still handed the full series.
   const barsEls = chartSrc.match(/<Bars[\s\S]*?\/>/g) ?? [];
