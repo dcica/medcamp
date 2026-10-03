@@ -384,6 +384,29 @@ async function main(): Promise<void> {
   check("no height class Tailwind does not generate", ghostHeights.length === 0,
     ghostHeights.join(" "));
 
+  // THE RESOLVED-BUT-UNACTED GUEST IS A STATE OF ITS OWN.
+  //
+  // onScan deliberately does NOT settle the one case the volunteer can act
+  // on -- "paid, here, not yet admitted" -- so the phase stays `scanning`.
+  // Gating the action dock on `held` alone therefore rendered NOTHING for
+  // the commonest path at a door, while a live camera re-read the same
+  // ticket every 3 seconds. The volunteer saw Scanning -> Checking... ->
+  // Scanning forever, with no Admit button anywhere. Reported 2026-10-03.
+  //
+  // Every other outcome settles, which is why only the happy path broke --
+  // and why no existing row caught it.
+  check("the station models a resolved-but-unacted guest",
+    gateMode.includes("guestPending"));
+  check("...the action dock renders for it, not only for a held verdict",
+    /\(held \|\| guestPending\)/.test(gateMode));
+  check("...the idle dock steps aside for it",
+    /!held && !guestPending/.test(gateMode));
+  // The second half of the loop: a ticket already on screen must not be
+  // re-read. acceptsDecode() alone cannot know, because the phase is
+  // honestly `scanning`.
+  check("...and a resolved guest stops the camera re-reading their badge",
+    /acceptsDecode\(phase\) \|\| \(!!view/.test(gateMode));
+
   // THE STATUS CHIP MUST REPORT THE CAMERA, NOT THE LATCH.
   //
   // It derived purely from the latch phase, which knows nothing about whether

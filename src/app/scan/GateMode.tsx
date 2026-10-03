@@ -245,7 +245,11 @@ export function GateMode({
     // THE LATCH. A standing verdict is not replaced by the next badge that
     // drifts into frame - see src/lib/scanLatch.ts. The drop is announced,
     // and deliberately makes no sound: silence means "ignored on purpose".
-    if (!acceptsDecode(phase)) {
+    // `guestPending` is part of the latch in practice: the phase says
+    // `scanning` because a paid resolve does not settle, but a guest IS on
+    // screen awaiting a tap, and re-reading their badge every 3 seconds is
+    // what the cycling was.
+    if (!acceptsDecode(phase) || (!!view && phase.phase !== "held")) {
       if (shouldNudge(phase, { type: "decoded" })) setNudge(true);
       return;
     }
@@ -388,6 +392,21 @@ export function GateMode({
   const held = phase.phase === "held";
   const reading = phase.phase === "reading";
   const tone = held ? phase.verdict.tone : null;
+  /**
+   * A guest is on screen and nothing has happened to them yet.
+   *
+   * `onScan` deliberately does NOT latch the one case the volunteer can act
+   * on -- "paid, here, not yet admitted" -- so the station stays in the
+   * `scanning` phase. That was fine when the guest card hung below the
+   * camera gated on `view`. This redesign gated the whole action dock on
+   * `held`, so the commonest path at a door resolved, rendered NOTHING, and
+   * left a live camera re-decoding the same ticket every 3 seconds:
+   * Scanning -> Checking... -> Scanning, forever. Reported 2026-10-03.
+   *
+   * Treating it as its own state fixes both halves — the dock appears, and
+   * the camera stops re-reading a ticket already on screen.
+   */
+  const guestPending = !!view && !held;
   const camCollapsed = task !== "none";
 
   function closeTask() {
@@ -506,6 +525,11 @@ export function GateMode({
                 <span aria-hidden>❙❙</span>
                 Camera paused
               </>
+            ) : guestPending ? (
+              <>
+                <span aria-hidden>❙❙</span>
+                Camera paused
+              </>
             ) : camActive ? (
               <>
                 <span aria-hidden className="animate-pulse">
@@ -520,6 +544,44 @@ export function GateMode({
               </>
             )}
           </span>
+          {guestPending && view && (
+            /* Not a verdict, so not a verdict colour. Nothing has happened to
+               this guest yet — green here would mean "admitted" and they are
+               not. The band stays neutral and the dock below carries the
+               action. */
+            <div
+              role="status"
+              aria-live="polite"
+              className="absolute inset-0 z-20 flex flex-col gap-2.5 overflow-hidden bg-black/[.85] p-4"
+            >
+              <p className="text-[26px] font-extrabold leading-none tracking-tight text-white">
+                {view.name ?? "Guest"}
+              </p>
+              <p className="text-base leading-snug text-gray-100">
+                {view.isPaid
+                  ? "Paid — ready to admit"
+                  : `Owes ${formatCents(view.amountOwedCents)}`}
+              </p>
+              {view.party.length > 1 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {view.party.map((t) => (
+                    <span
+                      key={t.attendeeId}
+                      className={`h-5 w-5 rounded-full border-2 border-white ${
+                        t.alreadyAdmitted ? "bg-white" : "bg-transparent"
+                      }`}
+                    />
+                  ))}
+                  <span className="ml-1 text-sm font-semibold text-gray-100">
+                    {view.party.filter((t) => t.alreadyAdmitted).length} of{" "}
+                    {view.party.length} in
+                  </span>
+                </div>
+              )}
+              <p className="font-mono text-xs text-gray-400">{view.campId}</p>
+            </div>
+          )}
+
           {held && (
             <span className="inline-flex h-7 items-center rounded-full bg-black px-2.5 text-xs font-extrabold tracking-wide text-white">
               {TONE_WORD[phase.verdict.tone]}
@@ -616,7 +678,7 @@ export function GateMode({
       {/* ── The dock ──────────────────────────────────────────────────────
           flex-none and last, so it is pinned above the bottom edge where the
           thumb already rests, and cannot be pushed off by anything above. */}
-      {task === "none" && !held && (
+      {task === "none" && !held && !guestPending && (
         <div className="flex flex-none flex-col gap-2 p-2 pb-3">
           <button
             type="button"
@@ -649,7 +711,7 @@ export function GateMode({
         </div>
       )}
 
-      {task === "none" && held && (
+      {task === "none" && (held || guestPending) && (
         <div className="flex flex-none flex-col gap-2 p-2 pb-3">
           {/* Pre-bought merch, as tappable rows rather than checkboxes: a
               20px checkbox is not a 48px target. */}
