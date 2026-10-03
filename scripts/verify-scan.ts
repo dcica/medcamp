@@ -575,9 +575,19 @@ async function main(): Promise<void> {
     gateMode.includes("canTakeCash"));
   check("...the pay-unpaid control is gated on it",
     /canTakeCash[\s\S]{0,200}doPayUnpaid/.test(gateMode));
-  check("...so is the walk-up sale, at both the way in and the sheet",
-    /canTakeCash &&[\s\S]{0,300}setWalkUp\(true\)/.test(gateMode)
-      && /task === "walkup" && canTakeCash/.test(gateMode));
+  // THE WALK-UP SHEET IS NO LONGER TILL-ONLY, and the till moved INSIDE it.
+  //
+  // It was gated because a walk-up could only be paid in cash, so opening it
+  // without a till led to a control that would 403. Card changed that: the
+  // guest pays Stripe on their own phone and the volunteer handles no money,
+  // so gating the sheet would block the auditable path while leaving the
+  // cash one open to whoever does hold a till. What stays till-only is the
+  // CASH BUTTON, which is the thing that actually takes notes.
+  check("...the cash button inside the walk-up form is still till-only",
+    /canTakeCash && \([\s\S]{0,400}Take cash \{formatCents\(total\)\}/.test(gateMode));
+  check("...but the card button is offered to every gate role",
+    /onCard\(basketItems\(basket\), name\)/.test(gateMode)
+      && !/canTakeCash[\s\S]{0,200}onCard\(basketItems/.test(gateMode));
   check("...and buy-more merch, at both the way in and the sheet",
     /canTakeCash &&[\s\S]{0,120}catalog\.merch/.test(gateMode)
       && /task === "buy" && canTakeCash/.test(gateMode));

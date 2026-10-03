@@ -295,7 +295,20 @@ async function main(): Promise<void> {
   // searchGuests is a READ returning exactly what resolveGate already returns
   // to the same roles, so it is classified OPEN. Adding it here is the
   // deliberate act this section exists to force.
-  const OPEN_ACTIONS = ["resolveGate", "admit", "fulfill", "comp", "searchGuests"];
+  //
+  // THE CARD PAIR IS OPEN, AND THAT IS A DECISION. A till is a capability
+  // about handling CASH — untracked value in somebody's pocket — not about
+  // being allowed to sell. startCardSale takes no money at the door at all:
+  // the guest pays Stripe on their own phone and the volunteer never touches
+  // a note. Gating it behind canHoldTill would have blocked the auditable
+  // path while leaving the cash one open to the same person. pollCardSale is
+  // a READ of what the webhook wrote; it cannot confirm anything itself,
+  // because a door screen that could mark an order paid would be a way to
+  // admit people without a charge.
+  const OPEN_ACTIONS = [
+    "resolveGate", "admit", "fulfill", "comp", "searchGuests",
+    "startCardSale", "pollCardSale",
+  ];
   for (const name of CASH_ACTIONS) {
     const body = actionBody(actionsSrc, name);
     check(`${name}() is wrapped in requireTill`, /requireTill\(/.test(body), body ? "" : "action not found");
@@ -307,6 +320,19 @@ async function main(): Promise<void> {
   }
   // A new action added to this file must be classified above, or it is silently
   // unguarded here.
+  // The card path must never settle money from the door. Only the webhook
+  // (and the Checkout success page's synchronous re-verify) may call
+  // confirmOrderPaid; a gate action that could would let a volunteer admit
+  // a party without a charge.
+  const cardBodies = ["startCardSale", "pollCardSale"]
+    .map((n) => actionBody(actionsSrc, n))
+    .join("\n");
+  check("the card path never confirms payment itself",
+    !/confirmOrderPaid|confirmGateCash/.test(cardBodies));
+  check("...it only reads the order status", /status: true/.test(cardBodies));
+  check("startCardSale leaves the order PENDING for the webhook",
+    /method: "STRIPE"/.test(cardBodies));
+
   const declared = [...actionsSrc.matchAll(/export async function (\w+)\(/g)].map((m) => m[1]);
   eq("no unclassified gate action", declared.filter((n) => ![...CASH_ACTIONS, ...OPEN_ACTIONS].includes(n)), []);
   // And the role list itself, so a silently widened gate shows up here.

@@ -31,6 +31,8 @@ import {
   fulfill,
   comp,
   sellAndAdmit,
+  startCardSale,
+  pollCardSale,
   sellMerch,
   confirmUnpaidAndAdmit,
   searchGuests,
@@ -139,6 +141,24 @@ export function GateMode({
   // What the CAMERA is doing, reported by the scanner. Distinct from the
   // latch phase: the latch can be idle while the camera has never started.
   const [camActive, setCamActive] = useState(false);
+
+  /**
+   * A card sale waiting on the guest's own phone.
+   *
+   * The volunteer never handles the card: the gate shows a QR, the guest
+   * scans it, pays through Stripe Checkout on their phone, and the WEBHOOK
+   * confirms. This screen only watches. Nothing is admitted and no capacity
+   * is claimed until the webhook has written CONFIRMED — the same rule the
+   * online path lives by, and the reason an abandoned payment cannot let
+   * anybody in.
+   */
+  const [cardSale, setCardSale] = useState<{
+    orderId: string;
+    qr: string;
+    url: string;
+    totalCents: number;
+  } | null>(null);
+  const [cardWaited, setCardWaited] = useState(0);
   /** Bumped to remount WalkUpForm with empty state, without hiding it. */
   const [walkUpNonce, setWalkUpNonce] = useState(0);
 
@@ -461,11 +481,62 @@ export function GateMode({
     : null;
   const camCollapsed = task !== "none";
 
+  // Poll while a card sale is on screen. 2s is a door pace: fast enough that
+  // the volunteer is not left wondering, slow enough that eight phones on one
+  // hall NAT are not hammering the server. The webhook usually lands in well
+  // under that.
+  useEffect(() => {
+    if (!cardSale) return;
+    let stop = false;
+    const started = Date.now();
+    const id = setInterval(() => {
+      setCardWaited(Math.round((Date.now() - started) / 1000));
+      void (async () => {
+        const res = await pollCardSale(cardSale.orderId, eventId);
+        if (stop || !res.ok) return;
+        if (!res.data.paid) return;
+        // Paid AND admitted, in one server round trip. Clearing the sale
+        // first means the verdict lands on a clean screen.
+        setCardSale(null);
+        settle(
+          verdictFor({
+            kind: "party",
+            admitted: res.data.admitted,
+            already: 0,
+            at: null,
+          }),
+        );
+        resetWalkUp();
+        closeTask();
+      })();
+    }, 2000);
+    return () => {
+      stop = true;
+      clearInterval(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardSale, eventId]);
+
   function closeTask() {
     setSearchOpen(false);
     setCompOpen(false);
     setWalkUp(false);
     setBuyOpen(false);
+  }
+
+  /**
+   * Abandon a card sale from the gate.
+   *
+   * The ORDER IS LEFT ALONE, deliberately. It is PENDING with a live Stripe
+   * session, and the guest may be mid-payment on their own phone right now —
+   * cancelling it here would be the door voiding a charge it cannot see.
+   * Stripe expires the session on its own (CHECKOUT_TTL_SECONDS), and
+   * `checkout.session.expired` then reaps the order. Walking away is safe;
+   * reaching across is not.
+   */
+  function abandonCardSale() {
+    setCardSale(null);
+    setCardWaited(0);
   }
 
   const pendingParty = view?.party.filter((t) => !t.alreadyAdmitted) ?? [];
@@ -769,7 +840,13 @@ export function GateMode({
             >
               Member comp
             </button>
-            {canTakeCash && (
+            {/* OPEN TO EVERY GATE ROLE NOW. It used to be till-only, because
+                a walk-up could only be paid in cash and tapping it without a
+                till would 403. The card path takes no cash at the door, so
+                gating this would block the auditable way to sell while
+                leaving the cash one open to whoever does hold a till. The
+                CASH BUTTON INSIDE is still till-only. */}
+            {(
               <button
                 type="button"
                 onClick={() => setWalkUp(true)}
@@ -963,6 +1040,48 @@ export function GateMode({
         </TaskSheet>
       )}
 
+      {/* ── Waiting on a card payment ─────────────────────────────────── */}
+      {cardSale && (
+        <div className="m-2 flex min-h-0 flex-1 flex-col items-center gap-3 overflow-hidden rounded-2xl border border-gray-200 bg-white p-4">
+          <p className="text-lg font-bold">
+            {formatCents(cardSale.totalCents)} — card
+          </p>
+          <p className="text-center text-sm leading-snug text-gray-600">
+            Ask the guest to scan this with their phone camera and pay.
+          </p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={cardSale.qr}
+            alt="Scan to pay"
+            className="h-56 w-56 flex-none rounded-lg border border-gray-200"
+          />
+          <p
+            role="status"
+            aria-live="polite"
+            className="text-sm font-semibold text-gray-700"
+          >
+            Waiting for payment… {cardWaited}s
+          </p>
+          {/* Honest about what cancelling does and does not do. The order and
+              its Stripe session are left alone -- the guest may be mid-payment
+              on their own phone, and the door must not void a charge it cannot
+              see. Stripe expires the session itself. */}
+          <p className="px-2 text-center text-xs leading-snug text-gray-500">
+            Nothing is admitted until the payment clears. Walking away here does
+            not cancel their payment — if they have already paid, scan their
+            ticket as normal.
+          </p>
+          <div className="flex-1" />
+          <button
+            type="button"
+            onClick={abandonCardSale}
+            className="min-h-tap w-full flex-none rounded-lg border border-gray-400 font-semibold"
+          >
+            Stop waiting
+          </button>
+        </div>
+      )}
+
       {/* ── Task: buy merch for a resolved guest ──────────────────────── */}
       {task === "buy" && canTakeCash && (
         <TaskSheet title="Buy merch" onClose={closeTask}>
@@ -984,12 +1103,22 @@ export function GateMode({
       )}
 
       {/* ── Task: walk-up sale ────────────────────────────────────────── */}
-      {task === "walkup" && canTakeCash && (
+      {task === "walkup" && !cardSale && (
         <TaskSheet title="Walk-up sale" onClose={closeTask}>
           <WalkUpForm
             key={walkUpNonce}
             catalog={catalog}
             pending={pending}
+            canTakeCash={canTakeCash}
+            onCard={(items, name) =>
+              run(async () => {
+                const res = await startCardSale(eventId, items, name);
+                if (!res.ok)
+                  return settle(verdictFor(signalForError(res.error)));
+                setCardWaited(0);
+                setCardSale(res.data);
+              })
+            }
             onCancel={closeTask}
             onSubmit={(items, name) =>
               run(async () => {
@@ -1352,11 +1481,20 @@ function WalkUpForm({
   pending,
   onCancel,
   onSubmit,
+  onCard,
+  canTakeCash,
 }: {
   catalog: Catalog;
   pending: boolean;
   onCancel: () => void;
   onSubmit: (items: GateSaleItem[], name: string) => void;
+  /** Start a card sale: the guest pays on their own phone. */
+  onCard: (items: GateSaleItem[], name: string) => void;
+  /**
+   * Whether to offer CASH. Card is offered to every gate role — a till is a
+   * capability about handling notes, and the card path involves none.
+   */
+  canTakeCash: boolean;
 }) {
   const [name, setName] = useState("");
   const [basket, setBasket] = useState<Basket>(new Map());
@@ -1408,20 +1546,32 @@ function WalkUpForm({
           </p>
         </div>
       )}
-      <div className="flex gap-2">
+      <div className="flex flex-col gap-2">
+        {/* CARD FIRST when there is no till, because then it is the only way
+            this volunteer can sell anything at all. */}
         <button
           type="button"
           disabled={pending || basket.size === 0}
-          onClick={() => onSubmit(basketItems(basket), name)}
-          className="min-h-tap flex-1 rounded-lg bg-brand font-semibold text-brand-fg disabled:opacity-50"
+          onClick={() => onCard(basketItems(basket), name)}
+          className="min-h-tap w-full rounded-lg bg-gray-900 font-semibold text-white disabled:opacity-50"
         >
-          Take cash {formatCents(total)} &amp; admit{" "}
-          {admitsCountFor(catalog.admission, basket)}
+          Card {formatCents(total)} — guest pays on their phone
         </button>
+        {canTakeCash && (
+          <button
+            type="button"
+            disabled={pending || basket.size === 0}
+            onClick={() => onSubmit(basketItems(basket), name)}
+            className="min-h-tap w-full rounded-lg bg-brand font-semibold text-brand-fg disabled:opacity-50"
+          >
+            Take cash {formatCents(total)} &amp; admit{" "}
+            {admitsCountFor(catalog.admission, basket)}
+          </button>
+        )}
         <button
           type="button"
           onClick={onCancel}
-          className="min-h-tap rounded-lg border border-gray-300 px-4 text-sm"
+          className="min-h-tap w-full rounded-lg border border-gray-300 text-sm"
         >
           Cancel
         </button>

@@ -1,6 +1,8 @@
 "use server";
 
 import { requireRole, requireTill } from "@/server/session";
+import { createCheckoutForOrder } from "@/server/payments";
+import { db } from "@/lib/db";
 import type { GateSaleItem } from "@/lib/ticketMinting";
 import {
   getGateView,
@@ -138,6 +140,104 @@ export async function comp(
 }
 
 /** Walk-up: sell admission (+ optional merch) for cash, then admit + hand over. */
+/**
+ * Start a CARD sale at the door: build the order, hand back a Checkout URL.
+ *
+ * THE GUEST PAYS ON THEIR OWN PHONE. The gate renders the returned URL as a
+ * QR; the guest scans it, pays, and the webhook confirms. The volunteer's
+ * phone is never handed over and is free for the next person in the queue
+ * while this one is paying.
+ *
+ * NO TILL REQUIRED, and that is deliberate rather than an oversight. The
+ * till exists because CASH is untracked value in somebody's pocket — it is
+ * a capability about handling notes, not about selling. A card sale creates
+ * an auditable Stripe charge and the volunteer never touches money, so
+ * gating it behind `canHoldTill` would block the lower-risk path while
+ * leaving the higher-risk one open. Any GATE_ROLE may take a card.
+ *
+ * The order is left PENDING. Nothing is admitted and no capacity is claimed
+ * until the webhook calls confirmOrderPaid — which is the same rule the
+ * online path lives by, and the reason a half-finished payment cannot let
+ * anybody in.
+ */
+export async function startCardSale(
+  eventId: string,
+  items: GateSaleItem[],
+  buyerName: string,
+): Promise<
+  Result<{ orderId: string; url: string; qr: string; totalCents: number }>
+> {
+  await requireRole(...GATE_ROLES);
+  try {
+    const { orderId, totalCents } = await sellAtGate(eventId, items, {
+      buyerName,
+      method: "STRIPE",
+    });
+    // Default routes: success lands the GUEST on /confirm/<orderId>, which
+    // shows their own QR on the phone they just paid with. Cancel goes back
+    // to /register rather than /scan — the guest must never be dropped onto
+    // a staff screen.
+    const { url } = await createCheckoutForOrder(orderId);
+    // Rendered HERE, not in the browser. `qrcode` is already a dependency
+    // for the confirmation email and the wallet page, and generating it
+    // server-side keeps the station free of another client bundle on a
+    // phone that is already running a camera.
+    const QRCode = (await import("qrcode")).default;
+    const qr = await QRCode.toDataURL(url, { margin: 1, width: 320 });
+    return { ok: true, data: { orderId, url, qr, totalCents } };
+  } catch (err) {
+    return fail(await asDoorCopy(err, eventId));
+  }
+}
+
+/**
+ * Has that card sale landed yet?
+ *
+ * Polled by the gate while the QR is on screen. The WEBHOOK is the authority
+ * — this only reads what it wrote. It deliberately does not confirm anything
+ * itself: a door screen that could mark an order paid would be a way to
+ * admit people without a charge.
+ *
+ * Admits on the FIRST poll that sees CONFIRMED, then keeps returning the
+ * same shape. admitOrderAttendees is idempotent, so a slow network that
+ * double-polls cannot double-admit.
+ */
+export async function pollCardSale(
+  orderId: string,
+  eventId: string,
+): Promise<Result<{ paid: boolean; admitted: number; headcount: number }>> {
+  const m = await requireRole(...GATE_ROLES);
+  try {
+    const order = await db.order.findFirst({
+      where: { id: orderId, eventId },
+      select: { status: true },
+    });
+    if (!order) return fail("Order not found.");
+    if (order.status !== "CONFIRMED") {
+      return {
+        ok: true,
+        data: {
+          paid: false,
+          admitted: 0,
+          headcount: await getEventHeadcount(eventId),
+        },
+      };
+    }
+    const res = await admitOrderAttendees(orderId, eventId);
+    await fulfillOrder(orderId, m.userId);
+    return {
+      ok: true,
+      data: {
+        paid: true,
+        admitted: res.admitted,
+        headcount: await getEventHeadcount(eventId),
+      },
+    };
+  } catch (err) {
+    return fail(await asDoorCopy(err, eventId));
+  }
+}
+
 export async function sellAndAdmit(
   eventId: string,
   items: GateSaleItem[],

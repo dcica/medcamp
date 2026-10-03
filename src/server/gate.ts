@@ -585,7 +585,17 @@ export async function compAdmit(
 export async function sellAtGate(
   eventId: string,
   items: GateSaleItem[],
-  opts: { buyerName?: string; attendeeId?: string } = {},
+  opts: {
+    buyerName?: string;
+    attendeeId?: string;
+    /**
+     * How the money is arriving. CASH is the default because every caller
+     * before the card path was a till. It matters before confirmation only:
+     * confirmOrderPaid overwrites it with whatever actually settled, so this
+     * is what a PENDING order says about itself while it waits.
+     */
+    method?: "CASH" | "STRIPE";
+  } = {},
 ): Promise<{ orderId: string; totalCents: number; ticketCount: number }> {
   const org = await getActiveOrg();
   if (!org) throw new Error("No active organization.");
@@ -645,7 +655,7 @@ export async function sellAtGate(
       orgId: org.id,
       eventId: event.id,
       status: "PENDING",
-      method: "CASH",
+      method: opts.method ?? "CASH",
       registrantName: name,
       registrantEmail: "gate@gate.local",
       registrantPhone: "",
