@@ -37,3 +37,33 @@
 - **Related:** Extends the refund policy now in `/register` inline help (`src/app/register/page.tsx`) and the "refunds only if rescheduled" rule + CLAUDE.md's staff-initiated-refunds stance. Likely a reconciliation / donation-tracking concern for the coordinator dashboard.
 
 ---
+
+## D004 — Tap to Pay at the gate (card, not just cash)
+- **Type:** Feature
+- **Status:** PARKED
+- **Captured:** 2026-10-03
+- **Details:**
+  Take card payment at the door. Today the gate is **cash or nothing**: "till vs
+  no till" means *may record cash*, not *may take a card*. There is no Stripe
+  control anywhere on `/scan`, and no Terminal / Tap-to-Pay code in `src/`.
+  A walk-up who has no cash currently has to buy on their own phone through
+  `/register` (hosted Stripe Checkout) and then be scanned like any other guest.
+- **Why it is not already built:** this was a decision, not an oversight.
+  Architecture decision 2026-06-19 locked **hosted Stripe Checkout, no native
+  Tap-to-Pay**; the reasoning is recorded at `src/server/payments.ts`
+  ("decision #7: hosted Checkout, no native build"). Revisiting it means
+  revisiting that.
+- **What it actually costs:** Stripe **Terminal SDK**, which is not a web API —
+  Tap to Pay on iPhone/Android needs a native app or a WebView shell, plus
+  reader/location provisioning in the Stripe account, plus a connection-token
+  endpoint. It also interacts with Stripe **Connect** (Platform Mandate: each
+  tenant connects its own account), so the reader has to be provisioned against
+  the *connected* account, not the platform's.
+- **Related:** `CLAUDE.md` still advertises "Terminal SDK + Tap to Pay on phone
+  for walk-in POS" in the stack section — that line is **stale** and should be
+  corrected or marked aspirational whichever way this goes.
+  Gate cash path: `sellAndAdmit` / `confirmGateCash` in `src/server/gate.ts`,
+  UI in `src/app/scan/GateMode.tsx` (WalkUpForm).
+  Note the adjacent gap: there is **no tender/change capture** either —
+  `Payment.cashTenderedCents` exists and `changeDueCents()` in
+  `src/lib/money.ts` has zero call sites.
