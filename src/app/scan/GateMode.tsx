@@ -127,6 +127,9 @@ export function GateMode({
   const [searchOpen, setSearchOpen] = useState(false);
   const [compOpen, setCompOpen] = useState(false);
   const [buyOpen, setBuyOpen] = useState(false);
+  // What the CAMERA is doing, reported by the scanner. Distinct from the
+  // latch phase: the latch can be idle while the camera has never started.
+  const [camActive, setCamActive] = useState(false);
   /** Bumped to remount WalkUpForm with empty state, without hiding it. */
   const [walkUpNonce, setWalkUpNonce] = useState(0);
 
@@ -479,6 +482,11 @@ export function GateMode({
             feed that has stopped listening is indistinguishable from one that
             is, which is why the nudge existed at all. */}
         <div className="flex h-11 flex-none items-center justify-between gap-2 px-2.5">
+          {/* THE CHIP REPORTS THE CAMERA, NOT THE LATCH. It used to derive
+              purely from the latch phase, so it said "Scanning" when the
+              camera had never been started — a volunteer held a ticket up to
+              a dead viewfinder and the screen told them it was working.
+              `camActive` comes from the scanner itself. */}
           <span className="inline-flex h-7 items-center gap-1.5 rounded-full bg-black px-2.5 text-xs font-bold uppercase tracking-wide text-white">
             {reading ? (
               <>
@@ -492,12 +500,17 @@ export function GateMode({
                 <span aria-hidden>❙❙</span>
                 Camera paused
               </>
-            ) : (
+            ) : camActive ? (
               <>
                 <span aria-hidden className="animate-pulse">
                   ●
                 </span>
                 Scanning
+              </>
+            ) : (
+              <>
+                <span aria-hidden>○</span>
+                Camera off
               </>
             )}
           </span>
@@ -510,7 +523,12 @@ export function GateMode({
 
         {/* The scan surface itself, plus the verdict that replaces it. */}
         <div className="relative mx-2.5 mb-2.5 min-h-0 flex-1 overflow-hidden rounded-xl bg-gray-900">
-          <QrScanner onScan={onScan} continuous />
+          <QrScanner
+            onScan={onScan}
+            continuous
+            fill
+            onActiveChange={setCamActive}
+          />
           {held && (
             /* The verdict covers the feed rather than sitting beside it. It
                is opaque on purpose: a live picture behind a standing answer

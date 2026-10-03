@@ -384,6 +384,38 @@ async function main(): Promise<void> {
   check("no height class Tailwind does not generate", ghostHeights.length === 0,
     ghostHeights.join(" "));
 
+  // THE STATUS CHIP MUST REPORT THE CAMERA, NOT THE LATCH.
+  //
+  // It derived purely from the latch phase, which knows nothing about whether
+  // the stream ever started -- so the chip said "Scanning", with a pulsing
+  // dot, while the camera had never been switched on. A volunteer held a
+  // ticket up to a dead viewfinder and the screen told them it was working.
+  // Reported 2026-10-03; nothing reached the error table because the camera
+  // tracer only runs once a start is attempted, and no start was ever
+  // attempted. Zero rows was the clue.
+  check("the station tracks the camera's real state",
+    gateMode.includes("camActive"));
+  check("...sourced from the scanner, not inferred",
+    /onActiveChange=\{setCamActive\}/.test(gateMode));
+  check("...and the chip says so when the camera is off",
+    gateMode.includes("Camera off"));
+  // The ordering matters: `camActive ?` has to gate the Scanning branch, or
+  // the chip claims to be scanning whenever the latch happens to be idle.
+  check("'Scanning' is gated on the camera actually running",
+    /camActive \?[\s\S]{0,200}Scanning/.test(gateMode));
+
+  // AND THE WAY TO TURN IT ON HAS TO BE FINDABLE. The scanner's default
+  // start button is brand navy; the gate puts it on a near-black viewfinder,
+  // where it was a thin invisible strip. `fill` makes the whole surface the
+  // control.
+  check("the gate mounts the scanner in fill mode",
+    /<QrScanner[\s\S]{0,160}fill/.test(gateMode));
+  const qr = read("src/app/_components/QrScanner.tsx");
+  check("fill mode covers the surface rather than sitting in page flow",
+    /fill[\s\S]{0,120}absolute inset-0/.test(qr));
+  check("fill mode labels the off state in words",
+    qr.includes("Tap to start the camera"));
+
   check("there is exactly one QrScanner, mounted in every state",
     (gateMode.match(/<QrScanner/g) ?? []).length === 1,
     String((gateMode.match(/<QrScanner/g) ?? []).length));

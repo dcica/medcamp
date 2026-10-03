@@ -58,9 +58,26 @@ function cameraAdvice(name: string): string {
 export function QrScanner({
   onScan,
   continuous = false,
+  onActiveChange,
+  fill = false,
 }: {
   onScan: (text: string) => void;
   continuous?: boolean;
+  /**
+   * Reports whether the camera is actually running.
+   *
+   * The gate draws its own status chip, and without this it had no way to
+   * know — so it reported the LATCH phase instead and said "Scanning" while
+   * the camera had never been started. A volunteer held up a ticket, nothing
+   * happened, and the screen insisted it was working. Reported 2026-10-03.
+   */
+  onActiveChange?: (active: boolean) => void;
+  /**
+   * Fill the parent instead of sitting in page flow. The gate puts this
+   * inside a dark viewfinder where the default brand-navy button is nearly
+   * invisible and only a few pixels tall.
+   */
+  fill?: boolean;
 }) {
   const [active, setActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +85,15 @@ export function QrScanner({
   // volunteer cannot act on it, but they CAN read it down the phone to whoever
   // is fixing it, which is the whole point on an event night.
   const [detail, setDetail] = useState<string | null>(null);
+
+  // Tell the parent what the camera is ACTUALLY doing. The gate's status chip
+  // used to infer it from the latch phase, which knows nothing about whether
+  // the stream ever started.
+  const activeRef = useRef(onActiveChange);
+  activeRef.current = onActiveChange;
+  useEffect(() => {
+    activeRef.current?.(active);
+  }, [active]);
   const scannerRef = useRef<{ stop: () => Promise<void> } | null>(null);
   // Keep the latest onScan without restarting the camera on each render.
   const onScanRef = useRef(onScan);
@@ -211,7 +237,7 @@ export function QrScanner({
   }, [active, continuous]);
 
   return (
-    <div>
+    <div className={fill ? "absolute inset-0" : undefined}>
       {!active ? (
         <button
           type="button"
@@ -224,20 +250,51 @@ export function QrScanner({
             // actually hold.
             primeAudio();
           }}
-          className="min-h-tap w-full rounded-lg bg-brand font-semibold text-brand-fg"
+          className={
+            fill
+              ? // THE WHOLE SURFACE IS THE BUTTON. In the gate this sits on a
+                // near-black viewfinder, where the brand navy of the default
+                // styling is all but invisible and only 48px tall at the top
+                // of a tall box — which is how it came to be missed entirely.
+                "absolute inset-0 flex flex-col items-center justify-center gap-2 text-white"
+              : "min-h-tap w-full rounded-lg bg-brand font-semibold text-brand-fg"
+          }
         >
-          {continuous ? "Start scanning" : "Scan QR with camera"}
+          {fill ? (
+            <>
+              <span aria-hidden className="text-5xl leading-none">
+                ⃞
+              </span>
+              <span className="text-lg font-bold">
+                {continuous ? "Tap to start the camera" : "Scan QR with camera"}
+              </span>
+              <span className="text-sm text-gray-300">
+                The camera is off until you tap
+              </span>
+            </>
+          ) : continuous ? (
+            "Start scanning"
+          ) : (
+            "Scan QR with camera"
+          )}
         </button>
       ) : (
-        <button
-          type="button"
-          onClick={() => setActive(false)}
-          className="min-h-tap w-full rounded-lg border border-gray-300 text-sm"
-        >
-          Stop camera
-        </button>
+        !fill && (
+          <button
+            type="button"
+            onClick={() => setActive(false)}
+            className="min-h-tap w-full rounded-lg border border-gray-300 text-sm"
+          >
+            Stop camera
+          </button>
+        )
       )}
-      <div id="qr-reader" className="mt-3 overflow-hidden rounded-lg" />
+      <div
+        id="qr-reader"
+        className={
+          fill ? "absolute inset-0 overflow-hidden" : "mt-3 overflow-hidden rounded-lg"
+        }
+      />
       {error && (
         <div className="mt-2">
           <p className="text-sm text-red-600">{error}</p>
