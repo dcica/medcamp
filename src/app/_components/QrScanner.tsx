@@ -101,6 +101,17 @@ export function QrScanner({
   // Debounce duplicate decodes in continuous mode.
   const lastRef = useRef<LastDecode>({ text: "", at: 0 });
 
+  /**
+   * How many times the camera effect has run for this mounted component.
+   *
+   * A camera that starts cleanly and then restarts in a loop looks IDENTICAL
+   * in the logs to a camera that started once, because every run reports
+   * from a fresh `trail`. The run number is what distinguishes them. Written
+   * after "the scanner is still cycling" could not be told apart from
+   * "the scanner started fine" from the server side.
+   */
+  const runRef = useRef(0);
+
   useEffect(() => {
     if (!active) return;
     let stopped = false;
@@ -116,8 +127,18 @@ export function QrScanner({
       // Live view for anyone with devtools open; the POST is for afterwards.
       console.info(`[qr] ${s}`);
     };
+    const run = ++runRef.current;
+    /**
+     * Report a FAILURE always; report a success only while the run count is
+     * low. A clean single start is one post; a cycling camera posts runs
+     * 1-4 and then stops shouting, which is enough to diagnose it without
+     * eating the 10-posts-per-minute budget the whole hall shares.
+     */
+    const shouldReport = (outcome: string) =>
+      !outcome.startsWith("ok") || run <= 4;
     const report = (outcome: string) => {
-      const message = `camera ${outcome} | ${trail.join(" | ")}`.slice(0, 500);
+      if (!shouldReport(outcome)) return;
+      const message = `camera run#${run} ${outcome} | ${trail.join(" | ")}`.slice(0, 500);
       // Fire-and-forget, keepalive so it survives the page being put away, and
       // .catch() because a crash reporter that throws is worse than none.
       void fetch("/api/client-error", {
@@ -179,6 +200,7 @@ export function QrScanner({
             () => {},
           );
           mark("started env");
+          report("ok");
         } catch (e) {
           // A device with no REAR camera is the single most common cause, and
           // it is not a failure worth showing a volunteer: a laptop front
@@ -232,6 +254,11 @@ export function QrScanner({
 
     return () => {
       stopped = true;
+      // The cleanup is half the evidence: a RESTART is a stop immediately
+      // followed by another run, whereas a volunteer re-tapping is a stop
+      // separated by seconds. Only the log can tell them apart.
+      console.info(`[qr] run#${run} cleanup after ${Date.now() - t0}ms`);
+      if (run <= 4) report(`ok-cleanup-after-${Date.now() - t0}ms`);
       scannerRef.current?.stop().catch(() => {});
     };
   }, [active, continuous]);
