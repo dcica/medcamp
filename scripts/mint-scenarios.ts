@@ -26,7 +26,17 @@ dotenv.config({ path: process.env.ENV_FILE ?? ".env", override: true });
 
 const args = process.argv.slice(2);
 const SEND = args.includes("--send");
-const EMAIL = args.find((a) => !a.startsWith("--"));
+const positional = args.filter((a) => !a.startsWith("--"));
+const EMAIL = positional[0];
+/**
+ * The registrant name, and it is NOT cosmetic. DANDIYA-2026 sets
+ * `collectsAttendeeDetails = false`, so every attendee row is nameless and
+ * `searchGateGuests` can only match `order.registrantName`. This string is
+ * the only thing the door can search for. It was hard-coded to one tester
+ * once, which would have filed a second tester's whole scenario set under
+ * the wrong person.
+ */
+const NAME = positional[1];
 
 const EVENT_CODE = "DANDIYA-2026";
 const PHONE = "000-000-0000";
@@ -73,8 +83,16 @@ const SCENARIOS: {
     end: "refunded", expect: "red REFUNDED · no settle control at any price" },
   { tag: "cancelled", items: [{ serviceKey: ENTRY, quantity: 1 }],
     end: "cancelled", expect: "red CANCELLED · not valid for entry" },
-  { tag: "merch only — admits nobody", items: [{ serviceKey: STICKS, quantity: 2 }],
-    end: "paid", expect: "red NOT A TICKET · sell them admission" },
+  // KNOWN DEFECT, kept in the set because it is the point of the scenario.
+  // `ticketCount = admissionUnits > 0 ? admissionUnits : 1` gives a merch-only
+  // order one code on purpose — "a receipt, not an admission". But getGateView
+  // reports isPaid:true, so the door shows GREEN "Admit & wristband"; only the
+  // tap fails, because admitAttendee throws NOT_A_TICKET on admitsNobody().
+  // The server refuses, so nobody gets in free — but the volunteer has already
+  // told them they are in. Verified against the deployed server 2026-09-28.
+  { tag: "merch only — receipt, not a ticket", items: [{ serviceKey: STICKS, quantity: 2 }],
+    end: "paid",
+    expect: "BUG: shows green ADMITTED; only the tap fails with NOT A TICKET" },
   { tag: "package of 10", items: [{ serviceKey: TENPACK, quantity: 1 }],
     end: "paid", expect: "10 nameless pips, Admit all 10" },
 ];
@@ -85,8 +103,10 @@ async function main(): Promise<void> {
   const { createRegistration } = await import("../src/server/registration");
   const { confirmOrderPaid } = await import("../src/server/payments");
 
-  if (!EMAIL || !EMAIL.includes("@")) {
-    console.error("\nGive the tester's email as the first argument.\n");
+  if (!EMAIL || !EMAIL.includes("@") || !NAME) {
+    console.error(
+      '\nUsage: mint-scenarios.ts <email> "<Registrant Name>" [--send]\n',
+    );
     process.exit(1);
   }
 
@@ -103,7 +123,7 @@ async function main(): Promise<void> {
   );
 
   console.log(`\n  event    ${event.code} (${event.status})`);
-  console.log(`  tester   ${EMAIL}`);
+  console.log(`  tester   ${NAME} <${EMAIL}>`);
   console.log(`  app url  ${env.NEXT_PUBLIC_APP_URL}`);
   console.log(`  email    ${SEND ? `WILL SEND via ${env.EMAIL_PROVIDER}` : "not sending (no --send)"}\n`);
 
@@ -151,7 +171,7 @@ async function main(): Promise<void> {
     try {
       const created = await createRegistration({
         eventId: event.id,
-        registrant: { name: "Sachin Jain", email: EMAIL, phone: PHONE },
+        registrant: { name: NAME, email: EMAIL, phone: PHONE },
         marketingConsent: false,
         quantities: s.items,
       });
@@ -161,7 +181,7 @@ async function main(): Promise<void> {
         // assigned and there is nothing to scan. That IS the scenario —
         // a will-call guest the door can only reach through search.
         pack.push({ tag: s.tag, expect: s.expect, codes: [],
-          note: "PENDING — search by name 'Sachin'" });
+          note: "PENDING — search by registrant name" });
         console.log(`    ok  ${s.tag.padEnd(30)} left PENDING (no code)`);
         continue;
       }
