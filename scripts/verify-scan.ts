@@ -395,6 +395,29 @@ async function main(): Promise<void> {
   //
   // Every other outcome settles, which is why only the happy path broke --
   // and why no existing row caught it.
+  // EVERY FULL-SURFACE OVERLAY MUST SIT INSIDE THE POSITIONED CAMERA BOX.
+  //
+  // `absolute inset-0` resolves against the nearest POSITIONED ancestor. The
+  // camera container is the only `relative` box on this screen; the root is
+  // `fixed`. So an overlay placed anywhere above that container does not
+  // cover the camera — it covers the WHOLE SCREEN, top-aligned, straight
+  // over the header. That is what shipped on 2026-10-03: a blind
+  // first-occurrence edit put the guest overlay in the status-chip row,
+  // which has the same indentation as the verdict overlay, and the guest's
+  // name rendered across the event title.
+  //
+  // tsc and the linter are both blind to it. Ordering is the only cheap
+  // signal, so ordering is what is pinned.
+  const camBox = gateMode.indexOf("relative mx-2.5");
+  const guestOverlay = gateMode.indexOf("{guestPending && view && (");
+  check("the camera box is the positioned ancestor", camBox > -1);
+  check("the resolved-guest overlay sits inside it, not above it",
+    guestOverlay > camBox, `box@${camBox} overlay@${guestOverlay}`);
+  // The verdict overlay is the LAST `{held && (` — the first one is the
+  // tone-word chip, which is exactly the ambiguity that caused the bug.
+  check("the verdict overlay sits inside it too",
+    gateMode.lastIndexOf("{held && (") > camBox);
+
   check("the station models a resolved-but-unacted guest",
     gateMode.includes("guestPending"));
   check("...the action dock renders for it, not only for a held verdict",

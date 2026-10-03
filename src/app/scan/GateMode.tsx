@@ -544,6 +544,21 @@ export function GateMode({
               </>
             )}
           </span>
+          {held && (
+            <span className="inline-flex h-7 items-center rounded-full bg-black px-2.5 text-xs font-extrabold tracking-wide text-white">
+              {TONE_WORD[phase.verdict.tone]}
+            </span>
+          )}
+        </div>
+
+        {/* The scan surface itself, plus the verdict that replaces it. */}
+        <div className="relative mx-2.5 mb-2.5 min-h-0 flex-1 overflow-hidden rounded-xl bg-gray-900">
+          <QrScanner
+            onScan={onScan}
+            continuous
+            fill
+            onActiveChange={setCamActive}
+          />
           {guestPending && view && (
             /* Not a verdict, so not a verdict colour. Nothing has happened to
                this guest yet — green here would mean "admitted" and they are
@@ -582,21 +597,6 @@ export function GateMode({
             </div>
           )}
 
-          {held && (
-            <span className="inline-flex h-7 items-center rounded-full bg-black px-2.5 text-xs font-extrabold tracking-wide text-white">
-              {TONE_WORD[phase.verdict.tone]}
-            </span>
-          )}
-        </div>
-
-        {/* The scan surface itself, plus the verdict that replaces it. */}
-        <div className="relative mx-2.5 mb-2.5 min-h-0 flex-1 overflow-hidden rounded-xl bg-gray-900">
-          <QrScanner
-            onScan={onScan}
-            continuous
-            fill
-            onActiveChange={setCamActive}
-          />
           {held && (
             /* The verdict covers the feed rather than sitting beside it. It
                is opaque on purpose: a live picture behind a standing answer
