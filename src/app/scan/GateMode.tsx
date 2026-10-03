@@ -109,7 +109,16 @@ export function GateMode({
    */
   canTakeCash: boolean;
 }) {
-  const [headcount, setHeadcount] = useState(initialHeadcount);
+  /**
+   * REMOVED FROM THE HEADER on 2026-10-03.
+   *
+   * It was seeded from getEventHeadcount — the whole event — and then only
+   * ever incremented by THIS device, so it was a stale event total wearing
+   * a live-looking number. Labelling it honestly ("not live") just drew
+   * attention to a figure nobody should act on. It comes back when it polls.
+   * The setters stay because the server returns the count anyway and the
+   * value is still useful to a future live view.
+   */
   const [view, setView] = useState<GateView | null>(null);
   // The standing verdict, if any. Only a deliberate tap moves this.
   const [phase, setPhase] = useState<StationPhase>(INITIAL_PHASE);
@@ -172,7 +181,7 @@ export function GateMode({
     headcount: number;
     at: Date | null;
   }) {
-    setHeadcount(out.headcount);
+    void (out.headcount);
     settle(
       verdictFor({
         kind: "party",
@@ -310,6 +319,13 @@ export function GateMode({
           "resolved",
         );
       }
+      // Merch or a fee only. The server refuses this on admit anyway; saying
+      // so NOW is the difference between a volunteer reading "sell them
+      // admission" and a volunteer telling someone they are in and then
+      // taking it back.
+      if (g.admitsNobody) {
+        return settle(verdictFor({ kind: "notATicket" }), "resolved");
+      }
       if (g.alreadyAdmitted) {
         return settle(
           verdictFor({
@@ -380,7 +396,7 @@ export function GateMode({
     run(async () => {
       const res = await comp(eventId, compCount);
       if (!res.ok) return settle(verdictFor(signalForError(res.error)));
-      setHeadcount(res.data);
+      void (res.data);
       settle({
         ...verdictFor({ kind: "admitted" }),
         headline: "Comped",
@@ -453,6 +469,27 @@ export function GateMode({
   }
 
   const pendingParty = view?.party.filter((t) => !t.alreadyAdmitted) ?? [];
+
+  /**
+   * How many of a multi-ticket order to let in RIGHT NOW.
+   *
+   * "Admit all 4" is the common case and stays one tap, but a family of four
+   * routinely arrives as two now and two later, and the redesign replaced
+   * the old per-ticket Admit buttons with pips — which are not tappable, so
+   * all-or-nothing was the only option. Reported 2026-10-03.
+   *
+   * A COUNT, not a selection. These attendees have no names on this event
+   * (collectsAttendeeDetails is false), so asking a volunteer to pick WHICH
+   * of four identical rows is asking a question with no answer. "How many
+   * are standing here" is the question they can actually answer.
+   */
+  const [admitN, setAdmitN] = useState(1);
+  // Clamp to what is left, and default to everyone, whenever the guest
+  // changes — otherwise a stepper left at 3 carries into the next party.
+  useEffect(() => {
+    setAdmitN(Math.max(1, pendingParty.length));
+  }, [view?.orderId, pendingParty.length]);
+  const partial = pendingParty.length > 1 && admitN < pendingParty.length;
   const unfulfilled = view?.pickupItems.filter((it) => !it.fulfilledAt) ?? [];
 
   /**
@@ -473,8 +510,13 @@ export function GateMode({
       };
     if (view.party.length > 1 && pendingParty.length > 0 && view.isPaid)
       return {
-        label: `Admit ${pendingParty.length === view.party.length ? "all" : "remaining"} ${pendingParty.length}`,
-        onClick: () => run(() => doAdmitMany(pendingParty.map((t) => t.attendeeId))),
+        label: partial
+          ? `Admit ${admitN} of ${pendingParty.length}`
+          : `Admit ${pendingParty.length === view.party.length ? "all" : "remaining"} ${pendingParty.length}`,
+        onClick: () =>
+          run(() =>
+            doAdmitMany(pendingParty.slice(0, admitN).map((t) => t.attendeeId)),
+          ),
       };
     if (view.alreadyAdmitted) return null;
     if (view.isPaid) return { label: "Admit & wristband", onClick: doAdmit };
@@ -498,21 +540,6 @@ export function GateMode({
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-bold leading-tight">{eventName}</p>
           <p className="text-xs leading-tight text-gray-500">Gate</p>
-        </div>
-        <div className="flex flex-col items-end pr-1">
-          {/* "ADMITTED · NOT LIVE", and the second half is the honest part.
-              This was briefly labelled as a per-device tally, on the
-              reasoning that it does not sync between doors. That is true of
-              the UPDATES
-              and false of the NUMBER: the initial value is getEventHeadcount,
-              the EVENT-WIDE total, and only increments after that are local.
-              So "here" claimed a device tally while displaying six admissions
-              this device never made. A stale event total is what it actually
-              is, so that is what it says. */}
-          <p className="text-[10px] font-semibold uppercase leading-none tracking-wide text-gray-500">
-            Admitted · not live
-          </p>
-          <p className="text-2xl font-bold leading-tight tabular-nums">{headcount}</p>
         </div>
         <Link
           href="/staff"
@@ -825,6 +852,39 @@ export function GateMode({
             </p>
           )}
 
+          {/* HOW MANY ARE HERE. Only for a party with more than one still
+              to come in, because for a single ticket the answer is one. */}
+          {view && view.isPaid && pendingParty.length > 1 && (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2">
+              <span className="text-sm font-semibold">How many are here?</span>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  aria-label="One fewer"
+                  disabled={admitN <= 1}
+                  onClick={() => setAdmitN((n) => Math.max(1, n - 1))}
+                  className="flex h-12 w-12 items-center justify-center rounded-lg border border-gray-400 text-xl font-bold disabled:opacity-40"
+                >
+                  −
+                </button>
+                <span className="w-8 text-center text-xl font-bold tabular-nums">
+                  {admitN}
+                </span>
+                <button
+                  type="button"
+                  aria-label="One more"
+                  disabled={admitN >= pendingParty.length}
+                  onClick={() =>
+                    setAdmitN((n) => Math.min(pendingParty.length, n + 1))
+                  }
+                  className="flex h-12 w-12 items-center justify-center rounded-lg border border-gray-400 text-xl font-bold disabled:opacity-40"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+          )}
+
           {primary ? (
             <div className="flex gap-2">
               {/* Next guest is the SMALLER, left-hand, secondary button and
@@ -935,7 +995,7 @@ export function GateMode({
               run(async () => {
                 const res = await sellAndAdmit(eventId, items, name);
                 if (!res.ok) return settle(verdictFor(signalForError(res.error)));
-                setHeadcount(res.data);
+                void (res.data);
                 closeTask();
                 settle(verdictFor({ kind: "admitted", name: name || "Walk-up" }));
                 resetWalkUp();

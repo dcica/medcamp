@@ -306,6 +306,7 @@ async function main(): Promise<void> {
   // a bg-green-50 flash for "just admitted", and a second bg-green-50 block
   // inside the guest card for "already admitted by someone else".
   const gateMode = read("src/app/scan/GateMode.tsx");
+  const gate = read("src/server/gate.ts");
   const banner = read("src/lib/scanToneStyles.ts");
 
   // The station no longer renders the banner COMPONENT -- the verdict is
@@ -407,6 +408,33 @@ async function main(): Promise<void> {
   check("...with wording that says the tap is still required",
     banner.includes("PENDING_WORD") && /TAP ADMIT/.test(banner));
 
+  // A RECEIPT IS NOT A TICKET, AND THE SCAN MUST SAY SO.
+  //
+  // `ticketCount = admissionUnits > 0 ? admissionUnits : 1` gives a merch- or
+  // fee-only order one code on purpose -- "a receipt, not an admission".
+  // admitAttendee has always thrown NOT_A_TICKET on it, so nobody got in
+  // free, but getGateView reported isPaid:true and the door painted a green
+  // "Admit & wristband". The volunteer told the guest they were in, then the
+  // tap took it back. Verified against the deployed server 2026-09-28.
+  check("the gate view carries whether the order admits anybody",
+    /admitsNobody: boolean/.test(gate));
+  check("...populated from the shared predicate, not re-derived",
+    /admitsNobody: admitsNobody\(/.test(gate));
+  check("...and the door settles it on the SCAN, before any tap",
+    /g\.admitsNobody[\s\S]{0,120}notATicket/.test(gateMode));
+
+  // PART OF A PARTY CAN ARRIVE FIRST. The redesign replaced the old
+  // per-ticket Admit buttons with pips, which are not tappable, so a family
+  // of four became all-or-nothing. A COUNT rather than a selection, because
+  // this event collects no attendee names and picking WHICH of four
+  // identical rows is a question with no answer.
+  check("a multi-ticket order can be admitted in part",
+    /admitN/.test(gateMode));
+  check("...the stepper is bounded by who is still outside",
+    /Math\.min\(pendingParty\.length, n \+ 1\)/.test(gateMode));
+  check("...and only those N are sent to the server",
+    /pendingParty\.slice\(0, admitN\)/.test(gateMode));
+
   // THE RESOLVED-BUT-UNACTED GUEST IS A STATE OF ITS OWN.
   //
   // onScan deliberately does NOT settle the one case the volunteer can act
@@ -471,10 +499,20 @@ async function main(): Promise<void> {
   // substring test also matched the comment explaining why the label was
   // changed, so the check failed on the very file that had been fixed —
   // the same way the "Done — next guest" row did.
-  check("the headcount is not labelled as a per-device tally",
+  // THE HEADCOUNT IS NOT IN THE HEADER AT ALL.
+  //
+  // It was seeded from getEventHeadcount (the whole event) and then only
+  // ever incremented by THIS device, so it was a stale event total wearing
+  // a live-looking number. Labelling it honestly only drew the eye to a
+  // figure nobody should act on. It comes back when it polls.
+  //
+  // Asserted on the RENDER, not on a substring: the comment explaining the
+  // removal says "not live" too, and an earlier version of this row passed
+  // on that comment rather than on anything real.
+  check("no headcount figure is rendered in the header",
+    !/\{headcount\}/.test(gateMode));
+  check("...and the old per-device wording is gone",
     !/^\s*Admitted here\s*$/m.test(gateMode));
-  check("...and says it is not live",
-    /not live/i.test(gateMode));
 
   check("the station tracks the camera's real state",
     gateMode.includes("camActive"));
