@@ -445,11 +445,17 @@ export function GateMode({
           <p className="text-xs leading-tight text-gray-500">Gate</p>
         </div>
         <div className="flex flex-col items-end pr-1">
-          {/* "HERE", not "Admitted". The count is this device's own tally and
-              does not sync between doors, so the unqualified word invited a
-              coordinator to read one phone as the event total. */}
-          <p className="text-[11px] font-semibold uppercase leading-none tracking-wide text-gray-500">
-            Admitted here
+          {/* "ADMITTED · NOT LIVE", and the second half is the honest part.
+              This was briefly labelled as a per-device tally, on the
+              reasoning that it does not sync between doors. That is true of
+              the UPDATES
+              and false of the NUMBER: the initial value is getEventHeadcount,
+              the EVENT-WIDE total, and only increments after that are local.
+              So "here" claimed a device tally while displaying six admissions
+              this device never made. A stale event total is what it actually
+              is, so that is what it says. */}
+          <p className="text-[10px] font-semibold uppercase leading-none tracking-wide text-gray-500">
+            Admitted · not live
           </p>
           <p className="text-2xl font-bold leading-tight tabular-nums">{headcount}</p>
         </div>

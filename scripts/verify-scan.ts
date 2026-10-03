@@ -393,6 +393,20 @@ async function main(): Promise<void> {
   // Reported 2026-10-03; nothing reached the error table because the camera
   // tracer only runs once a start is attempted, and no start was ever
   // attempted. Zero rows was the clue.
+  // THE HEADCOUNT LABEL MUST NOT CLAIM TO BE A DEVICE TALLY. The initial
+  // value is getEventHeadcount -- the whole event -- and only increments
+  // after load are local. It was briefly labelled "Admitted here", which
+  // claimed a per-device count while showing six admissions the device had
+  // never made. Stale-event-total is what it is; the label says so.
+  // Anchored to a line that is ONLY that text, i.e. a JSX text node. A bare
+  // substring test also matched the comment explaining why the label was
+  // changed, so the check failed on the very file that had been fixed —
+  // the same way the "Done — next guest" row did.
+  check("the headcount is not labelled as a per-device tally",
+    !/^\s*Admitted here\s*$/m.test(gateMode));
+  check("...and says it is not live",
+    /not live/i.test(gateMode));
+
   check("the station tracks the camera's real state",
     gateMode.includes("camActive"));
   check("...sourced from the scanner, not inferred",
