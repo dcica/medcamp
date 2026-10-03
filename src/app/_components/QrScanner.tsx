@@ -256,7 +256,12 @@ export function QrScanner({
                 // near-black viewfinder, where the brand navy of the default
                 // styling is all but invisible and only 48px tall at the top
                 // of a tall box — which is how it came to be missed entirely.
-                "absolute inset-0 flex flex-col items-center justify-center gap-2 text-white"
+                // z-10 IS LOAD-BEARING. #qr-reader below is also
+                // `absolute inset-0` and comes LATER in the DOM, so at equal
+                // z-index it paints on top and swallows every tap — the
+                // button renders perfectly and does nothing. That shipped
+                // 2026-10-03 and read as "tap to start is not working".
+                "absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 text-white"
               : "min-h-tap w-full rounded-lg bg-brand font-semibold text-brand-fg"
           }
         >

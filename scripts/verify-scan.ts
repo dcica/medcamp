@@ -415,6 +415,16 @@ async function main(): Promise<void> {
     /fill[\s\S]{0,120}absolute inset-0/.test(qr));
   check("fill mode labels the off state in words",
     qr.includes("Tap to start the camera"));
+  // AND THE CONTROL HAS TO BE ON TOP. In fill mode the start button and
+  // #qr-reader are both `absolute inset-0`, and the reader comes LATER in
+  // the DOM — so at equal z-index the reader paints over the button and eats
+  // every tap. The button looks perfect and does nothing. Shipped once,
+  // reported as "tap to start is not working".
+  const startBtn = (qr.match(/absolute inset-0[^"]*/g) ?? []).find((c) =>
+    c.includes("flex-col"),
+  ) ?? "";
+  check("the fill-mode start control is stacked above the reader",
+    /\bz-\d+\b/.test(startBtn), startBtn.slice(0, 80));
 
   check("there is exactly one QrScanner, mounted in every state",
     (gateMode.match(/<QrScanner/g) ?? []).length === 1,
