@@ -384,6 +384,29 @@ async function main(): Promise<void> {
   check("no height class Tailwind does not generate", ghostHeights.length === 0,
     ghostHeights.join(" "));
 
+  // THE SCREEN MUST NOT CONTRADICT ITSELF AFTER AN ACTION.
+  //
+  // `view` is a snapshot taken at resolve time and nothing refetches it, so
+  // admitting a party of four left the pips reading "0 of 4 in" directly
+  // under a banner saying "Admitted 4", and the dock still offering "Admit
+  // all 4" for people already through. The server was right; only the screen
+  // was stale. Seen on a rehearsal phone 2026-10-03.
+  check("an admit marks those tickets in on the local view",
+    /setView\(\(prev\)[\s\S]{0,400}alreadyAdmitted: true/.test(gateMode));
+  check("...keyed on the ids that were actually admitted",
+    /const done = new Set\(attendeeIds\)/.test(gateMode));
+
+  // PENDING GREEN NEVER APPEARS WITHOUT ITS WORD. Green otherwise means
+  // "I just changed something"; on a ready-to-admit guest nothing has
+  // happened yet, and a volunteer who reads green as "they are in" waves
+  // them past without tapping Admit -- no record, wrong headcount.
+  check("a pending guest gets a band colour of its own",
+    /pendingTone/.test(gateMode));
+  check("...and the word chip shows for it, not just for a verdict",
+    /\(held \|\| guestPending\) && \(/.test(gateMode));
+  check("...with wording that says the tap is still required",
+    banner.includes("PENDING_WORD") && /TAP ADMIT/.test(banner));
+
   // THE RESOLVED-BUT-UNACTED GUEST IS A STATE OF ITS OWN.
   //
   // onScan deliberately does NOT settle the one case the volunteer can act

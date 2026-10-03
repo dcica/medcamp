@@ -31,6 +31,23 @@ export const TONE_BAND: Record<ScanTone | "idle", string> = {
 };
 
 /**
+ * The word for a guest who is RESOLVED BUT NOT YET ACTED ON.
+ *
+ * This is why "ready to admit" is allowed to be green at all. Green
+ * otherwise means "I just changed something" — ADMITTED, CHECKED_IN,
+ * PARTY_ADMITTED — and a volunteer who learns that green means "they are
+ * in" could wave a ready guest through WITHOUT tapping Admit: the person
+ * walks in, the headcount is wrong, and there is no record. The colour says
+ * "this is fine", the word says "you still have to do the thing".
+ *
+ * So pending green NEVER appears without one of these.
+ */
+export const PENDING_WORD = {
+  paid: "READY · TAP ADMIT",
+  owes: "OWES — TAKE CASH",
+} as const;
+
+/**
  * The tone as a WORD.
  *
  * Colour fails in a bright doorway and for the ~1 in 12 men with a red-green

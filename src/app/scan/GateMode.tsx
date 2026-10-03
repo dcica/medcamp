@@ -8,7 +8,7 @@ import { GATE_MAX_QTY_PER_LINE, type GateSaleItem } from "@/lib/ticketMinting";
 import Link from "next/link";
 
 import { QrScanner } from "@/app/_components/QrScanner";
-import { TONE_BAND, TONE_WORD } from "@/lib/scanToneStyles";
+import { PENDING_WORD, TONE_BAND, TONE_WORD } from "@/lib/scanToneStyles";
 import {
   verdictFor,
   signalForError,
@@ -187,6 +187,28 @@ export function GateMode({
     return (async () => {
       const res = await admit(attendeeIds, eventId);
       if (!res.ok) return settle(verdictFor(signalForError(res.error)));
+      // MARK THEM IN, LOCALLY. `view` is a snapshot taken at resolve time and
+      // nothing refetches it, so without this the pips still read "0 of 4 in"
+      // under a banner saying "Admitted 4", and the dock still offers
+      // "Admit all 4" for people who are already through. The server is the
+      // authority and has already been told; this just stops the screen
+      // contradicting it.
+      const done = new Set(attendeeIds);
+      setView((prev) =>
+        prev
+          ? {
+              ...prev,
+              alreadyAdmitted:
+                prev.alreadyAdmitted ||
+                prev.party.every((t) => t.alreadyAdmitted || done.has(t.attendeeId)),
+              party: prev.party.map((t) =>
+                done.has(t.attendeeId)
+                  ? { ...t, alreadyAdmitted: true, admittedAt: new Date() }
+                  : t,
+              ),
+            }
+          : prev,
+      );
       applyAdmit(res.data);
     })();
   }
@@ -407,6 +429,20 @@ export function GateMode({
    * the camera stops re-reading a ticket already on screen.
    */
   const guestPending = !!view && !held;
+
+  /**
+   * The band colour for a resolved-but-unacted guest.
+   *
+   * NOT always green: pickHit only settles an already-admitted guest, so a
+   * will-call guest found by SEARCH lands here still owing money. Green for
+   * "paid, ready", amber for "owes" -- the same meanings the verdict tones
+   * carry, applied to a state that has no verdict of its own.
+   */
+  const pendingTone: ScanTone | null = guestPending && view
+    ? view.isPaid
+      ? "go"
+      : "hold"
+    : null;
   const camCollapsed = task !== "none";
 
   function closeTask() {
@@ -501,7 +537,7 @@ export function GateMode({
       <div
         className={`mx-2 mt-2 flex min-h-0 flex-col rounded-2xl transition-colors ${
           camCollapsed ? "hidden" : "flex-1"
-        } ${TONE_BAND[tone ?? "idle"]}`}
+        } ${TONE_BAND[tone ?? pendingTone ?? "idle"]}`}
       >
         {/* Status chip row. THIS is where the latch becomes visible: a live
             feed that has stopped listening is indistinguishable from one that
@@ -544,9 +580,17 @@ export function GateMode({
               </>
             )}
           </span>
-          {held && (
+          {(held || guestPending) && (
+            /* MANDATORY beside a coloured band. Green here means "ready",
+               not "in" -- without the word, a volunteer who has learned that
+               green means admitted could wave this guest through without
+               tapping Admit, and nothing would record it. */
             <span className="inline-flex h-7 items-center rounded-full bg-black px-2.5 text-xs font-extrabold tracking-wide text-white">
-              {TONE_WORD[phase.verdict.tone]}
+              {held
+                ? TONE_WORD[phase.verdict.tone]
+                : view?.isPaid
+                  ? PENDING_WORD.paid
+                  : PENDING_WORD.owes}
             </span>
           )}
         </div>
@@ -560,10 +604,10 @@ export function GateMode({
             onActiveChange={setCamActive}
           />
           {guestPending && view && (
-            /* Not a verdict, so not a verdict colour. Nothing has happened to
-               this guest yet — green here would mean "admitted" and they are
-               not. The band stays neutral and the dock below carries the
-               action. */
+            /* The band IS coloured here -- green for paid, amber for owing --
+               because a volunteer scanning in a queue needs the at-a-glance
+               read. What stops green meaning "already in" is the word beside
+               it: READY · TAP ADMIT. */
             <div
               role="status"
               aria-live="polite"
