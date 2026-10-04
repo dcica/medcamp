@@ -26,7 +26,7 @@ This is an **open-source, multi-tenant SaaS** for any non-profit, not a single-o
 
 - **Framework:** Next.js (App Router) — single codebase serves web, tablet, and TV display views
 - **Database:** PostgreSQL via Supabase — multi-tenant with Row-Level Security keyed to `org_id`
-- **Payments:** Stripe **Connect** — each tenant org connects its own account; Payment Element (online checkout) + Terminal SDK / Tap to Pay on phone (walk-in, on-site) run against the connected account. Tenants apply for their own 501(c)(3) non-profit rate.
+- **Payments:** Stripe **Connect** — each tenant org connects its own account; **hosted Checkout** (online, and at the door via a QR the guest scans on their own phone) runs against the connected account. Tenants apply for their own 501(c)(3) non-profit rate. *Payment Element and Terminal / Tap to Pay are NOT built* — decision #7 chose hosted Checkout over a native build; Tap to Pay is parked as `docs/ideas/backlog.md` D004.
 - **Auth:** OIDC via NextAuth.js — Google / Microsoft / GitHub; tenant-scoped roles. (dcica committee members use existing Google Workspace accounts.)
 - **QR / Badge printing:** `qrcode` npm library + browser print CSS (label printer compatible)
 - **Hosting:** Vercel (app) + Supabase (database)
@@ -109,9 +109,20 @@ src/     — application code (Next.js project root goes here)
 
 ## Key External Integrations
 
-- **Stripe:** Payment Element for online checkout; Terminal SDK + Tap to Pay on phone for walk-in POS. Payment must succeed before registration is confirmed. **Budget standard rates (2.9% + $0.30 online).** The 501(c)(3) non-profit rate is *not* available: Stripe requires >80% tax-deductible donation volume and excludes tickets, memberships, and registration fees — dcica is <10% donations. Investigated and closed 2026-08-20; see `docs/Payment-Gateway.md`. Do not reopen. Refunds are staff-initiated only (no self-serve refund flow for patients).
-  - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` — browser-safe, used in Payment Element
+- **Stripe:** **hosted Checkout** for online purchase and for card at the door (the gate shows a QR; the guest pays on their own phone and the webhook admits them). *Not* Payment Element, and *not* Terminal / Tap to Pay — both were planned, neither is built, and the stack line above records why. Payment must succeed before registration is confirmed, and **only the webhook may confirm it**: no gate action calls `confirmOrderPaid`, because a door screen that could mark an order paid would be a way to admit a party with no charge (`scripts/verify-gate.ts` pins this). **Budget standard rates (2.9% + $0.30 online).** The 501(c)(3) non-profit rate is *not* available: Stripe requires >80% tax-deductible donation volume and excludes tickets, memberships, and registration fees — dcica is <10% donations. Investigated and closed 2026-08-20; see `docs/Payment-Gateway.md`. Do not reopen. Refunds are staff-initiated only (no self-serve refund flow for patients).
+  - **There is no publishable key.** Checkout is Stripe-**hosted** (decision #7
+    at `src/server/payments.ts`), so the browser is redirected to
+    checkout.stripe.com and never mounts Stripe's own elements.
+    `@stripe/stripe-js` is not a dependency and there is no `loadStripe`
+    anywhere. A `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` sat in `env.ts` unread
+    until 2026-10-03 — harmless, because a publishable key is public by
+    design, which is exactly why nobody noticed it was dead. Re-add it when
+    something client-side needs one, and not before.
   - `STRIPE_SECRET_KEY` — server-side only, never exposed to client
+  - `STRIPE_WEBHOOK_SECRET` — per-endpoint AND per-mode. A live secret against
+    test events fails `constructEvent`, the route 400s, Stripe retries, and
+    the order never confirms with nothing going red anywhere.
+    `scripts/push-stripe-env-to-vercel.sh` refuses the mismatched combinations.
   - Test keys stored in `.env` (gitignored). Swap for live keys in Vercel env vars at deploy time.
 - **Google Workspace:** OAuth login only — no Google Forms, no Sheets, no Drive sync. Those are the systems being replaced.
 - **Google Address Validation (optional):** standardizes mailing addresses for lab labels. Off unless `GOOGLE_MAPS_API_KEY` is set; called server-side once per address on field blur (never per-keystroke, never from the browser). Free under 5,000 calls/mo (~500/camp). Sends one address line to Google at submit time — disclosed in the Privacy Policy.

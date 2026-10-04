@@ -94,7 +94,18 @@ const schema = z.object({
   GITHUB_CLIENT_SECRET: z.string().optional(),
 
   // Payments
-  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().optional(),
+  //
+  // NO PUBLISHABLE KEY. There was a NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY here,
+  // left from the Payment Element plan that decision #7 replaced with hosted
+  // Checkout. Nothing read it: `@stripe/stripe-js` is not a dependency, there
+  // is no loadStripe anywhere, and the browser is redirected to
+  // checkout.stripe.com rather than mounting Stripe's own elements — so the
+  // client never needs a key at all.
+  //
+  // It was not a leak. A publishable key is designed to be public, which is
+  // exactly why it sat unnoticed: harmless, documented in three places as
+  // live, and read by nothing. Re-add it the day something client-side needs
+  // it (Payment Element, or the Terminal work parked as D004), and not before.
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
   /**

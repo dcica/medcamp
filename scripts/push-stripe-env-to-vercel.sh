@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 #
-# Push Stripe env vars to a Vercel project: the publishable key, the secret
-# key, and the WEBHOOK SIGNING SECRET. Sibling of push-ses-env-to-vercel.sh.
+# Push Stripe env vars to a Vercel project: the secret key and the WEBHOOK
+# SIGNING SECRET. Sibling of push-ses-env-to-vercel.sh.
+#
+# NO PUBLISHABLE KEY, deliberately. Nothing in the app reads one — hosted
+# Checkout redirects to checkout.stripe.com rather than mounting Stripe's
+# own elements, so the browser never needs a key. See src/lib/env.ts.
 #
 # SECRETS ARE NOT STORED IN THIS FILE. Export them in your shell first:
 #
-#   export STRIPE_PUBLISHABLE_KEY=pk_test_...
 #   export STRIPE_SECRET_KEY=sk_test_...        # or rk_test_... (restricted)
 #   export STRIPE_WEBHOOK_SECRET=whsec_...
 #   bash scripts/push-stripe-env-to-vercel.sh test       # or: prod
@@ -39,40 +42,34 @@ case "$TARGET" in
     ;;
 esac
 
-: "${STRIPE_PUBLISHABLE_KEY:?export STRIPE_PUBLISHABLE_KEY first}"
 : "${STRIPE_SECRET_KEY:?export STRIPE_SECRET_KEY first}"
 : "${STRIPE_WEBHOOK_SECRET:?export STRIPE_WEBHOOK_SECRET first}"
 
 # ── Refuse a mode/target mismatch ─────────────────────────────────────────
-# The whole point of the target argument. `rk_` is allowed for the secret
-# because prod uses a restricted key.
+# The whole point of the target argument. `rk_` is allowed because prod
+# uses a restricted key.
 mode_of() {
   case "$1" in
-    pk_test_*|sk_test_*|rk_test_*) echo test ;;
-    pk_live_*|sk_live_*|rk_live_*) echo live ;;
+    sk_test_*|rk_test_*) echo test ;;
+    sk_live_*|rk_live_*) echo live ;;
     *) echo unknown ;;
   esac
 }
-PUB_MODE="$(mode_of "$STRIPE_PUBLISHABLE_KEY")"
 SEC_MODE="$(mode_of "$STRIPE_SECRET_KEY")"
 
-if [ "$PUB_MODE" = unknown ] || [ "$SEC_MODE" = unknown ]; then
-  echo "REFUSING: a key does not look like pk_/sk_/rk_ test or live." >&2
-  exit 1
-fi
-if [ "$PUB_MODE" != "$SEC_MODE" ]; then
-  echo "REFUSING: publishable is $PUB_MODE but secret is $SEC_MODE." >&2
+if [ "$SEC_MODE" = unknown ]; then
+  echo "REFUSING: STRIPE_SECRET_KEY does not look like sk_/rk_ test or live." >&2
   exit 1
 fi
 case "$STRIPE_WEBHOOK_SECRET" in
   whsec_*) ;;
   *) echo "REFUSING: STRIPE_WEBHOOK_SECRET must start with whsec_." >&2; exit 1 ;;
 esac
-if [ "$TARGET" = test ] && [ "$PUB_MODE" = live ]; then
+if [ "$TARGET" = test ] && [ "$SEC_MODE" = live ]; then
   echo "REFUSING: live keys into medcamp-test. Rehearsal sales would be real money." >&2
   exit 1
 fi
-if [ "$TARGET" = prod ] && [ "$PUB_MODE" = test ]; then
+if [ "$TARGET" = prod ] && [ "$SEC_MODE" = test ]; then
   echo "REFUSING: test keys into medcamp-prod. Real buyers could not pay." >&2
   exit 1
 fi
@@ -83,7 +80,7 @@ ENVIRONMENT=production   # medcamp-test's live URL is its 'production' env
 echo
 echo "  project      $PROJECT"
 echo "  environment  $ENVIRONMENT"
-echo "  stripe mode  $PUB_MODE"
+echo "  stripe mode  $SEC_MODE"
 echo "  webhook      whsec_… (${#STRIPE_WEBHOOK_SECRET} chars)"
 echo
 
@@ -96,7 +93,6 @@ put() {
   echo "  set $name"
 }
 
-put NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY "$STRIPE_PUBLISHABLE_KEY"
 put STRIPE_SECRET_KEY "$STRIPE_SECRET_KEY"
 put STRIPE_WEBHOOK_SECRET "$STRIPE_WEBHOOK_SECRET"
 
