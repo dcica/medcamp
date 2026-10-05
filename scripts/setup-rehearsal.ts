@@ -146,7 +146,10 @@ const STAFF_INVITES: {
   email: string;
   role: "COORDINATOR";
   canHoldTill: boolean;
-}[] = [{ email: "archanajain@gmail.com", role: "COORDINATOR", canHoldTill: true }];
+}[] = [
+  { email: "archanajain@gmail.com", role: "COORDINATOR", canHoldTill: true },
+  { email: "gaganpandey1977@gmail.com", role: "COORDINATOR", canHoldTill: true },
+];
 
 const money = (c: number) => `$${(c / 100).toFixed(2)}`;
 
