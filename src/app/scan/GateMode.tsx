@@ -1085,9 +1085,9 @@ export function GateMode({
       {/* ── Task: buy merch for a resolved guest ──────────────────────── */}
       {task === "buy" && canTakeCash && (
         <TaskSheet title="Buy merch" onClose={closeTask}>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <ItemPicker items={catalog.merch} basket={buySel} onChange={setBuySel} />
-          </div>
+          {/* No inner scroller: TaskSheet's body already scrolls, and two
+              nested ones fight over the same drag. */}
+          <ItemPicker items={catalog.merch} basket={buySel} onChange={setBuySel} />
           <button
             type="button"
             disabled={pending || buySel.size === 0}
@@ -1207,8 +1207,26 @@ function TaskSheet({
           ✕
         </button>
       </div>
-      {desc && <p className="-mt-1.5 text-sm leading-snug text-gray-600">{desc}</p>}
-      {children}
+      {desc && (
+        <p className="-mt-1.5 flex-none text-sm leading-snug text-gray-600">
+          {desc}
+        </p>
+      )}
+      {/* THE BODY SCROLLS. The sheet is `overflow-hidden` so it cannot push
+          the kiosk column taller than the viewport — the whole screen is a
+          fixed-height flex column and something has to absorb the overflow.
+          Without a scroller here that clipping is silent: the walk-up form
+          simply ended mid-button, and on a tall phone inside Gmail's
+          in-app browser (which eats another ~90px of chrome) the Card
+          button was off the bottom with no way to reach it. Reported from a
+          Galaxy S25 Ultra, 2026-10-04.
+
+          `min-h-0` is load-bearing: a flex child defaults to min-height
+          auto, which refuses to shrink below its content, and the scroller
+          never engages. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        {children}
+      </div>
     </div>
   );
 }
@@ -1502,10 +1520,8 @@ function WalkUpForm({
   const total = basketTotal(all, basket);
 
   return (
-    <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-        Walk-up sale
-      </p>
+    <div className="space-y-3">
+
       <input
         className="min-h-tap w-full rounded-lg border border-gray-300 px-3 py-2 text-base"
         placeholder="Name (optional)"

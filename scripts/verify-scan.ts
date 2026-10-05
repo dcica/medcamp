@@ -435,6 +435,37 @@ async function main(): Promise<void> {
   check("...and only those N are sent to the server",
     /pendingParty\.slice\(0, admitN\)/.test(gateMode));
 
+  // A TASK SHEET MUST BE ABLE TO SCROLL ITS OWN BODY.
+  //
+  // The whole station is a fixed-height flex column that deliberately never
+  // scrolls, so a sheet is `overflow-hidden` -- it cannot be allowed to push
+  // the column taller than the viewport. The consequence is that SOMETHING
+  // inside it has to absorb the overflow, and when nothing did, the walk-up
+  // form was simply clipped mid-button: the Card action sat below the fold
+  // with no way to reach it. Reported from a Galaxy S25 Ultra inside Gmail's
+  // in-app browser, which eats another ~90px of chrome, on 2026-10-04.
+  //
+  // Silent by construction: it renders, it looks deliberate, and no amount
+  // of type-checking sees it.
+  const sheet = gateMode.slice(gateMode.indexOf("function TaskSheet"));
+  check("the task sheet scrolls its body",
+    /overflow-y-auto/.test(sheet.slice(0, 2000)));
+  // min-h-0 is the load-bearing half. A flex child defaults to min-height
+  // auto, refuses to shrink below its content, and the scroller never
+  // engages -- so the overflow-y-auto reads as present and does nothing.
+  // Both tokens in the SAME class string, in any order — Tailwind class
+  // order is arbitrary and the first version of this row demanded them
+  // adjacent, so it failed on the very code it was written to pass.
+  const scroller =
+    (sheet.slice(0, 2000).match(/className="([^"]*overflow-y-auto[^"]*)"/) ??
+      [])[1] ?? "";
+  check("...with min-h-0, or the scroller never engages",
+    /\bmin-h-0\b/.test(scroller), scroller);
+  // Two nested scrollers inside one sheet fight over the same drag.
+  check("...and only one scroller per sheet",
+    (gateMode.match(/overflow-y-auto/g) ?? []).length === 1,
+    String((gateMode.match(/overflow-y-auto/g) ?? []).length));
+
   // THE RESOLVED-BUT-UNACTED GUEST IS A STATE OF ITS OWN.
   //
   // onScan deliberately does NOT settle the one case the volunteer can act
