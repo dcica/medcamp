@@ -91,7 +91,20 @@ export function DailySalesChart({ days }: { days: DailySalesDay[] }) {
   const cents = days.map((d) => d.cents);
   const totalUnits = units.reduce((s, n) => s + n, 0);
   const totalCents = cents.reduce((s, n) => s + n, 0);
-  const active = days.filter((d) => d.units > 0 || d.cents > 0).length;
+  // ONE predicate for "this day had trade", shared by the stat-tile fallback
+  // below and the table further down. Two copies of it would eventually
+  // disagree about the same day, and the disagreement would be silent.
+  const soldDays = days.filter((d) => d.units > 0 || d.cents > 0);
+  const active = soldDays.length;
+
+  // NEWEST FIRST, and only here. The question a coordinator opens this table
+  // to answer is "how did today go" — a table that starts a fortnight ago
+  // makes them scroll past thirteen answered questions to reach it.
+  //
+  // The BARS stay oldest-to-newest. A time axis running right-to-left is a
+  // different chart, and reversing one without the other is how a reader ends
+  // up matching the tallest bar to the wrong row.
+  const tableRows = [...soldDays].reverse();
 
   const label = (iso: string) => {
     // Parsed as UTC noon: the key is already a venue calendar day, and letting
@@ -168,10 +181,20 @@ export function DailySalesChart({ days }: { days: DailySalesDay[] }) {
 
         {/* The table view the bars are a picture OF. Collapsed so it costs no
             room, present so the data is reachable without hover — which a phone
-            does not have at all. */}
+            does not have at all.
+
+            QUIET DAYS ARE LISTED IN THE BARS BUT NOT HERE, on purpose. The
+            chart is a SHAPE: dropping an empty day there would compress the
+            axis and make a gap in trading read as activity. The table is a
+            LOOKUP, and a row of zeroes answers no question — it just pushes
+            the days that did sell off a phone screen. The summary says how
+            many rows there are so the count is not a surprise against 14
+            bars. */}
         <details className="mt-3">
           <summary className="min-h-tap cursor-pointer text-xs text-gray-600">
-            Show the numbers
+            Show the numbers ({soldDays.length}{" "}
+            {soldDays.length === 1 ? "day" : "days"} with sales
+            {soldDays.length > 1 ? ", newest first" : ""})
           </summary>
           <table className="mt-2 w-full text-xs tabular-nums">
             <thead>
@@ -182,7 +205,7 @@ export function DailySalesChart({ days }: { days: DailySalesDay[] }) {
               </tr>
             </thead>
             <tbody>
-              {days.map((d) => (
+              {tableRows.map((d) => (
                 <tr key={d.day} className="border-t border-gray-100">
                   <td className="py-1">{label(d.day)}</td>
                   <td className="py-1 text-right">{d.units}</td>
