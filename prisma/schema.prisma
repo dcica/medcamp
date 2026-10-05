@@ -308,6 +308,20 @@ model Event {
   flagsReviewedById String?
   flagsReviewedBy   User?     @relation("EventFlagsReviewer", fields: [flagsReviewedById], references: [id], onDelete: SetNull)
 
+  /// Manual position on the public home page. Null = chronological, which is
+  /// the default and stays right for almost everything.
+  ///
+  /// Exists because chronological is not always the order a visitor should
+  /// read. Rhythm of Navratri starts at 5pm and Dandiya Night at 7pm the SAME
+  /// evening, so date order puts the competition entry above the ticket most
+  /// people came to buy. The fix is not to fudge the times — RON's are the
+  /// flyer's, and `prisma/seed-events.ts` says so in as many words.
+  ///
+  /// Ordered NULLS LAST: a set position always outranks a date, and an event
+  /// nobody has positioned keeps its chronological slot rather than jumping
+  /// to the front.
+  displayOrder      Int?
+
   /// Computed when the camp closes; PII is purged but this survives.
   closedAt DateTime?
   purgedAt DateTime?

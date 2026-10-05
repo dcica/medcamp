@@ -56,7 +56,20 @@ const loadHome = cache(async () => {
           status: { in: ["OPEN", "ACTIVE"] },
           endsAt: { gte: new Date() },
         },
-        orderBy: { startsAt: "asc" },
+        // A PINNED POSITION OUTRANKS THE CALENDAR, and null keeps the
+        // calendar. Chronological is right almost always and wrong on one
+        // night a year: RON starts at 5pm and Dandiya Night at 7pm the same
+        // evening, so date order puts the competition-entry page above the
+        // ticket most visitors came for.
+        //
+        // NULLS LAST is the whole trick. Postgres sorts nulls FIRST on a
+        // DESC and last on ASC by default, and Prisma does not guess — stated
+        // explicitly here so an unpositioned event keeps its date slot
+        // instead of leaping to the front of the rail.
+        orderBy: [
+          { displayOrder: { sort: "asc", nulls: "last" } },
+          { startsAt: "asc" },
+        ],
       })
     : [];
   return { org, events };
