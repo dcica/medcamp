@@ -777,7 +777,25 @@ export async function getGateCatalog(eventId: string): Promise<{
     o.capacity === null ? null : Math.max(0, o.capacity - o.sold);
   return {
     admission: offerings
-      .filter((o) => o.serviceType.kind === "ADMISSION" && !o.serviceType.hasLab)
+      // BUNDLES ARE ONLINE-ONLY. A door sells one person at a time: the
+      // volunteer is counting heads in front of them, and a "Family of 4"
+      // chip is a four-head commitment made with one tap, under queue
+      // pressure, with no undo anywhere in this app. Buying four singles is
+      // the same money and the same tickets, and it is countable.
+      //
+      // `admitsCount > 1` IS the definition of bulk here — it is the field
+      // that says "one tap admits more than one person" — so the rule needs
+      // no new column and cannot drift from the thing it describes.
+      // Deliberately platform-wide rather than per-event: a door that
+      // sometimes sells bundles is a door whose volunteers have to remember
+      // which night it is. Revisit with a per-offering flag if an event
+      // genuinely needs one.
+      .filter(
+        (o) =>
+          o.serviceType.kind === "ADMISSION" &&
+          !o.serviceType.hasLab &&
+          Math.max(1, o.serviceType.admitsCount) === 1,
+      )
       .map((o) => ({
         id: o.serviceType.id,
         name: o.serviceType.name,
