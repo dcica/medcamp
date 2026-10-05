@@ -97,6 +97,12 @@ const ROSTER: Entry[] = [
     items: [{ serviceKey: ENTRY, quantity: 1 }], note: "entry" },
   { name: "Madhu Rana", email: "ranamadhu@gmail.com",
     items: [{ serviceKey: ENTRY, quantity: 1 }], note: "entry" },
+  // Added 2026-09-27. A coordinator needs more than one code to exercise the
+  // screens she is supposed to oversee, so she gets a party AND merch: four
+  // scannable tickets for party admit, and sticks for the hand-over path.
+  { name: "Archana Jain", email: "archanajain@gmail.com",
+    items: [{ serviceKey: FAMILY4, quantity: 1 }, { serviceKey: STICKS, quantity: 2 }],
+    note: "COORDINATOR — family of 4 + sticks" },
 ];
 
 /** A visible sentinel beats inventing a plausible number. */
@@ -122,6 +128,28 @@ const REFUND_FIXTURE = {
 
 /** The sold-out drill needs a cap small enough to exhaust in one round. */
 const TENPACK_REHEARSAL_CAP = 2;
+
+/**
+ * Staff who sign in with their real Google account rather than /test-login.
+ *
+ * A pending `Invite` row is the product's own mechanism: `events.signIn` in
+ * src/lib/auth.ts grants the membership from the invite on first sign-in and
+ * stamps `acceptedAt`. Used in preference to BOOTSTRAP_ADMIN_EMAILS because
+ * that is an env var and would need a redeploy, and because an invite records
+ * the capability flags (`canHoldTill`) that the env path hard-codes.
+ *
+ * Idempotent: an already-accepted invite is left alone rather than reset,
+ * since re-offering an accepted invite to someone who already has a
+ * membership does nothing anyway.
+ */
+const STAFF_INVITES: {
+  email: string;
+  role: "COORDINATOR";
+  canHoldTill: boolean;
+}[] = [
+  { email: "archanajain@gmail.com", role: "COORDINATOR", canHoldTill: true },
+  { email: "gaganpandey1977@gmail.com", role: "COORDINATOR", canHoldTill: true },
+];
 
 const money = (c: number) => `$${(c / 100).toFixed(2)}`;
 
@@ -307,6 +335,38 @@ async function main(): Promise<void> {
       create: { volunteerId: volunteer.id, eventId: event.id, roleId: role.id, code, status: "CONFIRMED" },
     });
     console.log(`  ok  volunteer ${code}  ${v.name} (${v.role})`);
+  }
+
+  // ── 4b. Staff invites (real Google logins) ──────────────────────────────
+  for (const inv of STAFF_INVITES) {
+    const email = inv.email.toLowerCase();
+    const existingMember = await db.membership.findFirst({
+      where: { orgId: event.orgId, user: { email } },
+      select: { role: true },
+    });
+    if (existingMember) {
+      console.log(`  --  ${email} is already a member (${existingMember.role})`);
+      continue;
+    }
+    const before = await db.invite.findUnique({
+      where: { orgId_email: { orgId: event.orgId, email } },
+      select: { acceptedAt: true },
+    });
+    if (before?.acceptedAt) {
+      console.log(`  --  ${email} invite already accepted`);
+      continue;
+    }
+    await db.invite.upsert({
+      where: { orgId_email: { orgId: event.orgId, email } },
+      update: { role: inv.role, canHoldTill: inv.canHoldTill },
+      create: {
+        orgId: event.orgId,
+        email,
+        role: inv.role,
+        canHoldTill: inv.canHoldTill,
+      },
+    });
+    console.log(`  ok  invite ${email} -> ${inv.role}${inv.canHoldTill ? " (till)" : ""}`);
   }
 
   // ── 5. Refunded fixture ─────────────────────────────────────────────────

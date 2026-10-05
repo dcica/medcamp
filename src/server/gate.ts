@@ -81,6 +81,17 @@ export type GateView = {
   /** Pre-bought physical goods to hand over (MERCH line items). */
   pickupItems: GatePickupItem[];
   /**
+   * The order buys no floor access -- merch or a fee only.
+   *
+   * `admitAttendee` already throws NOT_A_TICKET on this, so nobody has ever
+   * got in free. But the REFUSAL came after the tap: getGateView reported
+   * isPaid:true, the door painted a green "Admit & wristband", and the
+   * volunteer had already told the guest they were in before the server
+   * said no. Same shape as the confusables bug at check-in -- see it, then
+   * fail to act on it. Surfacing it here makes the verdict red on the SCAN.
+   */
+  admitsNobody: boolean;
+  /**
    * Every ticket on this order, the scanned one included and flagged.
    * ADDITIVE: nothing that reads the fields above changes behaviour, which
    * is why every existing verify-gate row stays green.
@@ -183,6 +194,7 @@ export function toGateView(attendee: GateAttendee): GateView {
     alreadyAdmitted: Boolean(attendee.checkedInAt),
     admittedAt: attendee.checkedInAt,
     pickupItems,
+    admitsNobody: admitsNobody(attendee.order.lineItems),
     party: attendee.order.attendees.map((a) => ({
       attendeeId: a.id,
       campId: a.campId,
@@ -573,7 +585,17 @@ export async function compAdmit(
 export async function sellAtGate(
   eventId: string,
   items: GateSaleItem[],
-  opts: { buyerName?: string; attendeeId?: string } = {},
+  opts: {
+    buyerName?: string;
+    attendeeId?: string;
+    /**
+     * How the money is arriving. CASH is the default because every caller
+     * before the card path was a till. It matters before confirmation only:
+     * confirmOrderPaid overwrites it with whatever actually settled, so this
+     * is what a PENDING order says about itself while it waits.
+     */
+    method?: "CASH" | "STRIPE";
+  } = {},
 ): Promise<{ orderId: string; totalCents: number; ticketCount: number }> {
   const org = await getActiveOrg();
   if (!org) throw new Error("No active organization.");
@@ -633,7 +655,7 @@ export async function sellAtGate(
       orgId: org.id,
       eventId: event.id,
       status: "PENDING",
-      method: "CASH",
+      method: opts.method ?? "CASH",
       registrantName: name,
       registrantEmail: "gate@gate.local",
       registrantPhone: "",

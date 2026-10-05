@@ -292,8 +292,11 @@ test-card "purchase" that would send a real confirmation email and QR pass.
 
 When the DCICA Stripe account is activated, flip in this order:
 
-1. Swap `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` + `STRIPE_SECRET_KEY` to `pk_live` /
-   `sk_live`.
+1. Swap `STRIPE_SECRET_KEY` to `sk_live` (or a `rk_live` restricted key with
+   write on Checkout Sessions and PaymentIntents). There is no publishable key
+   to swap — hosted Checkout needs no client-side key, and the unread
+   `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` was removed on 2026-10-03.
+   `scripts/push-stripe-env-to-vercel.sh prod` does this and refuses test keys.
 2. Create the webhook endpoint **again in live mode** — test and live endpoints
    are separate objects with separate signing secrets — and replace
    `STRIPE_WEBHOOK_SECRET`.

@@ -807,6 +807,30 @@ export async function confirmOrderPaid(
     });
 
     return { alreadyConfirmed: false, campIds };
+  }, {
+    /**
+     * EXPLICIT, because the default is 5s and this transaction is O(party size).
+     *
+     * campId assignment cannot be batched — every attendee gets a different
+     * random token — so a party of N costs N uniqueness SELECTs plus N
+     * UPDATEs, sequentially, plus a station visit per attendee on a camp.
+     * A ten-ticket order is over twenty round trips inside one budget.
+     *
+     * Measured 2026-09-28 minting a Package of 10 against the deployed test
+     * database: `5105 ms passed since the start of the transaction`, and the
+     * whole confirmation rolled back. The app itself normally shares a region
+     * with the database and has far more headroom, but the failure mode when
+     * it does not is the expensive one — Stripe has taken the money, the
+     * webhook 500s, and the order sits PENDING with no ticket. Stripe's retry
+     * heals it, eventually, while the buyer stares at a pending page.
+     *
+     * A longer budget is not a licence to do more work in here. The atomic
+     * cap decrement and the campId assignment have to stay in one transaction
+     * (that is the whole point of decision #2); anything that does not, goes
+     * in the .then() below, as the email already does.
+     */
+    timeout: 20_000,
+    maxWait: 10_000,
   }).then(async (result) => {
     // Side-effect (email) outside the transaction so a slow provider can't hold
     // a DB lock. Re-read the confirmed order for the message.
