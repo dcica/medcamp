@@ -1,21 +1,23 @@
 import { requireCoordinator } from "@/server/admin";
-import { getActiveOrg, getActiveBranding, getActiveProfile, getActiveSite } from "@/lib/tenant";
+import { getActiveOrg, getActiveBranding, getActiveLegal, getActiveProfile, getActiveSite } from "@/lib/tenant";
 import { DEFAULT_THEME } from "@/lib/branding";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { SettingsForm } from "./SettingsForm";
 import { ProfileForm } from "./ProfileForm";
 import { SiteForm } from "./SiteForm";
+import { LegalForm } from "./LegalForm";
 
 export const dynamic = "force-dynamic";
 
 /** Branding & org settings — coordinator-only (config-over-code). */
 export default async function SettingsPage() {
   await requireCoordinator();
-  const [org, branding, profile, site] = await Promise.all([
+  const [org, branding, profile, site, legal] = await Promise.all([
     getActiveOrg(),
     getActiveBranding(),
     getActiveProfile(),
     getActiveSite(),
+    getActiveLegal(),
   ]);
 
   return (
@@ -39,6 +41,10 @@ export default async function SettingsPage() {
             body: "Your own Google Analytics property and Search Console token. Blank means no analytics script on your pages; staff screens are never reported either way.",
           },
           {
+            label: "Privacy policy and terms",
+            body: "Your own text, published at /privacy and /terms and linked from the footer as soon as it is saved. The platform never writes a policy for you: say what you collect, how long you keep donor and attendee records, and how to reach you.",
+          },
+          {
             label: "Brand color",
             body: "Buttons, headings and links across every screen. Saving takes effect immediately — no redeploy. The text color on top is picked for you, and a color too pale to carry readable text is refused rather than saved.",
           },
@@ -56,6 +62,7 @@ export default async function SettingsPage() {
       />
       <ProfileForm initial={profile} />
       <SiteForm initial={site} />
+      <LegalForm initial={legal} />
     </div>
   );
 }

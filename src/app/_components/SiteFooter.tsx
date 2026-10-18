@@ -1,4 +1,5 @@
-import { getActiveBranding, getActiveProfile } from "@/lib/tenant";
+import Link from "next/link";
+import { getActiveBranding, getActiveLegal, getActiveProfile } from "@/lib/tenant";
 import { PLATFORM_REPO_URL } from "@/lib/platform";
 
 /**
@@ -18,7 +19,11 @@ import { PLATFORM_REPO_URL } from "@/lib/platform";
  */
 export async function SiteFooter() {
   const year = new Date().getFullYear();
-  const [branding, profile] = await Promise.all([getActiveBranding(), getActiveProfile()]);
+  const [branding, profile, legal] = await Promise.all([
+    getActiveBranding(),
+    getActiveProfile(),
+    getActiveLegal(),
+  ]);
   return (
     // Flag-green band mirrors dcica.org's footer.
     <footer className="no-print bg-accent2 px-4 py-6 text-center text-xs text-accent2-fg">
@@ -44,6 +49,16 @@ export async function SiteFooter() {
           >
             Contact
           </a>
+        )}
+        {legal.privacy && (
+          <Link href="/privacy" className="inline-flex min-h-tap items-center underline">
+            Privacy
+          </Link>
+        )}
+        {legal.terms && (
+          <Link href="/terms" className="inline-flex min-h-tap items-center underline">
+            Terms
+          </Link>
         )}
       </p>
     </footer>

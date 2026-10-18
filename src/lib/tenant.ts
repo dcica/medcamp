@@ -11,7 +11,14 @@ import {
   type TenantResolution,
 } from "@/lib/tenantResolve";
 import { orgBaseUrl, platformOrigin } from "@/lib/orgUrl";
-import { resolveOrgProfile, resolveOrgSite, type OrgProfile, type OrgSite } from "@/lib/orgSettings";
+import {
+  resolveOrgLegal,
+  resolveOrgProfile,
+  resolveOrgSite,
+  type OrgLegal,
+  type OrgProfile,
+  type OrgSite,
+} from "@/lib/orgSettings";
 
 /**
  * Active-tenant resolution. One deployment serves every organisation, and the
@@ -128,6 +135,12 @@ export const getActiveProfile = cache(async (): Promise<OrgProfile> => {
 export const getActiveSite = cache(async (): Promise<OrgSite> => {
   const t = await resolveTenant();
   return resolveOrgSite(t.kind === "org" ? t.org.settings : undefined);
+});
+
+/** The active tenant's privacy policy and terms text. Non-throwing, like branding. */
+export const getActiveLegal = cache(async (): Promise<OrgLegal> => {
+  const t = await resolveTenant();
+  return resolveOrgLegal(t.kind === "org" ? t.org.settings : undefined);
 });
 
 /** The origin absolute URLs on this request are built from: the org's host, else the platform's. */

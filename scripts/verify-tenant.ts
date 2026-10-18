@@ -753,6 +753,49 @@ async function section12(): Promise<void> {
   check("the settings page saves the site settings through its own action", /updateOrgSite/.test(src("src/app/admin/settings/actions.ts")) && /siteSchema/.test(src("src/app/admin/settings/actions.ts")), true);
 }
 
+/**
+ * §13 — the organisation's own privacy policy and terms, rendered from text it
+ * typed. The renderer produces blocks, never HTML, so nothing an organisation
+ * (or whoever edits its settings) types can become script on its pages.
+ */
+async function section13(): Promise<void> {
+  const src = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
+  const { resolveOrgLegal } = await import("../src/lib/orgSettings");
+  const { renderLegalBlocks } = await import("../src/lib/legalText");
+  const { LegalBody } = await import("../src/app/_components/LegalBody");
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  const { createElement } = await import("react");
+
+  console.log("\n§13 privacy and terms are the organisation's own text");
+  check("nothing stored → nulls", resolveOrgLegal({}), { privacy: null, terms: null });
+  check("a policy over the size cap is dropped, not thrown", resolveOrgLegal({ legal: { privacy: "x".repeat(20001) } }).privacy, null);
+  check("a stored policy round-trips", resolveOrgLegal({ legal: { privacy: "# P\n\nBody", terms: "T" } }), { privacy: "# P\n\nBody", terms: "T" });
+
+  const blocks = renderLegalBlocks("# Title\n\nFirst para\nstill first\n\n- a\n- b\n\n## Sub\n\n<script>alert(1)</script>");
+  check(
+    "the renderer turns headings, paragraphs and lists into blocks",
+    blocks,
+    [
+      { kind: "heading", level: 1, text: "Title" },
+      { kind: "paragraph", text: "First para still first" },
+      { kind: "list", items: ["a", "b"] },
+      { kind: "heading", level: 2, text: "Sub" },
+      { kind: "paragraph", text: "<script>alert(1)</script>" },
+    ],
+  );
+  check("empty text → no blocks", renderLegalBlocks("   \n\n"), []);
+  const html = renderToStaticMarkup(createElement(LegalBody, { blocks }));
+  check("a typed script tag is rendered as text, never as markup", html.includes("&lt;script&gt;") && !html.includes("<script>"), true);
+  check("…and the structure is real markup", /<h1[^>]*>Title<\/h1>/.test(html) && /<li[^>]*>a<\/li>/.test(html), true);
+
+  console.log("\n§13 the routes, the footer and the settings form exist");
+  check("/privacy renders the organisation's policy", /getActiveLegal\(\)|LegalPage/.test(src("src/app/privacy/page.tsx")), true);
+  check("/terms renders the organisation's terms", /getActiveLegal\(\)|LegalPage/.test(src("src/app/terms/page.tsx")), true);
+  const footer = src("src/app/_components/SiteFooter.tsx");
+  check("the footer links to both, only when the organisation has published them", /legal\.privacy &&/.test(footer) && /legal\.terms &&/.test(footer), true);
+  check("the settings page saves the legal text through its own action", /updateOrgLegal/.test(src("src/app/admin/settings/actions.ts")) && /legalSchema/.test(src("src/app/admin/settings/actions.ts")), true);
+}
+
 async function cleanup(): Promise<void> {
   // Every key this script creates is removed here, most-dependent first, so a
   // run that died halfway leaves nothing behind for the next manual test to
@@ -788,6 +831,7 @@ async function main(): Promise<void> {
   await section10(fixtures);
   await section11();
   await section12();
+  await section13();
   await cleanup();
 }
 

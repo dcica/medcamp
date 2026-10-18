@@ -91,3 +91,14 @@ export function resolveOrgSite(settings: unknown): OrgSite {
 export function senderFor(profile: { senderEmail: string | null }, fallback: string): string {
   return profile.senderEmail ?? fallback;
 }
+
+/** The organisation's own privacy policy and terms (plain text; see src/lib/legalText.ts). */
+export const legalSchema = z.object({
+  privacy: z.string().trim().min(1).max(20_000),
+  terms: z.string().trim().min(1).max(20_000),
+});
+export type OrgLegal = Nullable<z.infer<typeof legalSchema>>;
+
+export function resolveOrgLegal(settings: unknown): OrgLegal {
+  return resolveEach(legalSchema.shape, blob(settings, "legal"));
+}
