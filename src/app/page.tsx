@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { offeringKindsByEvent } from "@/server/performance";
 import { saleSummaryByEvent } from "@/server/eventSales";
-import { getActiveOrg } from "@/lib/tenant";
+import { getActiveOrg, getActiveOrigin } from "@/lib/tenant";
 import { organizationLd, primaryLocality, resolveTenantSeo } from "@/lib/seo";
 import { formatVenueMonthDay } from "@/lib/eventTime";
 import { JsonLd } from "@/app/_components/JsonLd";
@@ -140,6 +140,7 @@ export default async function Home() {
           host for the identity block rather than the layout. */}
       <JsonLd
         data={organizationLd({
+          origin: await getActiveOrigin(),
           orgName,
           seo: resolveTenantSeo(org?.settings),
           locality: local,

@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { stripe } from "@/lib/stripe";
 import { env } from "@/lib/env";
+import { orgBaseUrl } from "@/lib/orgUrl";
 import {
   buildCheckoutReturn,
   type CheckoutRoutes,
@@ -81,7 +82,7 @@ export async function createCheckoutForOrder(
 ): Promise<CheckoutHandoff> {
   const order = await db.order.findUniqueOrThrow({
     where: { id: orderId },
-    include: { lineItems: true, event: true },
+    include: { lineItems: true, event: true, org: { include: { domains: true } } },
   });
 
   // Quantity-aware: a qty-5 merch line costs 5 × the unit price. Must match the
@@ -135,13 +136,13 @@ export async function resumeCheckoutForOrder(
 
   const order = await db.order.findUnique({
     where: { id: orderId },
-    include: { lineItems: true, event: true },
+    include: { lineItems: true, event: true, org: { include: { domains: true } } },
   });
   // A valid MAC for an id that no longer exists is still nothing this caller
   // may learn about, so it gets the same answer as a bad MAC.
   if (!order) return { ok: false, reason: "not-authorised" };
 
-  const { successUrl } = buildCheckoutReturn(order, env.NEXT_PUBLIC_APP_URL, routes);
+  const { successUrl } = buildCheckoutReturn(order, orgBaseUrl(order.org), routes);
 
   // Confirmed while they were away. The sequence is ordinary: back out of
   // Checkout, pay in the tab that is still open, come back, tap "finish
@@ -346,6 +347,8 @@ async function openCheckoutSession(
     eventId: string;
     registrantEmail: string;
     lineItems: { description: string; amountCents: number; quantity: number }[];
+    /** The organisation the return URLs are built for (orgBaseUrl). */
+    org: { slug: string; domains: { hostname: string; isPrimary: boolean }[] };
   },
   totalCents: number,
   routes?: CheckoutRoutes,
@@ -356,7 +359,7 @@ async function openCheckoutSession(
 
   const { successUrl, cancelUrl, expiresAt } = buildCheckoutReturn(
     order,
-    env.NEXT_PUBLIC_APP_URL,
+    orgBaseUrl(order.org),
     routes,
   );
 
@@ -868,14 +871,18 @@ export async function confirmOrderPaid(
           lineItems: { include: { serviceType: true } },
           // Decides whether this email is a ticket or an entry receipt.
           performanceEntry: true,
+          // Every link in the email is built from the organisation's own host.
+          // This block runs from the webhook, where no request is in scope.
+          org: { include: { domains: true } },
         },
       });
+      const base = orgBaseUrl(order.org);
       await sendConfirmationEmail({
         to: order.registrantEmail,
         registrantName: order.registrantName,
         eventName: order.event.name,
-        confirmUrl: `${env.NEXT_PUBLIC_APP_URL}/confirm/${order.id}`,
-        walletBaseUrl: env.NEXT_PUBLIC_APP_URL,
+        confirmUrl: `${base}/confirm/${order.id}`,
+        walletBaseUrl: base,
         campIds: result.campIds,
         // A FEE-kind entry admits nobody, so the wording must not call the
         // code a ticket or promise it admits anyone. The entry URL is keyed on
@@ -885,7 +892,7 @@ export async function confirmOrderPaid(
               groupName: order.performanceEntry.groupName,
               songTitle: order.performanceEntry.songTitle,
               songNeeded: order.performanceEntry.songObjectPath === null,
-              entryUrl: `${env.NEXT_PUBLIC_APP_URL}/perform/${result.campIds[0] ?? ""}`,
+              entryUrl: `${base}/perform/${result.campIds[0] ?? ""}`,
             }
           : null,
         lineItems: order.lineItems.map((li) => ({

@@ -6,7 +6,7 @@ import type {
   EventStatus,
 } from "@prisma/client";
 import { db } from "@/lib/db";
-import { env } from "@/lib/env";
+import { orgBaseUrl } from "@/lib/orgUrl";
 import { log } from "@/lib/logger";
 import { getActiveOrg } from "@/lib/tenant";
 import { newVolCode, normalizeVolCode } from "@/lib/volunteerId";
@@ -43,11 +43,13 @@ const OCCUPYING: SignupStatus[] = [
   "NO_SHOW",
 ];
 
-function confirmUrl(signupId: string): string {
-  return `${env.NEXT_PUBLIC_APP_URL}/volunteer/confirm/${signupId}`;
+// `base` is the organisation's own origin (orgBaseUrl) — every caller has
+// the org in scope, and these mails must carry the tenant's host, not a global.
+function confirmUrl(base: string, signupId: string): string {
+  return `${base}/volunteer/confirm/${signupId}`;
 }
-function certUrl(signupId: string): string {
-  return `${env.NEXT_PUBLIC_APP_URL}/volunteer/cert/${signupId}`;
+function certUrl(base: string, signupId: string): string {
+  return `${base}/volunteer/cert/${signupId}`;
 }
 
 /** Hours between sign-in and sign-out, to 0.1h, never negative. */
@@ -579,7 +581,7 @@ export async function createVolunteerSignup(
       eventName: event.name,
       roleName: role.name,
       shift: role.shift,
-      confirmUrl: confirmUrl(signup.id),
+      confirmUrl: confirmUrl(orgBaseUrl(org), signup.id),
     });
   } catch (err) {
     log.error("volunteer signup email failed", { err });
@@ -951,7 +953,7 @@ export async function sendReminders(eventId?: string): Promise<number> {
         roleName: s.role.name,
         shift: s.shift ?? s.role.shift,
         instructions: s.role.instructions,
-        confirmUrl: confirmUrl(s.id),
+        confirmUrl: confirmUrl(orgBaseUrl(active.org), s.id),
       });
     } catch (err) {
       log.error("volunteer reminder email failed", { err });
@@ -984,7 +986,7 @@ export async function issueCertificates(eventId?: string): Promise<number> {
         volunteerName: s.volunteer.name,
         eventName: event.name,
         hoursServed: s.hoursServed,
-        certUrl: certUrl(s.id),
+        certUrl: certUrl(orgBaseUrl(active.org), s.id),
       });
     } catch (err) {
       log.error("volunteer thank-you email failed", { err });

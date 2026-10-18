@@ -418,7 +418,11 @@ async function main(): Promise<void> {
   // pattern with an asset exclusion, and a literal check would pass or fail on
   // spelling, not on whether the middleware runs.
   const { config: mwConfig } = await import("../src/middleware");
-  const { pathToRegexp } = await import("next/dist/compiled/path-to-regexp");
+  // Next's vendored copy ships no declaration file; the shape is the upstream one.
+  const { pathToRegexp } = (await import(
+    // @ts-expect-error — untyped compiled module
+    "next/dist/compiled/path-to-regexp"
+  )) as { pathToRegexp: (path: string) => RegExp };
   const matchers = (Array.isArray(mwConfig.matcher) ? mwConfig.matcher : [mwConfig.matcher]) as string[];
   const runsOn = (p: string) => matchers.some((m) => pathToRegexp(m).test(p));
   check("middleware protects /scan", mwSrc.includes(String.raw`/^\/scan(\/|$)/`));

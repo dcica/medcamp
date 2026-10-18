@@ -18,6 +18,8 @@
  * §3 creates two scratch organisations and deletes them on the way out.
  */
 import * as dotenv from "dotenv";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { PrismaClient } from "@prisma/client";
 
 // The machine has a global DATABASE_URL pointing at an unrelated project; dotenv
@@ -216,6 +218,15 @@ async function section3(): Promise<void> {
     },
   });
   const b = await db.organization.create({ data: { slug: SLUG_B, name: "Verify Tenant B" } });
+  // One OPEN event each, relative to now (a literal date is a time bomb).
+  const startsAt = new Date(Date.now() + 30 * 24 * 3600_000);
+  const endsAt = new Date(startsAt.getTime() + 4 * 3600_000);
+  const eventA = await db.event.create({
+    data: { orgId: a.id, type: "GENERAL", status: "OPEN", code: "VT-A", name: "Verify Tenant A Night", startsAt, endsAt, collectsAttendeeDetails: false },
+  });
+  const eventB = await db.event.create({
+    data: { orgId: b.id, type: "GENERAL", status: "OPEN", code: "VT-B", name: "Verify Tenant B Night", startsAt, endsAt, collectsAttendeeDetails: false },
+  });
 
   const byHost = await tenantLookup.byHost(HOST_A);
   check("byHost finds the organisation behind a hostname", byHost?.id, a.id);
@@ -233,7 +244,63 @@ async function section3(): Promise<void> {
   const active = await getActiveOrg();
   check("getActiveOrg() in script scope carries a domains array", Array.isArray(active?.domains), true);
 
+  console.log("\n§5 the sitemap is per organisation and per origin");
+  const { buildSitemap } = await import("../src/app/sitemap");
+  const { eventSlug } = await import("../src/lib/seo");
+  const now = new Date();
+  const originA = `https://${HOST_A}`;
+  const smA = await buildSitemap({ id: a.id }, originA, now);
+  check("A's sitemap lists A's event at A's origin", smA.some((e) => e.url === `${originA}/e/${eventSlug(eventA)}`), true);
+  check("A's sitemap does not list B's event", smA.some((e) => e.url.includes(eventSlug(eventB))), false);
+  check("every url in A's sitemap starts with A's origin", smA.length > 0 && smA.every((e) => e.url.startsWith(originA)), true);
+  const originB = `https://platform.test/o/${SLUG_B}`;
+  const smB = await buildSitemap({ id: b.id }, originB, now);
+  check("B (no domain) is listed under its /o/<slug> origin", smB.some((e) => e.url === `${originB}/e/${eventSlug(eventB)}`), true);
+  check("no organisation → an empty sitemap", await buildSitemap(null, "https://platform.test", now), []);
+
   await cleanup();
+}
+
+function walk(dir: string, out: string[] = []): string[] {
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) walk(p, out);
+    else if (/\.(ts|tsx)$/.test(name)) out.push(p);
+  }
+  return out;
+}
+
+async function section6(): Promise<void> {
+  const { absoluteUrl } = await import("../src/lib/seo");
+
+  console.log("\n§6 every absolute URL comes from an origin the caller resolved");
+  check("absoluteUrl joins an origin and a path", absoluteUrl("https://x.org", "/e/a"), "https://x.org/e/a");
+  check("absoluteUrl tolerates a trailing slash on the origin", absoluteUrl("https://x.org/", "/e/a"), "https://x.org/e/a");
+  check("absoluteUrl tolerates a missing leading slash", absoluteUrl("https://x.org", "e/a"), "https://x.org/e/a");
+
+  const src = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
+  const readers = walk(join(process.cwd(), "src"))
+    .filter((p) => /NEXT_PUBLIC_APP_URL/.test(readFileSync(p, "utf8")))
+    .map((p) => p.replace(process.cwd(), "").replace(/\\/g, "/").replace(/^\//, ""))
+    .sort();
+  check(
+    "NEXT_PUBLIC_APP_URL is read only by env.ts and orgUrl.ts (it is a fallback, not an origin)",
+    readers,
+    ["src/lib/env.ts", "src/lib/orgUrl.ts"],
+  );
+  const payments = src("src/server/payments.ts");
+  check("the webhook-side email block builds links from the order's organisation", payments.includes("orgBaseUrl(order.org"), true);
+  check("checkout return URLs are built from the order's organisation", /buildCheckoutReturn\(\s*order,\s*orgBaseUrl\(order\.org\)/.test(payments), true);
+  check("seo.ts no longer owns a siteUrl()", /export function siteUrl\(/.test(src("src/lib/seo.ts")), false);
+  check("the root layout's metadataBase is the resolved origin", /metadataBase: new URL\(await getActiveOrigin\(\)\)/.test(src("src/app/layout.tsx")), true);
+  const volunteers = src("src/server/volunteers.ts");
+  check(
+    "every volunteer email link is built from an organisation (orgBaseUrl), never a global",
+    [...volunteers.matchAll(/\b(confirmUrl|certUrl)\((?!base: )([^)]*)/g)].every((m) => m[2].startsWith("orgBaseUrl(")) &&
+      /\bconfirmUrl\(orgBaseUrl\(/.test(volunteers) &&
+      /\bcertUrl\(orgBaseUrl\(/.test(volunteers),
+    true,
+  );
 }
 
 async function section4(): Promise<void> {
@@ -314,7 +381,9 @@ async function section4(): Promise<void> {
 }
 
 async function cleanup(): Promise<void> {
-  // OrgDomain rows cascade from the organisation.
+  // Events first (their children cascade from them); OrgDomain rows cascade
+  // from the organisation.
+  await db.event.deleteMany({ where: { org: { slug: { in: [SLUG_A, SLUG_B] } } } });
   await db.organization.deleteMany({ where: { slug: { in: [SLUG_A, SLUG_B] } } });
 }
 
@@ -323,6 +392,7 @@ async function main(): Promise<void> {
   await section2();
   await section3();
   await section4();
+  await section6();
 }
 
 main()

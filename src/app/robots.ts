@@ -1,16 +1,18 @@
 import type { MetadataRoute } from "next";
-import { absoluteUrl, siteUrl, searchIndexingEnabled } from "@/lib/seo";
+import { db } from "@/lib/db";
+import { getActiveOrg, getActiveOrigin } from "@/lib/tenant";
+import { absoluteUrl, searchIndexingEnabled } from "@/lib/seo";
+import { platformOrigin } from "@/lib/orgUrl";
 
 /**
- * `/robots.txt`.
+ * `/robots.txt`, per host.
  *
  * `force-dynamic` for the same reason every other route declares it, plus one
- * specific to this file: the sitemap URL below is built from
- * `NEXT_PUBLIC_APP_URL`, and a prerendered robots.txt would bake in whatever
- * that variable happened to be at BUILD time. Vercel builds and Vercel runtime
- * do not always agree on it, and a robots.txt advertising a sitemap on the
- * wrong host is worse than none: Search Console reports it as unreachable and
- * stops asking.
+ * specific to this file: the sitemap URL below is built from the organisation
+ * the HOST resolves to, and a prerendered robots.txt would bake in whatever
+ * one host happened to resolve at BUILD time. A robots.txt advertising a
+ * sitemap on the wrong host is worse than none: Search Console reports it as
+ * unreachable and stops asking.
  */
 export const dynamic = "force-dynamic";
 
@@ -22,6 +24,10 @@ export const dynamic = "force-dynamic";
  * kept by robots.txt — which could not keep one anyway, since the file is
  * public and is read by exactly the people you would least like reading a list
  * of your admin paths.
+ *
+ * Each entry is also emitted under `/o/*`, because every path exists a second
+ * time under a tenant's `/o/<slug>` prefix on the platform host, and Google
+ * honours the `*` wildcard in a Disallow.
  */
 const DISALLOW = [
   "/api/",
@@ -66,7 +72,7 @@ const DISALLOW = [
  * `metadata` export. Do not "tighten" this by adding them here.
  */
 
-export default function robots(): MetadataRoute.Robots {
+export default async function robots(): Promise<MetadataRoute.Robots> {
   // A deployment that must not be indexed at all refuses everything and
   // advertises no sitemap. Belt and braces with the sitewide `noindex` the root
   // layout emits under the same flag: robots.txt stops the crawl, the meta tag
@@ -75,6 +81,24 @@ export default function robots(): MetadataRoute.Robots {
   if (!searchIndexingEnabled()) {
     return { rules: [{ userAgent: "*", disallow: "/" }] };
   }
+
+  const [org, origin] = await Promise.all([getActiveOrg(), getActiveOrigin()]);
+
+  // A tenant's host advertises that tenant's sitemap. The platform host has
+  // no sitemap of its own; it advertises one per organisation that has no
+  // domain yet, each under that organisation's /o/<slug> origin.
+  let sitemap: string | string[];
+  if (org) {
+    sitemap = absoluteUrl(origin, "/sitemap.xml");
+  } else {
+    const domainless = await db.organization.findMany({
+      where: { domains: { none: {} } },
+      select: { slug: true },
+      orderBy: { slug: "asc" },
+    });
+    sitemap = domainless.map((o) => `${platformOrigin()}/o/${o.slug}/sitemap.xml`);
+  }
+
   return {
     rules: [
       {
@@ -88,17 +112,17 @@ export default function robots(): MetadataRoute.Robots {
         // protecting is already behind the Disallow list above.
         userAgent: "*",
         allow: "/",
-        disallow: DISALLOW,
+        disallow: [...DISALLOW, ...DISALLOW.map((p) => `/o/*${p}`)],
       },
     ],
-    sitemap: absoluteUrl("/sitemap.xml"),
+    sitemap,
     // `host` is a Yandex directive. GOOGLE IGNORES IT — do not rely on it to
     // stop the Vercel deployment URLs (`medcamp-test-<hash>.vercel.app`) being
     // indexed as a second copy of the site. The thing that actually prevents
-    // that is the per-page `alternates.canonical`, which resolves against
-    // NEXT_PUBLIC_APP_URL rather than the request's Host header — see the
-    // comment on `siteUrl`. This line is kept because it is true and free, not
-    // because it is load-bearing.
-    host: siteUrl(),
+    // that is the per-page `alternates.canonical`, which resolves against the
+    // organisation's primary domain rather than the request's Host header —
+    // see `absoluteUrl` in src/lib/seo.ts. Kept because it is true and free,
+    // not because it is load-bearing.
+    host: origin,
   };
 }

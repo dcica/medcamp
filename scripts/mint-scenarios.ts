@@ -99,6 +99,7 @@ const SCENARIOS: {
 
 async function main(): Promise<void> {
   const { env } = await import("../src/lib/env");
+  const { orgBaseUrl } = await import("../src/lib/orgUrl");
   const { db } = await import("../src/lib/db");
   const { createRegistration } = await import("../src/server/registration");
   const { confirmOrderPaid } = await import("../src/server/payments");
@@ -112,7 +113,7 @@ async function main(): Promise<void> {
 
   const event = await db.event.findFirstOrThrow({
     where: { code: EVENT_CODE },
-    include: { caps: { include: { serviceType: true } } },
+    include: { caps: { include: { serviceType: true } }, org: { include: { domains: true } } },
   });
   const price = new Map(event.caps.map((c) => [c.serviceType.key, c.priceCents]));
   const cap = new Map(
@@ -235,7 +236,7 @@ async function main(): Promise<void> {
     console.log(`\n  ${p.tag}${p.note ? `  (${p.note})` : ""}`);
     console.log(`    expect: ${p.expect}`);
     if (p.codes.length === 0) console.log(`    (no code — this one is search-only)`);
-    for (const c of p.codes) console.log(`    ${c}   ${env.NEXT_PUBLIC_APP_URL}/t/${c}`);
+    for (const c of p.codes) console.log(`    ${c}   ${orgBaseUrl(event.org)}/t/${c}`);
   }
   console.log("");
   await db.$disconnect();

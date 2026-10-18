@@ -232,6 +232,7 @@ async function main(): Promise<void> {
   );
 
   const ld = seo.eventLd({
+      organizerUrl: "https://x.test",
     name: "Dandiya Night",
     url: "https://events.example.org/e/dandiya-night-dn-2026",
     description: "An evening of dandiya.",
@@ -270,6 +271,7 @@ async function main(): Promise<void> {
     "a sold-out offering says so",
     (
       seo.eventLd({
+      organizerUrl: "https://x.test",
         name: "x", url: "u", description: null,
         startDate: "2026-10-10T19:00:00-05:00", endDate: "2026-10-11T00:00:00-05:00",
         location: "Hall, Coppell, TX", imageUrl: null, status: "OPEN", organizerName: "o",
@@ -281,6 +283,7 @@ async function main(): Promise<void> {
   // An unparseable venue must still produce the REQUIRED address property,
   // as plain text — weaker, but present and true.
   const vague = seo.eventLd({
+      organizerUrl: "https://x.test",
     name: "x", url: "u", description: null,
     startDate: "2026-10-10T19:00:00-05:00", endDate: "2026-10-11T00:00:00-05:00",
     location: "the usual place", imageUrl: null, status: "OPEN", organizerName: "o", offer: null,
@@ -297,6 +300,7 @@ async function main(): Promise<void> {
     "a CLOSED event is still EventScheduled, never EventCancelled",
     (
       seo.eventLd({
+      organizerUrl: "https://x.test",
         name: "x", url: "u", description: null,
         startDate: "2026-10-10T19:00:00-05:00", endDate: "2026-10-11T00:00:00-05:00",
         location: null, imageUrl: null, status: "CLOSED", organizerName: "o", offer: null,
@@ -306,6 +310,7 @@ async function main(): Promise<void> {
   );
 
   const orgLd = seo.organizationLd({
+      origin: "https://x.test",
     orgName: "DCICA",
     seo: {},
     locality: { locality: "Flower Mound", region: "TX" },
@@ -321,7 +326,7 @@ async function main(): Promise<void> {
   check(
     "an org with no locatable events emits no address",
     (
-      seo.organizationLd({ orgName: "X", seo: {}, locality: null, logoUrl: null }) as Record<
+      seo.organizationLd({ origin: "https://x.test", orgName: "X", seo: {}, locality: null, logoUrl: null }) as Record<
         string,
         unknown
       >
@@ -332,6 +337,7 @@ async function main(): Promise<void> {
     "tenant settings override the derived locality",
     (
       seo.organizationLd({
+      origin: "https://x.test",
         orgName: "X",
         seo: seo.resolveTenantSeo({ seo: { locality: "Edison", region: "NJ" } }),
         locality: { locality: "Flower Mound", region: "TX" },
@@ -343,7 +349,7 @@ async function main(): Promise<void> {
   // A tax-status claim is the org's to make, never the platform's on its behalf.
   check(
     "no nonprofit tax status is claimed unless the tenant declared one",
-    (seo.organizationLd({ orgName: "X", seo: {}, locality: null, logoUrl: null }) as Record<string, unknown>)
+    (seo.organizationLd({ origin: "https://x.test", orgName: "X", seo: {}, locality: null, logoUrl: null }) as Record<string, unknown>)
       .nonprofitStatus === undefined,
     "a 501(c)(3) claim was published for an org that never made it",
   );
@@ -351,6 +357,7 @@ async function main(): Promise<void> {
     "…and it is emitted once declared",
     (
       seo.organizationLd({
+      origin: "https://x.test",
         orgName: "X",
         seo: seo.resolveTenantSeo({ seo: { nonprofitStatus: "Nonprofit501c3" } }),
         locality: null,
@@ -408,7 +415,7 @@ async function main(): Promise<void> {
   );
   check(
     "robots.txt advertises the sitemap",
-    /sitemap: absoluteUrl\("\/sitemap\.xml"\)/.test(robotsSrc),
+    /absoluteUrl\(origin, "\/sitemap\.xml"\)/.test(robotsSrc) && /\/o\/\$\{o\.slug\}\/sitemap\.xml/.test(robotsSrc),
     "Search Console has no sitemap to fetch",
   );
 
@@ -426,7 +433,7 @@ async function main(): Promise<void> {
   const layoutSrc = code(readFileSync("src/app/layout.tsx", "utf8"));
   check(
     "the root layout sets metadataBase",
-    /metadataBase: new URL\(siteUrl\(\)\)/.test(layoutSrc),
+    /metadataBase: new URL\(await getActiveOrigin\(\)\)/.test(layoutSrc),
     "without it every canonical and OG url is emitted as a useless relative path",
   );
   check(

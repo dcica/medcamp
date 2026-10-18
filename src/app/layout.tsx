@@ -5,9 +5,9 @@ import "./globals.css";
 import { SiteHeader } from "@/app/_components/SiteHeader";
 import { SiteFooter } from "@/app/_components/SiteFooter";
 import { Analytics } from "@/app/_components/Analytics";
-import { getActiveBranding } from "@/lib/tenant";
+import { getActiveBranding, getActiveOrigin } from "@/lib/tenant";
 import { brandingStyleVars } from "@/lib/branding";
-import { siteUrl, searchIndexingEnabled } from "@/lib/seo";
+import { searchIndexingEnabled } from "@/lib/seo";
 import { env } from "@/lib/env";
 
 // dcica.org's typeface. next/font self-hosts it at build time — no runtime
@@ -46,7 +46,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const branding = await getActiveBranding();
   const name = branding.orgName;
   return {
-    metadataBase: new URL(siteUrl()),
+    metadataBase: new URL(await getActiveOrigin()),
     title: {
       default: `${name} — events, tickets and volunteering`,
       // Every page that sets a plain string title gets the org appended, so a

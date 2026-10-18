@@ -309,6 +309,7 @@ async function watchingEmailLog<T>(
 
 async function main() {
   const { env } = await import("../src/lib/env");
+  const { orgBaseUrl } = await import("../src/lib/orgUrl");
   const { getSesAccountStatus, sendTestEmail, sendConfirmationEmail } =
     await import("../src/lib/email");
   const { log } = await import("../src/lib/logger");
@@ -393,7 +394,7 @@ async function main() {
   // ── Resolve the event and its menu ────────────────────────────────────────
   const event = await db.event.findFirst({
     where: { code: EVENT_CODE },
-    include: { caps: { include: { serviceType: true } }, org: true },
+    include: { caps: { include: { serviceType: true } }, org: { include: { domains: true } } },
   });
   if (!event) {
     fail(`event ${EVENT_CODE} not found in this database`);
@@ -599,15 +600,15 @@ async function main() {
           to: order.registrantEmail,
           registrantName: order.registrantName,
           eventName: order.event.name,
-          confirmUrl: `${env.NEXT_PUBLIC_APP_URL}/confirm/${order.id}`,
-          walletBaseUrl: env.NEXT_PUBLIC_APP_URL,
+          confirmUrl: `${orgBaseUrl(event.org)}/confirm/${order.id}`,
+          walletBaseUrl: orgBaseUrl(event.org),
           campIds,
           performanceEntry: order.performanceEntry
             ? {
                 groupName: order.performanceEntry.groupName,
                 songTitle: order.performanceEntry.songTitle,
                 songNeeded: order.performanceEntry.songObjectPath === null,
-                entryUrl: `${env.NEXT_PUBLIC_APP_URL}/perform/${campIds[0] ?? ""}`,
+                entryUrl: `${orgBaseUrl(event.org)}/perform/${campIds[0] ?? ""}`,
               }
             : null,
           lineItems: order.lineItems.map((li) => ({
