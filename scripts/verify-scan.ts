@@ -61,6 +61,7 @@ async function main(): Promise<void> {
     "PARTY_ADMITTED", "PARTY_PARTIAL",
     "UNPAID", "PAYMENT_UNCONFIRMED", "NOT_A_TICKET", "ORDER_VOID", "WRONG_EVENT",
     "WAIVER_UNSIGNED", "NO_MATCH", "CAMERA_ERROR", "SERVER_ERROR",
+    "PICKUP", "ALREADY_COLLECTED",
   ];
 
   const SIGNALS: v.ScanSignal[] = [
@@ -73,6 +74,8 @@ async function main(): Promise<void> {
     { kind: "unpaid", owed: "$25.00" },
     { kind: "paymentUnconfirmed" },
     { kind: "notATicket" },
+    { kind: "pickup", pending: 2, collected: 0, items: "Unlimited Rides ×2 · Laser Tag" },
+    { kind: "pickup", pending: 0, collected: 2, at: "4:12 PM" },
     { kind: "voidOrder", status: "REFUNDED" },
     { kind: "wrongEvent", eventName: "Garba 2026" },
     { kind: "waiverUnsigned" },
@@ -153,6 +156,32 @@ async function main(): Promise<void> {
   eq("a party of one collapses to the ordinary single admit",
     party(1, 0).outcome, "ADMITTED");
   check("singular wristband for one person", party(3, 0).instruction === "Give 3 wristbands");
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // A PAID RECEIPT WITH GOODS ON IT IS A PICKUP, NOT A REFUSAL. Diwali's kids
+  // carnival sells wristbands and tokens as MERCH on a free-entry festival, so
+  // every carnival order is merch-only: one receipt code and nothing to admit.
+  // The old mapping settled that as NOT_A_TICKET -- red, "Sell them admission"
+  // -- at a booth whose only job is to hand the goods over. The list of what to
+  // hand over IS the detail, because the volunteer reads it rather than a
+  // colour; that is also why it is a hold and not a go.
+  const pickup = v.verdictFor({
+    kind: "pickup", pending: 2, collected: 0, items: "Unlimited Rides ×2 · Laser Tag",
+  });
+  const collected = v.verdictFor({ kind: "pickup", pending: 0, collected: 2, at: "4:12 PM" });
+  eq("A PAID RECEIPT WITH GOODS TO HAND OVER IS A HOLD, NOT A STOP", pickup.tone, "hold");
+  // Nor green: the scan itself stamped nothing. "Handed over" is green AFTER the tap.
+  eq("...nor a GO -- the scan changed nothing yet", pickup.tone !== "go", true);
+  eq("...and it is its own outcome, not NOT_A_TICKET", pickup.outcome, "PICKUP");
+  check("...and it lists what to hand over",
+    pickup.detail?.includes("Unlimited Rides ×2") === true, String(pickup.detail));
+  check("...and never says wristband -- that word means floor access here",
+    !/wristband/i.test(pickup.instruction ?? ""), String(pickup.instruction));
+  eq("an all-collected re-scan reads ALREADY_COLLECTED", collected.outcome, "ALREADY_COLLECTED");
+  eq("...as a hold, like any other re-scan", collected.tone, "hold");
+  check("...and says when", collected.detail?.includes("4:12 PM") === true, String(collected.detail));
+  check("...and tells the volunteer to hand over nothing more",
+    /nothing more/i.test(collected.instruction ?? ""), String(collected.instruction));
 
   // ───────────────────────────────────────────────────────────────────────────
   // A REFUNDED order is not paid AND owes nothing -- every line is REFUNDED,

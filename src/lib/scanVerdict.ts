@@ -24,7 +24,13 @@
 // ── The exact words staff read. Moved here unchanged; gate.ts and checkin.ts
 // import and throw them, and verify-gate's rejectsWith rows still match. ──
 
-/** A real, paid code that admits nobody: a competition fee or a merch receipt. */
+/**
+ * A real, paid code that admits nobody, presented as if it were a ticket: a
+ * competition fee, or a merch receipt with nothing left to collect. A merch
+ * receipt that still HAS goods on it is not this -- it is a `pickup` signal
+ * below, because at a carnival booth "sell them admission" is the wrong
+ * sentence for someone who paid and is owed a wristband.
+ */
 export const NOT_A_TICKET =
   "Not a ticket — this buys no floor access. Sell them admission.";
 
@@ -73,6 +79,10 @@ export type ScanOutcome =
   | "UNPAID"
   | "PAYMENT_UNCONFIRMED"
   | "NOT_A_TICKET"
+  /** A paid receipt with goods still to hand over: admits nobody, owes the guest something. */
+  | "PICKUP"
+  /** The same receipt after every line on it has been handed over. */
+  | "ALREADY_COLLECTED"
   | "ORDER_VOID"
   | "WRONG_EVENT"
   | "WAIVER_UNSIGNED"
@@ -118,6 +128,14 @@ export type ScanSignal =
   | { kind: "unpaid"; owed: string }
   | { kind: "paymentUnconfirmed" }
   | { kind: "notATicket" }
+  /**
+   * A PAID order that admits nobody but carries MERCH to hand over -- a
+   * carnival wristband, a pair of dandiya sticks. `pending` and `collected`
+   * are line counts; `items` is the caller-rendered list of what is still
+   * owed ("Unlimited Rides ×2 · Laser Tag"); `at` is the latest hand-over
+   * time, already formatted. Nothing here is a ticket, and nothing is refused.
+   */
+  | { kind: "pickup"; pending: number; collected: number; items?: string | null; at?: string | null }
   /** REFUNDED or CANCELLED: money returned or sale called off. */
   | { kind: "voidOrder"; status: "REFUNDED" | "CANCELLED" }
   | { kind: "wrongEvent"; eventName: string }
@@ -254,6 +272,38 @@ export function verdictFor(signal: ScanSignal): ScanVerdict {
         detail: NOT_A_TICKET,
         instruction: "Sell them admission",
       };
+
+    case "pickup": {
+      // A paid receipt with goods on it. The scan itself stamps nothing, so
+      // this cannot be `go` (§1: green means "my scan just changed
+      // something"); nothing is wrong, so it cannot be `stop`. It is a hold
+      // in exactly the party-partial sense: the volunteer reads a LIST and
+      // acts on that, and "Handed over" turns green only after the tap.
+      // Never "wristband" -- at a door that word means floor access, and
+      // this order bought none.
+      if (signal.pending > 0) {
+        return {
+          outcome: "PICKUP",
+          tone: "hold",
+          glyph: "!",
+          headline: "Hand over",
+          detail:
+            signal.items ??
+            `${signal.pending} item${signal.pending === 1 ? "" : "s"} to collect`,
+          instruction: "Give what is listed, then tap Hand over selected",
+        };
+      }
+      // Every line already stamped. Same news as a re-scan at a door, and
+      // the same conversation: hand over nothing, ask what happened.
+      return {
+        outcome: "ALREADY_COLLECTED",
+        tone: "hold",
+        glyph: "!",
+        headline: "Already collected",
+        detail: signal.at ? `Collected ${signal.at}` : null,
+        instruction: "Nothing more to hand over — ask before giving anything",
+      };
+    }
 
     case "voidOrder":
       return {
