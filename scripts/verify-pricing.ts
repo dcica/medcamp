@@ -49,7 +49,7 @@ async function checkoutTotal(orderId: string): Promise<number> {
 async function main(): Promise<void> {
   const { createRegistration, isRegistrationOpen } = await import("../src/server/registration");
   const { confirmOrderPaid } = await import("../src/server/payments");
-  const { resolvePrice } = await import("../src/lib/pricing");
+  const { resolvePrice, unitCentsFor, validateBulkRule } = await import("../src/lib/pricing");
 
   const org = await db.organization.findFirstOrThrow();
   await cleanup(org.id);
@@ -372,6 +372,65 @@ async function main(): Promise<void> {
   const halfConfiguredOnline = resolvePrice(halfConfigured, "online", beforeDeadline);
   check("price set but no deadline: resolves as if there were no early bird", halfConfiguredOnline.amountCents, 1500);
   check("price set but no deadline: phase is online, not early-bird", halfConfiguredOnline.phase, "online");
+
+  // ── 6b. Quantity break: 4+ of the SAME item, each unit cheaper ──
+  // Diwali's kids carnival: "4 or more of the same ticket, 20% off". Per
+  // line, never cart-wide, on both channels, and only when the break
+  // undercuts the phase price -- a cheaper early bird must survive it.
+  console.log("\n6b. Quantity break (resolvePrice with a quantity, pinned time)");
+  const bulkCap = {
+    priceCents: 1000,
+    onsitePriceCents: null,
+    earlyBirdPriceCents: null,
+    earlyBirdUntil: null,
+    bulkMinQty: 4,
+    bulkPriceCents: 800,
+  };
+  const three = resolvePrice(bulkCap, "online", afterDeadline, 3);
+  check("three units: the regular price", three.amountCents, 1000);
+  check("three units: the break is advertised but not applied", three.bulkApplied, false);
+  check("three units: the rule is carried for the display feed", three.bulk, { minQty: 4, unitCents: 800 });
+  const four = resolvePrice(bulkCap, "online", afterDeadline, 4);
+  check("four units: every unit at the break price", four.amountCents, 800);
+  check("four units: bulkApplied is true", four.bulkApplied, true);
+  check("nine units: still the break price (4+, not exactly 4)",
+    resolvePrice(bulkCap, "online", afterDeadline, 9).amountCents, 800);
+  check("the door honours the break too",
+    resolvePrice(bulkCap, "door", afterDeadline, 4).amountCents, 800);
+  check("no quantity given means one unit",
+    resolvePrice(bulkCap, "online", afterDeadline).amountCents, 1000);
+  const halfBulk = { ...bulkCap, bulkMinQty: null };
+  check("a break price with no threshold resolves as if there were no break",
+    resolvePrice(halfBulk, "online", afterDeadline, 4).amountCents, 1000);
+  check("...and carries no rule", resolvePrice(halfBulk, "online", afterDeadline, 4).bulk, null);
+  // The early bird is 700 and the break is 800: the buyer keeps the 700.
+  const earlyAndBulk = {
+    ...bulkCap,
+    earlyBirdPriceCents: 700,
+    earlyBirdUntil: new Date("2026-01-01T00:00:00Z"),
+  };
+  check("a cheaper early bird is never overridden by the break",
+    resolvePrice(earlyAndBulk, "online", beforeDeadline, 4).amountCents, 700);
+  check("...and the break is not advertised against it",
+    resolvePrice(earlyAndBulk, "online", beforeDeadline, 4).bulk, null);
+  check("...but applies once the early bird has ended",
+    resolvePrice(earlyAndBulk, "online", afterDeadline, 4).amountCents, 800);
+  const dearBulk = { ...bulkCap, bulkPriceCents: 1200 };
+  check("a break that is not cheaper is no break",
+    resolvePrice(dearBulk, "online", afterDeadline, 4).amountCents, 1000);
+  check("...and carries no rule either", resolvePrice(dearBulk, "online", afterDeadline, 4).bulk, null);
+  // The one line rule the client mirrors, exported so the two cannot drift.
+  check("unitCentsFor below the threshold", unitCentsFor(1000, { minQty: 4, unitCents: 800 }, 3), 1000);
+  check("unitCentsFor at the threshold", unitCentsFor(1000, { minQty: 4, unitCents: 800 }, 4), 800);
+  check("unitCentsFor with no rule", unitCentsFor(1000, null, 40), 1000);
+  // Admin validation, pure: both-or-neither, a threshold of at least 2, and
+  // a break price below the regular one.
+  check("validateBulkRule: both blank is fine", validateBulkRule(null, null, 1000), null);
+  check("validateBulkRule: a valid rule is fine", validateBulkRule(4, 800, 1000), null);
+  check("validateBulkRule: threshold without price is refused", validateBulkRule(4, null, 1000) !== null, true);
+  check("validateBulkRule: price without threshold is refused", validateBulkRule(null, 800, 1000) !== null, true);
+  check("validateBulkRule: a threshold of 1 is refused", validateBulkRule(1, 800, 1000) !== null, true);
+  check("validateBulkRule: a break at or above the regular price is refused", validateBulkRule(4, 1000, 1000) !== null, true);
 
   // ── 7. Early bird end to end, through createRegistration ──
   // Proves the AUTHORITATIVE server path (not just the resolver in isolation)

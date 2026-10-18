@@ -428,6 +428,14 @@ model ServiceCap {
   /// Deadline for earlyBirdPriceCents. Null = no early bird. A price without a
   /// deadline (or vice versa) resolves as if there were no early bird.
   earlyBirdUntil      DateTime?
+  /// Quantity break: from `bulkMinQty` units of THIS service on ONE order
+  /// line, every unit on the line costs `bulkPriceCents`. Both null = none;
+  /// one null resolves as absent (the early-bird posture). Applies on both
+  /// channels and only when LOWER than the phase price, so a cheaper early
+  /// bird survives it. Resolved by src/lib/pricing.ts; per line, never
+  /// cart-wide. Diwali 2026's kids carnival: "4+ of the same ticket, 20% off".
+  bulkMinQty          Int?
+  bulkPriceCents      Int?
   /// Competition entry rules, enforced server-side at submit. Per-event, like
   /// price and capacity: Rhythms of Navratri allows 3–10 participants and 5–6
   /// minutes; the Diwali showcase allows 3–12. Null = unconstrained.
