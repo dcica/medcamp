@@ -615,6 +615,34 @@ async function main(): Promise<void> {
 
   await volunteerCounselorAndLinkChecks();
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // 15. Named entrants. When the event names each head, the server — not the
+  // form — is what insists on a name per head; the form's inputs are a
+  // courtesy. Off, names are neither required nor kept.
+  console.log("\n15. Named entrants: when the event names each head, every head is named");
+  await db.event.update({ where: { id: event.id }, data: { namesAttendees: true } });
+  await refuses(
+    "names missing entirely",
+    { ...okOrder, quantities: [{ serviceKey: "vv-admission", quantity: 1 }] },
+    "Enter a name for each entrant — VV Admission needs 1.",
+  );
+  await refuses(
+    "too few names for the quantity",
+    { ...okOrder, quantities: [{ serviceKey: "vv-admission", quantity: 2, names: ["Asha"] }] },
+    "Enter a name for each entrant — VV Admission needs 2.",
+  );
+  await refuses(
+    "a blank name",
+    { ...okOrder, quantities: [{ serviceKey: "vv-admission", quantity: 1, names: ["   "] }] },
+    "Every entrant needs a name.",
+  );
+  faultsFields(
+    "a name that is not text is faulted at its own path",
+    { ...okOrder, quantities: [{ serviceKey: "vv-admission", quantity: 1, names: [7] }] },
+    ["quantities.0.names.0"],
+  );
+  await db.event.update({ where: { id: event.id }, data: { namesAttendees: false } });
+
   await cleanup(org.id);
 }
 

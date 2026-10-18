@@ -97,6 +97,10 @@ export default async function EventServicesPage({
             body: "Unlimited means registration never stops selling. A limit stops sales once that many are sold; it can't be set below what's already sold.",
           },
           {
+            label: "Fair market value",
+            body: "For a dinner seat or a table: what the guest receives at a comparable price, not your cost. The confirmation email then states the payment, that value and the deductible remainder (IRS Pub 1771). A $100 seat at a dinner comparable to a $40 meal is $60 deductible even if the meal cost you $30.",
+          },
+          {
             label: "Removing",
             body: "A service that has already sold at this event can't be removed — the money and the ticket already exist.",
           },
@@ -125,6 +129,8 @@ export default async function EventServicesPage({
           maxParticipants: c.maxParticipants,
           minDuration: toDurationInput(c.minDurationSeconds),
           maxDuration: toDurationInput(c.maxDurationSeconds),
+          fairMarketValueDollars:
+            c.fairMarketValueCents === null ? null : c.fairMarketValueCents / 100,
         }))}
         catalogue={catalogue.map((s) => ({
           id: s.id,

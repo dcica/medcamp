@@ -404,6 +404,23 @@ async function main() {
   check("the inline QR images are still there",
     (html.match(/src="cid:/g) ?? []).length === 5);
 
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§9c the quid-pro-quo sentence appears only when a line carried a fair market value");
+  // IRS Pub 1771: a contribution made partly in exchange for goods or services
+  // needs a written statement of the payment, the value received and the
+  // deductible remainder. Present only when an offering had an FMV set, so
+  // every email already sent stays byte-identical.
+  const plainText = confirmationText(baseMail);
+  check("no contribution → byte-identical text, ending on the frozen last line", confirmationText({ ...baseMail, contribution: null }) === plainText && plainText.endsWith("View your QR badge: " + baseMail.confirmUrl));
+  const qpq = { ...baseMail, contribution: { paidCents: 25000, fairMarketValueCents: 7500, deductibleCents: 17500 } };
+  const qpqText = confirmationText(qpq);
+  check("the statement names the payment, the value received and the deductible limit",
+    qpqText.includes("$250.00") && qpqText.includes("$75.00") && qpqText.includes("$175.00") && /fair market value/i.test(qpqText),
+    qpqText.split("\n").slice(-2).join(" | "));
+  check("...and the HTML carries the same three figures",
+    ["$250.00", "$75.00", "$175.00"].every((s) => confirmationHtml(qpq).includes(s)) && /fair market value/i.test(confirmationHtml(qpq)));
+  check("...absent from the HTML when there is nothing to say", !/fair market value/i.test(confirmationHtml(baseMail)));
+
 
 
   console.log("\n§10 the music split classifies every combination");

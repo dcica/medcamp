@@ -311,6 +311,11 @@ model Event {
   /// Whether a current family membership admits the member's party free here
   /// (drives the "add membership" compare/upsell at registration + gate comp).
   honorsMembership        Boolean      @default(false)
+  /// Quantity mode only: every admission head is NAMED at registration (a
+  /// tournament entrant, a dinner guest) — a name and nothing else, no
+  /// address. Still PII, still purged with the event. Off, names are neither
+  /// asked for nor kept.
+  namesAttendees          Boolean      @default(false)
   /// When walk-in registration opens day-of (coordinator toggle). Null = closed.
   walkInOpensAt           DateTime?
   /// Monotonic per-event counter for attendee campId sequence (NNNN). Incremented
@@ -490,6 +495,10 @@ model ServiceCap {
   /// so it is now unrepresentable rather than merely discouraged.
   capacity            Int?
   sold                Int         @default(0)
+  /// Per-unit fair market value of what the guest receives — the comparable
+  /// dinner, not the school's cost to host it. Set per event beside the
+  /// price; copied onto each line at creation. Null = nothing to disclose.
+  fairMarketValueCents Int?
 
   @@unique([eventId, serviceTypeId])
   @@index([eventId])
@@ -636,6 +645,15 @@ model Attendee {
   /// confirmation, not at cart creation. Stable; survives purge for reconciliation.
   campId String? @unique
 
+  /// Quantity mode: the line that minted this head, and its seat within that
+  /// line (0-based across the line's units × admitsCount). A doubles partner
+  /// is the other seat in the same unit: same lineItemId, same
+  /// floor(seat / admitsCount). Null on camp-mode attendees and on the one
+  /// receipt head a merch-only order gets.
+  lineItemId String?
+  lineItem   LineItem? @relation("MintedBy", fields: [lineItemId], references: [id], onDelete: SetNull)
+  seat       Int?
+
   // ── PII (purged on event PURGED) ──
   name           String?
   mailingAddress String?
@@ -647,13 +665,14 @@ model Attendee {
   /// Set when purged so we keep the row (for counts) without PII.
   piiPurgedAt DateTime?
 
-  lineItems     LineItem[]
+  lineItems     LineItem[]     @relation("AttendeeServices")
   stationVisits StationVisit[]
   labStatuses   LabStatus[]
 
   @@index([orgId, eventId])
   @@index([eventId])
   @@index([orderId])
+  @@index([lineItemId])
   @@map("attendees")
 }
 
@@ -684,7 +703,10 @@ model LineItem {
   order   Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   attendeeId String?
-  attendee   Attendee? @relation(fields: [attendeeId], references: [id], onDelete: SetNull)
+  attendee   Attendee? @relation("AttendeeServices", fields: [attendeeId], references: [id], onDelete: SetNull)
+
+  /// Quantity mode: the heads this line minted (see Attendee.lineItemId).
+  mintedAttendees Attendee[] @relation("MintedBy")
 
   serviceTypeId String?
   serviceType   ServiceType? @relation(fields: [serviceTypeId], references: [id], onDelete: SetNull)
@@ -697,6 +719,11 @@ model LineItem {
   description String
   /// Per-unit price (cents). Line total = amountCents * quantity.
   amountCents Int
+  /// Per-unit fair market value of what the buyer RECEIVES (IRS Pub 1771),
+  /// snapshotted from ServiceCap.fairMarketValueCents when the line is
+  /// created, so a receipt re-issued later reads the value that applied when
+  /// they paid. Null = nothing to disclose. Never changes the price.
+  fairMarketValueCents Int?
   /// Units bought on this line. >1 for quantity-mode admission/merch
   /// ("5 sticks" = one line, qty 5). Per-attendee camp services stay qty 1.
   quantity    Int            @default(1)

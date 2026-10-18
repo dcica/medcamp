@@ -28,6 +28,8 @@ export type Offering = {
   /** "m:ss", the format a choreographer is quoted. Null = unconstrained. */
   minDuration: string | null;
   maxDuration: string | null;
+  /** Fair market value per unit, dollars. Null = nothing to disclose on the receipt. */
+  fairMarketValueDollars: number | null;
 };
 
 /** A catalogue service, for the Add picker. */
@@ -256,9 +258,14 @@ function OfferingEditor({
   );
   const [minDuration, setMinDuration] = useState(row.minDuration ?? "");
   const [maxDuration, setMaxDuration] = useState(row.maxDuration ?? "");
+  const [fairMarketValue, setFairMarketValue] = useState(
+    row.fairMarketValueDollars === null ? "" : String(row.fairMarketValueDollars),
+  );
 
   const capacityValue = capped ? capacity.trim() : "";
   const dirty =
+    fairMarketValue !==
+      (row.fairMarketValueDollars === null ? "" : String(row.fairMarketValueDollars)) ||
     price !== String(row.priceDollars) ||
     capped !== (row.capacity !== null) ||
     capacityValue !== (row.capacity === null ? "" : String(row.capacity)) ||
@@ -354,6 +361,30 @@ function OfferingEditor({
           onChange={(e) => setOnsitePrice(e.target.value)}
         />
       </label>
+
+      <label className="block text-sm text-gray-600">
+        Fair market value per unit ($)
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          inputMode="decimal"
+          placeholder="nothing to disclose"
+          className={inputCls}
+          value={fairMarketValue}
+          onChange={(e) => setFairMarketValue(e.target.value)}
+        />
+      </label>
+      {/* The one rule people get wrong, stated where the number is typed:
+          value RECEIVED by the guest, not the cost to host. */}
+      <p className="text-xs text-gray-500">
+        What the buyer receives, at a comparable price — the dinner, the court
+        time — not what it costs you to put on. Set it and the confirmation
+        email states the payment, this value and the deductible remainder (IRS
+        Pub 1771). Example: a $100 seat at a dinner comparable to a $40 meal is
+        $60 deductible, even if the meal cost you $30. Required for payments
+        over $75; harmless below.
+      </p>
 
       <label className="block text-sm text-gray-600">
         Early-bird price ($)
@@ -479,6 +510,7 @@ function OfferingEditor({
                 maxParticipants: blankToNull(maxParticipants),
                 minDuration: minDuration.trim() === "" ? null : minDuration,
                 maxDuration: maxDuration.trim() === "" ? null : maxDuration,
+                fairMarketValueDollars: blankToNull(fairMarketValue),
               }),
             )
           }

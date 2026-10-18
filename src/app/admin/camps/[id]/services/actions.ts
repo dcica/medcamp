@@ -27,6 +27,12 @@ type OfferingInput = {
   /** "m:ss" exactly as typed; parsed here so the rule lives server-side. */
   minDuration: string | null;
   maxDuration: string | null;
+  /**
+   * Per-unit fair market value of what the guest RECEIVES (IRS Pub 1771) —
+   * the comparable dinner, not the cost to host it. Null = nothing to
+   * disclose. Copied onto each line at creation; see src/lib/contribution.ts.
+   */
+  fairMarketValueDollars: number | null;
 };
 
 /** Blank/absent door price means "same as online" — stored as NULL, not 0. */
@@ -274,6 +280,9 @@ export async function saveOffering(
       maxParticipants: maxParticipants.value,
       minDurationSeconds: minDuration.seconds,
       maxDurationSeconds: maxDuration.seconds,
+      // Same blank-is-null rule as the door price: nothing typed means
+      // nothing to disclose, never a $0 value.
+      fairMarketValueCents: onsiteCents(input.fairMarketValueDollars),
     },
   });
   revalidatePath(`/admin/camps/${eventId}/services`);

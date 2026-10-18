@@ -232,6 +232,7 @@ export default async function CampDetailPage({
           id={camp.id}
           initial={{
             collectsAttendeeDetails: camp.collectsAttendeeDetails,
+            namesAttendees: camp.namesAttendees,
             acceptsDonations: camp.acceptsDonations,
             honorsMembership: camp.honorsMembership,
             allowsRefunds: camp.allowsRefunds,

@@ -2,6 +2,7 @@ import QRCode from "qrcode";
 import { formatCents } from "@/lib/money";
 import { formatWhen } from "@/lib/eventTime";
 import { buildRelatedMessage, type InlineImage } from "@/lib/mime";
+import { contributionSentence, type Contribution } from "@/lib/contribution";
 
 /**
  * The registration confirmation email — the one email that must CARRY the pass
@@ -52,6 +53,12 @@ export type ConfirmationEmail = {
   allowsRefunds: boolean;
   /** The organisation's palette (branding.emailThemeOf): a mail client cannot read CSS variables. */
   theme: { brand: string; accent: string; accentFg: string };
+  /**
+   * IRS Pub 1771 quid-pro-quo statement (src/lib/contribution.ts), present
+   * only when a line on the order carried a fair market value. Null or absent
+   * ⇒ nothing is said, and every email already sent stays byte-identical.
+   */
+  contribution?: Contribution | null;
   /**
    * Present only for a competition/showcase entry. When set, this email is NOT
    * a ticket: a fee-kind service is admits:false, so the code identifies a group
@@ -134,12 +141,26 @@ export function confirmationText(msg: ConfirmationEmail): string {
         : `Manage your entry: ${entry.entryUrl}`,
     ].join("\n");
   }
-  return [
+  const lines = [
     `Hi ${msg.registrantName},`,
     `Your registration for ${msg.eventName} is confirmed.`,
     `Camp ID(s): ${msg.campIds.join(", ")}`,
     `View your QR badge: ${msg.confirmUrl}`,
-  ].join("\n");
+  ];
+  // Appended, never interleaved, and only when there is something to say —
+  // the four lines above are the frozen wording.
+  if (msg.contribution) lines.push(contributionSentence(msg.contribution));
+  return lines.join("\n");
+}
+
+/** The quid-pro-quo statement as its own boxed row; empty when there is nothing to say. */
+function contributionBlock(msg: ConfirmationEmail): string {
+  if (!msg.contribution) return "";
+  const { navy: NAVY } = paletteOf(msg);
+  return `
+  <tr><td style="padding:16px 24px 0 24px;">
+    <div style="font:400 14px/1.6 ${FONT};color:${NAVY};border:1px solid ${RULE};border-radius:10px;padding:12px 14px;">${esc(contributionSentence(msg.contribution))}</div>
+  </td></tr>`;
 }
 
 export function confirmationSubject(msg: ConfirmationEmail): string {
@@ -309,6 +330,7 @@ ${
   <tr><td style="padding:8px 24px 0 24px;">
     ${paidBlock(msg)}
   </td></tr>
+${contributionBlock(msg)}
 ${merchBlock(msg)}
   <tr><td style="padding:20px 24px 0 24px;">
     ${heading("Where and when")}

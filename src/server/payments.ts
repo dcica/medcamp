@@ -22,6 +22,7 @@ import {
   type FeePolicy,
   type OrderFees,
 } from "@/lib/fees";
+import { contributionOf } from "@/lib/contribution";
 
 /**
  * The single PaymentService (locked decision #6). Every billable thing is a
@@ -1100,6 +1101,9 @@ export async function confirmOrderPaid(
         endsAt: order.event.endsAt,
         allowsRefunds: order.event.allowsRefunds,
         theme: emailThemeOf(order.org.settings),
+        // The Pub 1771 statement, from the values snapshotted on the lines at
+        // creation; null (nothing said) unless an offering carried one.
+        contribution: contributionOf(order.lineItems),
       }, { from: senderFor(profile, env.EMAIL_FROM), replyTo: profile.contactEmail });
 
       // ── GA4 `purchase`, same guard, same side of the transaction ──

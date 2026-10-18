@@ -176,6 +176,14 @@ export default async function EventRegistrationsPage({
         <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
           Paid orders
         </h3>
+        {event.namesAttendees && (
+          <a
+            href={`/api/reports/entrants?event=${event.id}`}
+            className="mb-3 inline-flex min-h-tap items-center text-sm text-brand underline"
+          >
+            Download entrants (CSV) — division, player, partner
+          </a>
+        )}
         {data.orders.length === 0 ? (
           <p className="rounded-lg border border-dashed border-gray-300 p-4 text-sm text-gray-600">
             Nobody has paid yet.
@@ -217,10 +225,26 @@ export default async function EventRegistrationsPage({
                     </li>
                   ))}
                 </ul>
-                {o.campIds.length > 0 && (
-                  <p className="mt-2 break-all font-mono text-[11px] text-gray-400">
-                    {o.campIds.join(" · ")}
-                  </p>
+                {/* Named entrants read as a roster — name beside code — so a
+                    coordinator can find a player without decoding anything.
+                    Anonymous heads keep the compact code line. */}
+                {o.heads.some((h) => h.name) ? (
+                  <ul className="mt-2 space-y-0.5 text-xs">
+                    {o.heads.map((h) => (
+                      <li key={h.campId} className="flex justify-between gap-3">
+                        <span>{h.name ?? "—"}</span>
+                        <span className="shrink-0 break-all font-mono text-[11px] text-gray-400">
+                          {h.campId}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  o.campIds.length > 0 && (
+                    <p className="mt-2 break-all font-mono text-[11px] text-gray-400">
+                      {o.campIds.join(" · ")}
+                    </p>
+                  )
                 )}
               </li>
             ))}

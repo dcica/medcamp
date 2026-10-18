@@ -295,6 +295,7 @@ export async function setEventFlags(
   id: string,
   flags: {
     collectsAttendeeDetails: boolean;
+    namesAttendees: boolean;
     acceptsDonations: boolean;
     honorsMembership: boolean;
     allowsRefunds: boolean;
@@ -307,6 +308,7 @@ export async function setEventFlags(
     where: { id, orgId: org.id },
     data: {
       collectsAttendeeDetails: flags.collectsAttendeeDetails,
+      namesAttendees: flags.namesAttendees,
       acceptsDonations: flags.acceptsDonations,
       honorsMembership: flags.honorsMembership,
       allowsRefunds: flags.allowsRefunds,

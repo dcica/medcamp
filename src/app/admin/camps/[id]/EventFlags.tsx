@@ -5,6 +5,7 @@ import { setEventFlags } from "../actions";
 
 type Flags = {
   collectsAttendeeDetails: boolean;
+  namesAttendees: boolean;
   acceptsDonations: boolean;
   honorsMembership: boolean;
   allowsRefunds: boolean;
@@ -15,6 +16,11 @@ const ROWS: { key: keyof Flags; label: string; help: string }[] = [
     key: "collectsAttendeeDetails",
     label: "Collect attendee details (patient profiles)",
     help: "On = camp/medcamp form (per-person name, address, services). Off = quantity-only (admission tickets + merch).",
+  },
+  {
+    key: "namesAttendees",
+    label: "Name each entrant (quantity mode)",
+    help: "A name per admitted head — a tournament player, a dinner guest — and nothing else. A doubles entry asks for two; partners are paired automatically. Names are deleted with the event's other personal details.",
   },
   {
     key: "acceptsDonations",

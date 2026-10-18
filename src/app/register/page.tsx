@@ -137,6 +137,8 @@ export default async function RegisterPage({
     colorHex: o.serviceType.colorHex,
     /** Non-fulfillable services are admission (scannable); merch is fulfillable. */
     kind: o.serviceType.kind,
+    // Heads per unit, so a doubles entry asks for two names per unit sold.
+    admitsCount: o.serviceType.admitsCount,
   }));
 
   // Active family membership plans (shown as an add-on / compare on the form).
@@ -235,6 +237,7 @@ export default async function RegisterPage({
         eventKind={event.type}
         services={services}
         collectsAttendeeDetails={event.collectsAttendeeDetails}
+        namesAttendees={event.namesAttendees}
         acceptsDonations={event.acceptsDonations}
         honorsMembership={event.honorsMembership}
         allowsRefunds={event.allowsRefunds}

@@ -38,6 +38,8 @@ export type PaidOrderRow = {
   method: string | null;
   /** Confirmation codes minted by this order — one per admitted head. */
   campIds: string[];
+  /** The same heads with their names (null unless the event names its entrants), in seat order. */
+  heads: { campId: string; name: string | null }[];
   items: { description: string; quantity: number; amountCents: number }[];
 };
 
@@ -100,7 +102,12 @@ export async function getEventRegistrations(
         registrantName: true,
         registrantEmail: true,
         createdAt: true,
-        attendees: { select: { campId: true } },
+        attendees: {
+          select: { campId: true, name: true },
+          // Seat order, so a doubles pair reads as a pair; camp-mode heads
+          // have no seat and sort last, as before.
+          orderBy: { seat: "asc" },
+        },
         lineItems: {
           select: {
             description: true,
@@ -187,6 +194,9 @@ export async function getEventRegistrations(
         collectedCents: orderCollected,
         method: succeeded[0]?.method ?? null,
         campIds,
+        heads: o.attendees.flatMap((a) =>
+          a.campId ? [{ campId: a.campId, name: a.name }] : [],
+        ),
         items: o.lineItems
           .filter((li) => li.status === "PAID")
           .map((li) => ({

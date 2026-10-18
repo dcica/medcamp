@@ -30,6 +30,8 @@ type Service = {
   priceCents: number;
   colorHex: string;
   kind: ServiceKind;
+  /** Heads per unit: 1 for a ticket, 2 for a doubles entry, 8 for a table. */
+  admitsCount: number;
 };
 
 type Plan = {
@@ -69,6 +71,8 @@ type RegisterDraft = {
   marketingConsent: boolean;
   attendees: AttendeeForm[];
   quantities: Record<string, number>;
+  /** Entrant names per service key, in seat order (quantity × admitsCount). */
+  names: Record<string, string[]>;
   planId: string | null;
   donation: string;
   coverFee: boolean;
@@ -84,6 +88,7 @@ export function RegisterForm({
   eventId,
   services,
   collectsAttendeeDetails,
+  namesAttendees = false,
   acceptsDonations,
   honorsMembership,
   allowsRefunds,
@@ -98,6 +103,8 @@ export function RegisterForm({
   eventId: string;
   services: Service[];
   collectsAttendeeDetails: boolean;
+  /** Quantity mode: a name per admitted head (a player, a guest). The server insists; these inputs help. */
+  namesAttendees?: boolean;
   acceptsDonations: boolean;
   honorsMembership: boolean;
   allowsRefunds: boolean;
@@ -132,6 +139,7 @@ export function RegisterForm({
   const [marketingConsent, setMarketingConsent] = useState(false);
   const [attendees, setAttendees] = useState<AttendeeForm[]>([emptyAttendee()]);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [names, setNames] = useState<Record<string, string[]>>({});
   const [planId, setPlanId] = useState<string | null>(null);
   const [donation, setDonation] = useState("");
   // Starts as the organisation set it (industry default on; an organisation
@@ -148,6 +156,7 @@ export function RegisterForm({
     marketingConsent,
     attendees,
     quantities,
+    names,
     planId,
     donation,
     coverFee,
@@ -197,6 +206,7 @@ export function RegisterForm({
           ? v.attendees
           : [emptyAttendee()],
       quantities: v.quantities ?? {},
+      names: v.names ?? {},
       planId: v.planId ?? null,
       donation: v.donation ?? "",
       coverFee: typeof v.coverFee === "boolean" ? v.coverFee : coverDefault,
@@ -207,6 +217,7 @@ export function RegisterForm({
     setMarketingConsent(applied.marketingConsent);
     setAttendees(applied.attendees);
     setQuantities(applied.quantities);
+    setNames(applied.names);
     setPlanId(applied.planId);
     setDonation(applied.donation);
     setCoverFee(applied.coverFee);
@@ -296,6 +307,19 @@ export function RegisterForm({
     setQuantities((prev) => ({ ...prev, [key]: Math.max(0, n) }));
   }
 
+  /** How many names a service needs at its current quantity, when the event names its entrants. */
+  function namesNeeded(s: Service): number {
+    if (!namesAttendees || collectsAttendeeDetails || s.kind !== "ADMISSION") return 0;
+    return (quantities[s.key] ?? 0) * Math.max(1, s.admitsCount);
+  }
+  function setEntrantName(key: string, index: number, value: string) {
+    setNames((prev) => {
+      const next = [...(prev[key] ?? [])];
+      next[index] = value;
+      return { ...prev, [key]: next };
+    });
+  }
+
   function submit() {
     setError(null);
     startTransition(async () => {
@@ -316,7 +340,18 @@ export function RegisterForm({
         quantities: collectsAttendeeDetails
           ? undefined
           : services
-              .map((s) => ({ serviceKey: s.key, quantity: quantities[s.key] ?? 0 }))
+              .map((s) => {
+                const needed = namesNeeded(s);
+                return {
+                  serviceKey: s.key,
+                  quantity: quantities[s.key] ?? 0,
+                  // Exactly the names this quantity needs, in seat order; the
+                  // server refuses a short or blank list with the count.
+                  ...(needed > 0
+                    ? { names: Array.from({ length: needed }, (_, i) => names[s.key]?.[i] ?? "") }
+                    : {}),
+                };
+              })
               .filter((q) => q.quantity > 0),
       });
       if (res.ok) {
@@ -523,8 +558,8 @@ export function RegisterForm({
             const qty = quantities[s.key] ?? 0;
             const comped = admissionComped && s.kind === "ADMISSION";
             return (
+              <div key={s.key} className="space-y-2">
               <div
-                key={s.key}
                 className={`flex min-h-tap items-center justify-between rounded-lg border px-3 py-2 ${
                   qty > 0 ? "border-brand bg-brand/5" : "border-gray-200"
                 }`}
@@ -565,6 +600,35 @@ export function RegisterForm({
                     +
                   </button>
                 </span>
+                </div>
+                {/* One name per head, grouped by unit so a doubles pair reads
+                    as a pair. Rendered only when the event asks; the server
+                    is what refuses a missing one. */}
+                {namesNeeded(s) > 0 && (
+                  <div className="space-y-2 rounded-lg border border-gray-200 px-3 py-2">
+                    {Array.from({ length: namesNeeded(s) }, (_, i) => {
+                      const heads = Math.max(1, s.admitsCount);
+                      const unit = Math.floor(i / heads) + 1;
+                      const slot = (i % heads) + 1;
+                      const label =
+                        heads > 1
+                          ? `${s.name} ${unit} — ${slot === 1 ? "player 1" : `player ${slot} (partner)`}`
+                          : `${s.name} ${unit} — name`;
+                      return (
+                        <label key={i} className="block text-xs text-gray-600">
+                          {label}
+                          <input
+                            className={inputCls}
+                            placeholder="Full name"
+                            autoComplete="off"
+                            value={names[s.key]?.[i] ?? ""}
+                            onChange={(e) => setEntrantName(s.key, i, e.target.value)}
+                          />
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}

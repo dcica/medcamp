@@ -61,6 +61,7 @@ const db = new PrismaClient();
 const CODE = "VERIFY-REGS";
 const ADMIT_KEY = "verify-regs-admit";
 const MERCH_KEY = "verify-regs-merch";
+const DOUBLES_KEY = "verify-regs-doubles";
 
 let failures = 0;
 
@@ -568,6 +569,94 @@ async function main() {
     unitsOf(seriesAfter) === unitsOf(seriesBefore) + 1,
     `${unitsOf(seriesAfter) - unitsOf(seriesBefore)}`);
 
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§11 named entrants: a doubles entry is two named heads on one line, with a fair-market-value snapshot");
+  // A tournament sells a DOUBLES entry: one line, two heads, and the organiser
+  // needs both names and who is playing with whom. The heads are minted per
+  // line with a seat index, so a partner is "the other seat in the same unit"
+  // — no pairing table, no second form. A dinner offering carries the fair
+  // market value of what the guest receives; it is snapshotted onto the line
+  // at creation so a receipt re-issued next year reads the value that applied
+  // when they paid, never today's.
+  const { createRegistration } = await import("../src/server/registration");
+  const { confirmOrderPaid } = await import("../src/server/payments");
+  const { getEntrantRows, ENTRANTS_REPORT_HEADER } = await import("../src/server/entrants");
+  const { contributionOf } = await import("../src/lib/contribution");
+  const doubles = await db.serviceType.upsert({
+    where: { orgId_key: { orgId: org.id, key: DOUBLES_KEY } },
+    update: { kind: "ADMISSION", priceCents: 25000, admitsCount: 2 },
+    create: { orgId: org.id, key: DOUBLES_KEY, name: "Verify Doubles", priceCents: 25000, kind: "ADMISSION", admitsCount: 2 },
+  });
+  await db.serviceCap.create({
+    data: { eventId: event.id, serviceTypeId: doubles.id, priceCents: 25000, capacity: 20, fairMarketValueCents: 7500 },
+  });
+  await db.event.update({ where: { id: event.id }, data: { namesAttendees: true } });
+  const buyer = { name: "Doubles Buyer", email: "verify-regs-doubles@example.org", phone: "5550002222" };
+  const attempt = (q: { quantity: number; names?: string[] }) =>
+    createRegistration({ eventId: event.id, registrant: buyer, marketingConsent: false, quantities: [{ serviceKey: DOUBLES_KEY, ...q }] })
+      .then(() => "accepted", (e: Error) => e.message);
+  const NEED = "Enter a name for each entrant — Verify Doubles needs ";
+  check("with the flag on, an entry without names is refused, saying how many",
+    (await attempt({ quantity: 1 })) === NEED + "2.", await attempt({ quantity: 1 }));
+  check("...and too few names is the same refusal (two units need four)",
+    (await attempt({ quantity: 2, names: ["Asha", "Ravi", "Meera"] })) === NEED + "4.");
+  check("...and a blank name is refused by the schema",
+    (await attempt({ quantity: 1, names: ["Asha", "   "] })).includes("Every entrant needs a name"));
+
+  const entry = await createRegistration({
+    eventId: event.id, registrant: buyer, marketingConsent: false,
+    quantities: [{ serviceKey: DOUBLES_KEY, quantity: 2, names: [" Asha ", "Ravi", "Meera", "Dev"] }],
+  });
+  const heads = await db.attendee.findMany({ where: { orderId: entry.orderId }, orderBy: { seat: "asc" } });
+  check("two units × two heads mint four named attendees, seats 0–3, names trimmed",
+    heads.map((h) => `${h.seat}:${h.name}`).join("|") === "0:Asha|1:Ravi|2:Meera|3:Dev",
+    heads.map((h) => `${h.seat}:${h.name}`).join("|"));
+  const line = await db.lineItem.findFirstOrThrow({ where: { orderId: entry.orderId, serviceTypeId: doubles.id } });
+  check("...every head points at the line that minted it", heads.every((h) => h.lineItemId === line.id));
+  check("the line carries the fair-market-value snapshot", line.fairMarketValueCents === 7500, String(line.fairMarketValueCents));
+  check("...and the FMV never changes the price", line.amountCents === 25000);
+  await db.serviceCap.update({
+    where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: doubles.id } },
+    data: { fairMarketValueCents: 9900 },
+  });
+  check("a later change to the offering's FMV does not touch the line",
+    (await db.lineItem.findUniqueOrThrow({ where: { id: line.id } })).fairMarketValueCents === 7500);
+  check("contributionOf: paid, value received and the deductible limit, × quantity",
+    JSON.stringify(contributionOf([line])) === JSON.stringify({ paidCents: 50000, fairMarketValueCents: 15000, deductibleCents: 35000 }),
+    JSON.stringify(contributionOf([line])));
+  check("...nothing to say when no line carries an FMV",
+    contributionOf([{ amountCents: 2500, quantity: 1, fairMarketValueCents: null }]) === null);
+  check("...a ticket worth more than it cost deducts nothing, never a negative",
+    contributionOf([{ amountCents: 1000, quantity: 1, fairMarketValueCents: 2500 }])?.deductibleCents === 0);
+  check("...and the platform's fee line is not a contribution",
+    contributionOf([line, { amountCents: 109, quantity: 1, fairMarketValueCents: null, feeKind: "PLATFORM_FEE" }])?.paidCents === 50000);
+
+  await confirmOrderPaid(entry.orderId, { method: "ZELLE", idempotencyKey: `verify-regs-doubles-${entry.orderId}` });
+  const rows = await getEntrantRows(org.id, event.id);
+  check("the entrants report lists one row per player", rows.length === 4, String(rows.length));
+  check("...partners are paired by seat within the line",
+    rows.find((r) => r.player === "Asha")?.partner === "Ravi" && rows.find((r) => r.player === "Dev")?.partner === "Meera",
+    rows.map((r) => `${r.player}+${r.partner}`).join(","));
+  check("...under the division — the offering's name", rows.every((r) => r.division === "Verify Doubles"));
+  check("...with the order, the buyer's email and when it was paid",
+    rows.every((r) => r.order === entry.orderId && r.email === buyer.email && r.paid_at !== ""));
+  check("...and the CSV header is exactly these columns",
+    ENTRANTS_REPORT_HEADER.join(",") === "division,player,partner,order,email,paid_at");
+  const listed = (await getEventRegistrations(org.id, event.id)).orders.find((o) => o.id === entry.orderId);
+  check("the registrations page lists the names beside the codes",
+    listed?.heads.map((h) => h.name).join(",") === "Asha,Ravi,Meera,Dev" && listed.heads.every((h) => h.campId !== null),
+    listed?.heads.map((h) => `${h.name}/${h.campId}`).join(","));
+
+  await db.event.update({ where: { id: event.id }, data: { namesAttendees: false } });
+  const unnamed = await createRegistration({
+    eventId: event.id, registrant: buyer, marketingConsent: false,
+    quantities: [{ serviceKey: DOUBLES_KEY, quantity: 1, names: ["X", "Y"] }],
+  });
+  check("with the flag off, names sent anyway are NOT stored — the event did not ask (No-PHI)",
+    (await db.attendee.findMany({ where: { orderId: unnamed.orderId } })).every((a) => a.name === null));
+  check("...but the heads still carry their line and seat",
+    (await db.attendee.findMany({ where: { orderId: unnamed.orderId }, orderBy: { seat: "asc" } })).map((a) => a.seat).join(",") === "0,1");
+
   await cleanup(org.id);
 }
 
@@ -591,7 +680,7 @@ async function cleanup(orgId: string): Promise<void> {
     await db.event.delete({ where: { id: event.id } });
   }
   await db.serviceType.deleteMany({
-    where: { orgId, key: { in: [ADMIT_KEY, MERCH_KEY] } },
+    where: { orgId, key: { in: [ADMIT_KEY, MERCH_KEY, DOUBLES_KEY] } },
   });
 }
 
