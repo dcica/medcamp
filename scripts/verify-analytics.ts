@@ -459,8 +459,8 @@ function main() {
   // raw file would fail on the documentation instead of on the code.
   check("it does not import or call a pathname hook",
     !/next\/navigation/.test(ANALYTICS_CODE) && !/usePathname/.test(ANALYTICS_CODE));
-  check("it reads the id from validated env, not process.env",
-    /env\.NEXT_PUBLIC_GA_MEASUREMENT_ID/.test(ANALYTICS_SRC) &&
+  check("it reads the id from the validated site resolver, not process.env",
+    /getActiveSite\(\)/.test(ANALYTICS_SRC) &&
       !/process\.env/.test(ANALYTICS_SRC));
   check("default-off survives: no id ⇒ nothing rendered",
     /if\s*\(!measurementId\)\s*return null;/.test(ANALYTICS_SRC));
@@ -513,9 +513,9 @@ function main() {
     hostileReported.startsWith("https://dcica.org/register?x=") &&
       !hostileReported.includes("code=A"),
     hostileReported);
-  check("lib/env.ts still gates the id on GA_MEASUREMENT_ID_RE",
-    /NEXT_PUBLIC_GA_MEASUREMENT_ID:\s*z\s*\.string\(\)\s*\.regex\(GA_MEASUREMENT_ID_RE/.test(
-      readRepoFile("src/lib/env.ts"),
+  check("lib/orgSettings.ts gates the id on GA_MEASUREMENT_ID_RE",
+    /gaMeasurementId:\s*z\s*\.string\(\)\s*\.trim\(\)\s*\.regex\(GA_MEASUREMENT_ID_RE/.test(
+      readRepoFile("src/lib/orgSettings.ts"),
     ));
   check("the regex accepts a real GA4 id", GA_MEASUREMENT_ID_RE.test("G-N37TVHFNTT"));
   for (const bad of [

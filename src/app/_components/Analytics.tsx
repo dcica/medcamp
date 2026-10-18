@@ -1,11 +1,11 @@
 import Script from "next/script";
 
-import { env } from "@/lib/env";
+import { getActiveSite } from "@/lib/tenant";
 
 /**
  * Google Analytics 4 (gtag.js).
  *
- * Renders NOTHING unless the tenant has set NEXT_PUBLIC_GA_MEASUREMENT_ID to a
+ * Renders NOTHING unless the organisation has set `settings.site.gaMeasurementId` to a
  * well-formed `G-…` id. That default-off posture is deliberate:
  *
  *  - This is an open-source, multi-tenant platform. A hardcoded measurement id
@@ -40,7 +40,7 @@ import { env } from "@/lib/env";
  * where Next substitutes an env shim holding NOTHING: the build inlines only
  * literal `NEXT_PUBLIC_*` member expressions, and lib/env.ts hands the whole
  * environment object to zod instead, so not one value is inlined.
- * `env.NEXT_PUBLIC_GA_MEASUREMENT_ID` becomes `undefined` in the browser, this
+ * the organisation's id becomes `undefined` in the browser, this
  * component returns null there, and analytics is dead on a configured tenant
  * with no error anywhere. Reading the raw environment directly to dodge that is
  * also out: an inline <script> is the one place an unvalidated env read is
@@ -140,8 +140,10 @@ export const STRIPPED_QUERY_PARAMS = [
   "token",
 ] as const;
 
-export function Analytics() {
-  const measurementId = env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
+export async function Analytics() {
+  // Per organisation, validated on read by siteSchema (GA_MEASUREMENT_ID_RE).
+  // An async server component: the layout awaits it like any other.
+  const { gaMeasurementId: measurementId } = await getActiveSite();
 
   if (!measurementId) return null;
 

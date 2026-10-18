@@ -789,15 +789,17 @@ function main() {
   const envSrc = readRepoFile("src/lib/env.ts");
   // The regex must be attached to THIS field. A future edit that widens it to a
   // plain string would leave every check above passing while the guard is gone.
-  check("lib/env.ts gates NEXT_PUBLIC_GA_MEASUREMENT_ID on the regex",
-    /NEXT_PUBLIC_GA_MEASUREMENT_ID:\s*z\s*\.string\(\)\s*\.regex\(GA_MEASUREMENT_ID_RE/.test(envSrc));
+  check("lib/orgSettings.ts gates gaMeasurementId on the regex",
+    /gaMeasurementId:\s*z\s*\.string\(\)\s*\.trim\(\)\s*\.regex\(GA_MEASUREMENT_ID_RE/.test(
+      readRepoFile("src/lib/orgSettings.ts"),
+    ));
   const analyticsSrc = readRepoFile("src/app/_components/Analytics.tsx");
   // Default-off is a privacy claim the Privacy Policy makes in writing, and the
   // reason a self-hoster does not silently report to a tenant's GA property.
   check("Analytics renders nothing without an id",
     /if\s*\(!measurementId\)\s*return null;/.test(analyticsSrc));
-  check("Analytics reads the id from validated env, not process.env",
-    /env\.NEXT_PUBLIC_GA_MEASUREMENT_ID/.test(analyticsSrc) &&
+  check("Analytics reads the id from the validated site resolver, not process.env",
+    /getActiveSite\(\)/.test(analyticsSrc) &&
       !/process\.env/.test(analyticsSrc));
   // Nothing else may be interpolated into the inline snippet.
   const inline = analyticsSrc.slice(analyticsSrc.indexOf("window.dataLayer"));

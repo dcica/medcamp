@@ -12,7 +12,7 @@ import { newCampId } from "@/lib/campId";
 import { log } from "@/lib/logger";
 import { eventSlug } from "@/lib/seo";
 import { parseGaCookie, sendPurchaseEvent } from "@/lib/ga";
-import { resolveOrgProfile, senderFor } from "@/lib/orgSettings";
+import { resolveOrgProfile, resolveOrgSite, senderFor } from "@/lib/orgSettings";
 import { emailThemeOf } from "@/lib/branding";
 
 /**
@@ -950,6 +950,7 @@ export async function confirmOrderPaid(
         // buyer's — which suppresses the event rather than inventing a session.
         // See buildPurchasePayload for why that is the right trade.
         clientId: order.gaClientId,
+        site: resolveOrgSite(order.org.settings),
         orderId: order.id,
         eventType: order.event.type,
         // The same slug the /e/<slug> page_view carries, so a landing page can

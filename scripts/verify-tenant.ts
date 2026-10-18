@@ -710,6 +710,49 @@ async function section11(): Promise<void> {
   check("the contact-address module is gone (it is a profile setting now)", existsSync(join(process.cwd(), "src/lib/contact.ts")), false);
 }
 
+/**
+ * §12 — analytics and search verification are per organisation. The GA id
+ * reaches the document as an inline <script> interpolation, so its validator
+ * (GA_MEASUREMENT_ID_RE) moves with it into the site settings; the purchase
+ * event takes the organisation's ids from the ORDER, as the webhook has no
+ * request in scope.
+ */
+async function section12(): Promise<void> {
+  const src = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
+  const { sendPurchaseEvent } = await import("../src/lib/ga");
+
+  console.log("\n§12 analytics and search verification are per organisation");
+  const analytics = src("src/app/_components/Analytics.tsx");
+  check("Analytics reads the id from the organisation's site settings", /getActiveSite\(\)/.test(analytics) && !/NEXT_PUBLIC_GA_MEASUREMENT_ID/.test(stripComments(analytics)), true);
+  check("default-off survives: no id ⇒ nothing rendered", /if\s*\(!measurementId\)\s*return null;/.test(analytics), true);
+  check(
+    "the env schema no longer carries a GA id, an API secret or a Search Console token",
+    /NEXT_PUBLIC_GA_MEASUREMENT_ID|GA_API_SECRET|NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION/.test(stripComments(src("src/lib/env.ts"))),
+    false,
+  );
+  check("the purchase event takes the organisation's ids from the order", /site: resolveOrgSite\(order\.org\.settings\)/.test(src("src/server/payments.ts")), true);
+  check("ga.ts sends with the ids it was given, never a global", /env\.NEXT_PUBLIC_GA_MEASUREMENT_ID|env\.GA_API_SECRET|from "@\/lib\/env"/.test(stripComments(src("src/lib/ga.ts"))), false);
+  check(
+    "the layout's verification tag comes from the organisation's site settings",
+    /googleSiteVerification/.test(src("src/app/layout.tsx")) && !/NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION/.test(src("src/app/layout.tsx")),
+    true,
+  );
+  check(
+    "an organisation without ids skips the purchase event (no network)",
+    await sendPurchaseEvent({
+      clientId: "123.456",
+      orderId: "vt-order",
+      eventType: "GENERAL",
+      eventSlug: "vt",
+      paymentMethod: "STRIPE",
+      lineItems: [],
+      site: { gaMeasurementId: null, gaApiSecret: null, googleSiteVerification: null },
+    }),
+    "skipped-unconfigured",
+  );
+  check("the settings page saves the site settings through its own action", /updateOrgSite/.test(src("src/app/admin/settings/actions.ts")) && /siteSchema/.test(src("src/app/admin/settings/actions.ts")), true);
+}
+
 async function cleanup(): Promise<void> {
   // Every key this script creates is removed here, most-dependent first, so a
   // run that died halfway leaves nothing behind for the next manual test to
@@ -744,6 +787,7 @@ async function main(): Promise<void> {
   await section9();
   await section10(fixtures);
   await section11();
+  await section12();
   await cleanup();
 }
 

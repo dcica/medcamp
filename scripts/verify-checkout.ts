@@ -525,7 +525,11 @@ async function main() {
     { name: "Vision Screening", key: "vision", amountCents: 2500, quantity: 1 },
     { name: "Bloodwork", key: "bloodwork", amountCents: 1999, quantity: 3 },
   ];
+  // The purchase event takes the organisation's analytics ids from the order;
+  // the payload builder needs none of them, so the fixtures carry an empty site.
+  const NO_SITE = { gaMeasurementId: null, gaApiSecret: null, googleSiteVerification: null };
   const campPayload = ga.buildPurchasePayload({
+    site: NO_SITE,
     clientId: "1234567890.1700000000",
     orderId: "ord_camp",
     eventType: "CAMP",
@@ -566,6 +570,7 @@ async function main() {
     ["lower-case camp (not a real member)", "camp"],
   ] as const) {
     const p = ga.buildPurchasePayload({
+    site: NO_SITE,
       clientId: "1.2",
       orderId: "ord_x",
       eventType: type,
@@ -585,6 +590,7 @@ async function main() {
   // destroying the merchandise and membership reporting this change exists to
   // create, and nothing would notice.
   const generalPayload = ga.buildPurchasePayload({
+    site: NO_SITE,
     clientId: "1234567890.1700000000",
     orderId: "ord_general",
     eventType: "GENERAL",
@@ -605,6 +611,7 @@ async function main() {
       generalPayload?.events[0].params.items[0].quantity === 2,
   );
   const memberPayload = ga.buildPurchasePayload({
+    site: NO_SITE,
     clientId: "1.2",
     orderId: "ord_mem",
     eventType: "MEMBERSHIP_DRIVE",
@@ -641,6 +648,7 @@ async function main() {
   check(
     "a quantity-aware line total is amountCents × quantity",
     ga.buildPurchasePayload({
+    site: NO_SITE,
       clientId: "1.2",
       orderId: "o",
       eventType: "GENERAL",
@@ -662,6 +670,7 @@ async function main() {
     check(
       `${label} client id produces NO payload at all`,
       ga.buildPurchasePayload({
+    site: NO_SITE,
         clientId: id,
         orderId: "ord_cash",
         eventType: "GENERAL",
@@ -675,6 +684,7 @@ async function main() {
   // acceptable — which one you get depends on whether the ambient .env happens
   // to configure GA — but neither may be a request.
   const sendResult = await ga.sendPurchaseEvent({
+    site: NO_SITE,
     clientId: null,
     orderId: "ord_cash",
     eventType: "GENERAL",

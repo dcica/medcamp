@@ -1,16 +1,22 @@
 import { requireCoordinator } from "@/server/admin";
-import { getActiveOrg, getActiveBranding, getActiveProfile } from "@/lib/tenant";
+import { getActiveOrg, getActiveBranding, getActiveProfile, getActiveSite } from "@/lib/tenant";
 import { DEFAULT_THEME } from "@/lib/branding";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { SettingsForm } from "./SettingsForm";
 import { ProfileForm } from "./ProfileForm";
+import { SiteForm } from "./SiteForm";
 
 export const dynamic = "force-dynamic";
 
 /** Branding & org settings — coordinator-only (config-over-code). */
 export default async function SettingsPage() {
   await requireCoordinator();
-  const [org, branding, profile] = await Promise.all([getActiveOrg(), getActiveBranding(), getActiveProfile()]);
+  const [org, branding, profile, site] = await Promise.all([
+    getActiveOrg(),
+    getActiveBranding(),
+    getActiveProfile(),
+    getActiveSite(),
+  ]);
 
   return (
     <div>
@@ -29,6 +35,10 @@ export default async function SettingsPage() {
             body: "The contact address appears in the footer and as the reply-to on every email. The sender address is the From line and must be a verified identity with the email provider. Legal name, EIN, tax status and the receipt sentence are printed on receipts and certificates exactly as entered — the platform never asserts a tax status for you.",
           },
           {
+            label: "Analytics and search",
+            body: "Your own Google Analytics property and Search Console token. Blank means no analytics script on your pages; staff screens are never reported either way.",
+          },
+          {
             label: "Brand color",
             body: "Buttons, headings and links across every screen. Saving takes effect immediately — no redeploy. The text color on top is picked for you, and a color too pale to carry readable text is refused rather than saved.",
           },
@@ -45,6 +55,7 @@ export default async function SettingsPage() {
         initialBrand={branding.theme?.brand ?? DEFAULT_THEME.brand}
       />
       <ProfileForm initial={profile} />
+      <SiteForm initial={site} />
     </div>
   );
 }

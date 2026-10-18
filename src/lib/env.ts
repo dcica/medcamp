@@ -61,20 +61,9 @@ const schema = z.object({
    */
   SEARCH_INDEXING: z.enum(["on", "off"]).default("on"),
 
-  /**
-   * Google Search Console's HTML-tag verification token — the opaque string
-   * from `<meta name="google-site-verification" content="...">`.
-   *
-   * Env rather than a tenant setting because it identifies a DEPLOYMENT to
-   * Google, not an organisation: test and prod are two separate Search Console
-   * properties with two different tokens, and they share one database. A
-   * tenant-settings value would give both environments the same token and
-   * verify neither.
-   *
-   * Unset means no tag is emitted, which is correct for a self-hoster who has
-   * not claimed the property. DNS-record verification needs nothing here.
-   */
-  NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION: z.string().min(8).max(200).optional(),
+  // The Search Console token is per organisation: Organization.settings.site
+  // (src/lib/orgSettings.ts). test and prod are separate schemas with separate
+  // organisation rows, so a per-organisation value is per environment too.
 
   // Database
   DATABASE_URL: z.string().min(1),
@@ -159,45 +148,10 @@ const schema = z.object({
   // Unset ⇒ debug in dev, info in prod. (logger reads process.env directly.)
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).optional(),
 
-  /**
-   * Google Analytics 4 measurement ID (`G-XXXXXXXXXX`). Unset ⇒ no analytics
-   * script is emitted at all, which is the default for a self-hoster and for
-   * local dev — a tenant opts in, and its ID is its own (this is per-tenant
-   * config, never a hardcoded platform value).
-   *
-   * Shape-validated on purpose: this value is interpolated into an INLINE
-   * <script> in the document (gtag needs the id inside the snippet, not just
-   * in a URL). An unvalidated env string there is arbitrary JS execution on
-   * every page — same class of hole as an unvalidated branding colour landing
-   * in the <html> style attribute (see lib/branding.ts). The regex admits
-   * exactly what Google issues, so nothing that could close the script tag or
-   * inject a statement survives it. Do not relax it to z.string().
-   */
-  NEXT_PUBLIC_GA_MEASUREMENT_ID: z
-    .string()
-    .regex(GA_MEASUREMENT_ID_RE, "must look like G-XXXXXXXXXX")
-    .optional(),
-
-  /**
-   * GA4 Measurement Protocol API secret — the server-side credential that lets
-   * this process report a confirmed order as a `purchase` event (src/lib/ga.ts).
-   * Created in GA4 under Admin → Data Streams → Measurement Protocol API
-   * secrets, and it is a SECRET: unlike the measurement id above it must never
-   * be sent to a browser, hence no NEXT_PUBLIC_ prefix.
-   *
-   * Optional, and the send is gated on BOTH this and the measurement id being
-   * present. A self-hoster must not have to configure Google anything to take a
-   * payment, so unset ⇒ no outbound request is ever made. The id alone is not
-   * enough either: the Measurement Protocol silently discards a request with no
-   * api_secret, which would look exactly like working analytics that reports
-   * nothing.
-   *
-   * NOT shape-validated, deliberately, unlike the measurement id: this value is
-   * only ever URL-encoded into a query string server-side, never interpolated
-   * into an inline <script>, so the injection surface the regex above exists to
-   * close does not apply. Google does not document a stable format for it.
-   */
-  GA_API_SECRET: z.string().optional(),
+  // The GA4 measurement id and Measurement Protocol secret are per
+  // organisation: Organization.settings.site, gated by GA_MEASUREMENT_ID_RE in
+  // src/lib/orgSettings.ts. A deployment-wide id would report every tenant's
+  // pages to one tenant's property.
 });
 
 // During `next build` without a real DB, fall back so the build doesn't crash.
@@ -225,16 +179,3 @@ export const enabledOidcProviders = {
 /** Address validation is offered only when a Google key is configured. */
 export const addressValidationEnabled = Boolean(env.GOOGLE_MAPS_API_KEY);
 
-/**
- * Analytics is emitted only when the tenant has configured a valid measurement
- * ID. A malformed ID fails the schema above, so it arrives here as undefined
- * and the site renders with no tracking rather than with a broken snippet.
- */
-export const analyticsEnabled = Boolean(env.NEXT_PUBLIC_GA_MEASUREMENT_ID);
-
-// Server-side GA reporting (the Measurement Protocol `purchase` event) needs the
-// measurement id AND GA_API_SECRET. That predicate lives with the sender, as
-// gaServerEventsEnabled() in src/lib/ga.ts, rather than being mirrored here — a
-// second copy of a two-term gate is a second thing to forget to update, and the
-// asymmetry matters: the client snippet may be on while server events are off,
-// never the reverse.

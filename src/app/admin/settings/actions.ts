@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
 import { requireCoordinator } from "@/server/admin";
 import { readStoredTheme, themeWithBrand } from "@/lib/branding";
-import { PROFILE_LABELS, profileSchema } from "@/lib/orgSettings";
+import { PROFILE_LABELS, profileSchema, siteSchema } from "@/lib/orgSettings";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -103,6 +103,44 @@ export async function updateOrgProfile(input: ProfileInput): Promise<ActionResul
   const settings = {
     ...(org.settings as Record<string, unknown>),
     profile,
+  };
+  await db.organization.update({ where: { id: org.id }, data: { settings } });
+  revalidatePath("/admin/settings");
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export type SiteInput = {
+  gaMeasurementId: string;
+  gaApiSecret: string;
+  googleSiteVerification: string;
+};
+
+/** Save the organisation's analytics and search settings; a blank clears a field. Replaces exactly the `site` key. */
+export async function updateOrgSite(input: SiteInput): Promise<ActionResult> {
+  await requireCoordinator();
+  const org = await getActiveOrg();
+  if (!org) return { ok: false, error: "No active org." };
+
+  const site: Record<string, string> = {};
+  const labels: Record<string, string> = {
+    gaMeasurementId: "Measurement id",
+    gaApiSecret: "API secret",
+    googleSiteVerification: "Verification token",
+  };
+  for (const [key, schema] of Object.entries(siteSchema.shape)) {
+    const raw = ((input as Record<string, string>)[key] ?? "").trim();
+    if (!raw) continue;
+    const parsed = schema.safeParse(raw);
+    if (!parsed.success) {
+      return { ok: false, error: `${labels[key]}: ${parsed.error.issues[0]?.message ?? "invalid"}` };
+    }
+    site[key] = parsed.data as string;
+  }
+
+  const settings = {
+    ...(org.settings as Record<string, unknown>),
+    site,
   };
   await db.organization.update({ where: { id: org.id }, data: { settings } });
   revalidatePath("/admin/settings");
