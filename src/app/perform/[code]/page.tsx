@@ -1,11 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getActiveOrg } from "@/lib/tenant";
+import { getActiveOrg, getActiveProfile } from "@/lib/tenant";
 import { headers } from "next/headers";
 import { rateLimit } from "@/lib/rateLimit";
 import { getEntryByCode } from "@/server/performance";
 import { uploadsEnabled, SONG_MAX_BYTES } from "@/lib/storage";
-import { CONTACT_EMAIL } from "@/lib/contact";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { SongDelivery } from "./SongDelivery";
 import { PRIVATE_PAGE_METADATA } from "@/lib/seo";
@@ -50,6 +49,7 @@ export default async function PerformEntryPage({
 
   const org = await getActiveOrg();
   if (!org) notFound();
+  const profile = await getActiveProfile();
   const entry = limited ? null : await getEntryByCode(org.id, code);
 
   if (limited) {
@@ -73,9 +73,13 @@ export default async function PerformEntryPage({
           confirmation email — the code looks like{" "}
           <span className="font-mono">RON-2026-K7M2XQ9T</span>. If you completed
           payment and still see this, write to{" "}
-          <a href={`mailto:${CONTACT_EMAIL}`} className="text-brand underline">
-            {CONTACT_EMAIL}
-          </a>
+          {profile.contactEmail ? (
+            <a href={`mailto:${profile.contactEmail}`} className="text-brand underline">
+              {profile.contactEmail}
+            </a>
+          ) : (
+            <span>the organisers</span>
+          )}
           .
         </p>
         <p className="mt-6">
@@ -145,7 +149,7 @@ export default async function PerformEntryPage({
         songReady={entry.songReadyAt !== null}
         maxBytes={SONG_MAX_BYTES}
         uploadsAvailable={uploadsEnabled()}
-        contactEmail={CONTACT_EMAIL}
+        contactEmail={profile.contactEmail ?? ""}
       />
 
       {justPaid ? (

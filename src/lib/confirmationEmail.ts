@@ -50,6 +50,8 @@ export type ConfirmationEmail = {
   endsAt: Date;
   /** `Event.allowsRefunds` — decides which approved refund wording applies. */
   allowsRefunds: boolean;
+  /** The organisation's palette (branding.emailThemeOf): a mail client cannot read CSS variables. */
+  theme: { brand: string; accent: string; accentFg: string };
   /**
    * Present only for a competition/showcase entry. When set, this email is NOT
    * a ticket: a fee-kind service is admits:false, so the code identifies a group
@@ -68,8 +70,7 @@ export type ConfirmationEmail = {
 
 // ── Design tokens. The email copies them rather than importing the Tailwind
 // theme because inline styles are the only styling a mail client honours. ──
-const NAVY = "#0c3543";
-const SAFFRON = "#f9a200";
+// Tenant colours come from the message (see paletteOf); only the neutrals are fixed.
 const CANVAS = "#f7faf9";
 /** Ink on saffron. White on saffron is banned — it fails contrast. */
 const INK = "#16201f";
@@ -77,6 +78,13 @@ const RULE = "#d8e2e0";
 const MUTED = "#4a5c5a";
 const FONT =
   "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+
+type Palette = { navy: string; saffron: string; ink: string };
+
+/** Brand → headings and links; accent → the ticket-code band and buttons; its foreground → text on it. */
+function paletteOf(msg: ConfirmationEmail): Palette {
+  return { navy: msg.theme.brand, saffron: msg.theme.accent, ink: msg.theme.accentFg };
+}
 
 function esc(s: string): string {
   return s
@@ -100,7 +108,7 @@ function refundLine(allowsRefunds: boolean): string {
 
 /** Content-ID for a ticket's QR. Unique per camp ID; referenced once as `cid:`. */
 function qrCid(campId: string, index: number): string {
-  return `qr-${index}-${campId}@dcica`;
+  return `qr-${index}-${campId}@medcamp`;
 }
 
 /**
@@ -159,11 +167,13 @@ function heading(text: string): string {
  * breaking THROUGH a code rather than between two.
  */
 function ticketBlock(
+  p: Palette,
   campId: string,
   index: number,
   total: number,
   walletUrl: string,
 ): string {
+  const { navy: NAVY, saffron: SAFFRON, ink: INK } = p;
   const cid = qrCid(campId, index);
   const ordinal = total > 1 ? `Ticket ${index + 1} of ${total}` : "Your ticket";
   // Isolation only needs to come BETWEEN tickets, so the last one does not
@@ -189,6 +199,7 @@ function ticketBlock(
 }
 
 function paidBlock(msg: ConfirmationEmail): string {
+  const { navy: NAVY } = paletteOf(msg);
   const rows = msg.lineItems
     .map(
       (li) => `
@@ -210,6 +221,7 @@ ${heading("Paid")}
 }
 
 function merchBlock(msg: ConfirmationEmail): string {
+  const { navy: NAVY } = paletteOf(msg);
   if (msg.merch.length === 0) return "";
   const rows = msg.merch
     .map(
@@ -230,11 +242,13 @@ function merchBlock(msg: ConfirmationEmail): string {
  * column, square corners.
  */
 export function confirmationHtml(msg: ConfirmationEmail): string {
+  const p = paletteOf(msg);
+  const { navy: NAVY, saffron: SAFFRON } = p;
   const headcount = msg.campIds.length;
   const entry = msg.performanceEntry;
   const wallet = (id: string) => `${msg.walletBaseUrl}/t/${encodeURIComponent(id)}`;
   const tickets = msg.campIds
-    .map((id, i) => ticketBlock(id, i, msg.campIds.length, wallet(id)))
+    .map((id, i) => ticketBlock(p, id, i, msg.campIds.length, wallet(id)))
     .join("");
   // The venue timezone helper, not a bare Intl call: an email that states a
   // different time from the website is the defect Task G4 just fixed, coming
@@ -322,6 +336,7 @@ ${merchBlock(msg)}
 export async function buildConfirmationMime(
   msg: ConfirmationEmail,
   from: string,
+  replyTo?: string | null,
 ): Promise<Buffer> {
   const inlineImages: InlineImage[] = [];
   for (const [i, campId] of msg.campIds.entries()) {
@@ -334,6 +349,7 @@ export async function buildConfirmationMime(
   }
   return buildRelatedMessage({
     from,
+    replyTo,
     to: msg.to,
     subject: confirmationSubject(msg),
     text: confirmationText(msg),

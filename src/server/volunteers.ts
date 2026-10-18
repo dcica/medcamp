@@ -10,6 +10,9 @@ import { orgBaseUrl } from "@/lib/orgUrl";
 import { log } from "@/lib/logger";
 import { getActiveOrg } from "@/lib/tenant";
 import { newVolCode, normalizeVolCode } from "@/lib/volunteerId";
+import { resolveOrgProfile, senderFor } from "@/lib/orgSettings";
+import { env } from "@/lib/env";
+import type { Sender } from "@/lib/email";
 import {
   bandMeetsMinAge,
   counselorPairRequired,
@@ -42,6 +45,13 @@ const OCCUPYING: SignupStatus[] = [
   "CHECKED_OUT",
   "NO_SHOW",
 ];
+
+
+/** The organisation's sender and reply-to for every volunteer email. */
+function volunteerSender(org: { settings: unknown }): Sender {
+  const profile = resolveOrgProfile(org.settings);
+  return { from: senderFor(profile, env.EMAIL_FROM), replyTo: profile.contactEmail };
+}
 
 // `base` is the organisation's own origin (orgBaseUrl) — every caller has
 // the org in scope, and these mails must carry the tenant's host, not a global.
@@ -582,7 +592,7 @@ export async function createVolunteerSignup(
       roleName: role.name,
       shift: role.shift,
       confirmUrl: confirmUrl(orgBaseUrl(org), signup.id),
-    });
+    }, volunteerSender(org));
   } catch (err) {
     log.error("volunteer signup email failed", { err });
   }
@@ -957,7 +967,7 @@ export async function sendReminders(eventId?: string): Promise<number> {
         shift: s.shift ?? s.role.shift,
         instructions: s.role.instructions,
         confirmUrl: confirmUrl(orgBaseUrl(active.org), s.id),
-      });
+      }, volunteerSender(active.org));
     } catch (err) {
       log.error("volunteer reminder email failed", { err });
     }
@@ -990,7 +1000,7 @@ export async function issueCertificates(eventId?: string): Promise<number> {
         eventName: event.name,
         hoursServed: s.hoursServed,
         certUrl: certUrl(orgBaseUrl(active.org), s.id),
-      });
+      }, volunteerSender(active.org));
     } catch (err) {
       log.error("volunteer thank-you email failed", { err });
     }

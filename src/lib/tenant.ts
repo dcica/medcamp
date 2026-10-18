@@ -11,6 +11,7 @@ import {
   type TenantResolution,
 } from "@/lib/tenantResolve";
 import { orgBaseUrl, platformOrigin } from "@/lib/orgUrl";
+import { resolveOrgProfile, resolveOrgSite, type OrgProfile, type OrgSite } from "@/lib/orgSettings";
 
 /**
  * Active-tenant resolution. One deployment serves every organisation, and the
@@ -115,6 +116,18 @@ export const getActiveBranding = cache(async (): Promise<Branding> => {
   const t = await resolveTenant();
   const org = t.kind === "org" ? t.org : null;
   return resolveBranding(org?.settings, org?.name);
+});
+
+/** The active tenant's profile (contact, sender, legal identity). Non-throwing, like branding. */
+export const getActiveProfile = cache(async (): Promise<OrgProfile> => {
+  const t = await resolveTenant();
+  return resolveOrgProfile(t.kind === "org" ? t.org.settings : undefined);
+});
+
+/** The active tenant's site settings (analytics ids). Non-throwing, like branding. */
+export const getActiveSite = cache(async (): Promise<OrgSite> => {
+  const t = await resolveTenant();
+  return resolveOrgSite(t.kind === "org" ? t.org.settings : undefined);
 });
 
 /** The origin absolute URLs on this request are built from: the org's host, else the platform's. */

@@ -341,7 +341,7 @@ export const DEFAULT_THEME: Theme = {
   accentFg: "#16201f",
   accent2: "#138808",
   accent2Fg: "#ffffff",
-  wordmark: "DCICA",
+  wordmark: "Events",
 };
 
 /**
@@ -350,8 +350,19 @@ export const DEFAULT_THEME: Theme = {
  * reference tenant's literal so that this change is provably no-visual-change:
  * these are the exact strings SiteHeader/SiteFooter hardcoded before.
  */
-const FALLBACK_WORDMARK = "DCICA";
-const FALLBACK_ORG_NAME = "DCICA";
+const FALLBACK_WORDMARK = "Events";
+const FALLBACK_ORG_NAME = "Events";
+
+/**
+ * The wordmark for an organisation that has not set one: its first word, cut
+ * to the schema's eight characters, else a neutral word. Never another
+ * tenant's name — "DCICA" was the fallback here until 2026-10, and a first
+ * brand-colour save on a themeless organisation stored it as theirs.
+ */
+export function wordmarkFor(name: string | null | undefined): string {
+  const first = (name ?? "").trim().split(/\s+/)[0] ?? "";
+  return first ? first.slice(0, 8) : FALLBACK_WORDMARK;
+}
 
 /**
  * What the `theme` key in a settings blob actually turned out to be.
@@ -438,7 +449,7 @@ export function resolveBranding(
   return {
     theme,
     storedTheme,
-    wordmark: theme?.wordmark ?? name ?? FALLBACK_WORDMARK,
+    wordmark: theme?.wordmark ?? wordmarkFor(name),
     // THE HOST CHECK LIVES HERE, on the render path only. The schema shape-checked
     // the string; this decides whether it is loadable in THIS environment. A
     // no-longer-reachable URL becomes a fallback logo, never a lost palette — and
@@ -526,6 +537,8 @@ export function brandingStyleText(theme: Theme | null | undefined): string {
 export function themeWithBrand(
   current: StoredTheme,
   brand: string,
+  /** The organisation being themed: a themeless one composes on ITS wordmark, not a default. */
+  orgName?: string | null,
 ): { ok: true; theme: Theme } | { ok: false; error: string } {
   if (current.kind === "unreadable") {
     return {
@@ -535,7 +548,8 @@ export function themeWithBrand(
         `overwrite it. Fix or clear the stored theme before changing colours here.`,
     };
   }
-  const base = current.kind === "ok" ? current.theme : DEFAULT_THEME;
+  const base =
+    current.kind === "ok" ? current.theme : { ...DEFAULT_THEME, wordmark: wordmarkFor(orgName) };
   const candidate = brand.trim().toLowerCase();
   if (!isBrandHex(candidate)) {
     return { ok: false, error: "Use a six-digit hex colour, like #0c3543." };
@@ -555,4 +569,19 @@ export function themeWithBrand(
     };
   }
   return { ok: true, theme: parsed.data };
+}
+
+/**
+ * The colours a mail client can be given inline. An email cannot read CSS
+ * variables, so the confirmation email takes these from the organisation's
+ * theme — the deployment's defaults when it has none.
+ */
+export function emailThemeOf(settings: unknown): {
+  brand: string;
+  brandFg: string;
+  accent: string;
+  accentFg: string;
+} {
+  const t = resolveBranding(settings).theme ?? DEFAULT_THEME;
+  return { brand: t.brand, brandFg: t.brandFg, accent: t.accent, accentFg: t.accentFg };
 }

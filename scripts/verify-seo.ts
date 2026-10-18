@@ -310,7 +310,7 @@ async function main(): Promise<void> {
   );
 
   const orgLd = seo.organizationLd({
-      origin: "https://x.test",
+      origin: "https://x.test", contactEmail: null,
     orgName: "DCICA",
     seo: {},
     locality: { locality: "Flower Mound", region: "TX" },
@@ -326,7 +326,7 @@ async function main(): Promise<void> {
   check(
     "an org with no locatable events emits no address",
     (
-      seo.organizationLd({ origin: "https://x.test", orgName: "X", seo: {}, locality: null, logoUrl: null }) as Record<
+      seo.organizationLd({ origin: "https://x.test", contactEmail: null, orgName: "X", seo: {}, locality: null, logoUrl: null }) as Record<
         string,
         unknown
       >
@@ -337,7 +337,7 @@ async function main(): Promise<void> {
     "tenant settings override the derived locality",
     (
       seo.organizationLd({
-      origin: "https://x.test",
+      origin: "https://x.test", contactEmail: null,
         orgName: "X",
         seo: seo.resolveTenantSeo({ seo: { locality: "Edison", region: "NJ" } }),
         locality: { locality: "Flower Mound", region: "TX" },
@@ -349,7 +349,7 @@ async function main(): Promise<void> {
   // A tax-status claim is the org's to make, never the platform's on its behalf.
   check(
     "no nonprofit tax status is claimed unless the tenant declared one",
-    (seo.organizationLd({ origin: "https://x.test", orgName: "X", seo: {}, locality: null, logoUrl: null }) as Record<string, unknown>)
+    (seo.organizationLd({ origin: "https://x.test", contactEmail: null, orgName: "X", seo: {}, locality: null, logoUrl: null }) as Record<string, unknown>)
       .nonprofitStatus === undefined,
     "a 501(c)(3) claim was published for an org that never made it",
   );
@@ -357,7 +357,7 @@ async function main(): Promise<void> {
     "…and it is emitted once declared",
     (
       seo.organizationLd({
-      origin: "https://x.test",
+      origin: "https://x.test", contactEmail: null,
         orgName: "X",
         seo: seo.resolveTenantSeo({ seo: { nonprofitStatus: "Nonprofit501c3" } }),
         locality: null,

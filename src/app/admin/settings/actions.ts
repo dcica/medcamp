@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
 import { requireCoordinator } from "@/server/admin";
 import { readStoredTheme, themeWithBrand } from "@/lib/branding";
+import { PROFILE_LABELS, profileSchema } from "@/lib/orgSettings";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -44,7 +45,7 @@ export async function updateOrgSettings(input: {
   // bare null for both would let a one-colour edit silently overwrite a tenant's
   // whole palette with the reference tenant's defaults — see StoredTheme.
   const stored = readStoredTheme(org.settings);
-  const next = themeWithBrand(stored, input.brand);
+  const next = themeWithBrand(stored, input.brand, name);
   if (!next.ok) return { ok: false, error: next.error };
 
   const settings = {
@@ -60,6 +61,51 @@ export async function updateOrgSettings(input: {
   // The palette is emitted by the ROOT layout, so a theme change invalidates
   // every route, not just this one. 37 of 38 pages are force-dynamic anyway;
   // /403 is the one that would otherwise keep a stale header.
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export type ProfileInput = {
+  contactEmail: string;
+  senderEmail: string;
+  legalName: string;
+  ein: string;
+  taxStatus: "" | "501c3" | "governmental" | "other";
+  receiptStatement: string;
+};
+
+/**
+ * Save the organisation's profile. A blank field clears it; anything else
+ * must pass the SAME schema the render path applies (orgSettings.ts), so a
+ * value that would be dropped on read is refused on write with a reason.
+ * Replaces exactly the `profile` key: a brand save and a profile save can
+ * never clobber each other.
+ */
+export async function updateOrgProfile(input: ProfileInput): Promise<ActionResult> {
+  await requireCoordinator();
+  const org = await getActiveOrg();
+  if (!org) return { ok: false, error: "No active org." };
+
+  const profile: Record<string, string> = {};
+  for (const [key, schema] of Object.entries(profileSchema.shape)) {
+    const raw = ((input as Record<string, string>)[key] ?? "").trim();
+    if (!raw) continue;
+    const parsed = schema.safeParse(raw);
+    if (!parsed.success) {
+      return {
+        ok: false,
+        error: `${PROFILE_LABELS[key as keyof typeof PROFILE_LABELS]}: ${parsed.error.issues[0]?.message ?? "invalid"}`,
+      };
+    }
+    profile[key] = parsed.data as string;
+  }
+
+  const settings = {
+    ...(org.settings as Record<string, unknown>),
+    profile,
+  };
+  await db.organization.update({ where: { id: org.id }, data: { settings } });
+  revalidatePath("/admin/settings");
   revalidatePath("/", "layout");
   return { ok: true };
 }

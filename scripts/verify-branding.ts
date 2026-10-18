@@ -595,7 +595,7 @@ function main() {
   check("a null name falls back rather than rendering 'null'",
     !resolveBranding({}, null).orgName.includes("null"));
   check("a whitespace-only org name falls back",
-    resolveBranding({}, "   ").orgName === "DCICA");
+    resolveBranding({}, "   ").orgName === "Events");
 
   // ── §10 ───────────────────────────────────────────────────────────────────
   console.log("\n§10 a stored theme reaches the emitted style block");
@@ -614,8 +614,10 @@ function main() {
     themed.wordmark === OTHER_THEME.wordmark, themed.wordmark);
   check("the footer uses the full org name, not the wordmark",
     themed.orgName === "Other Org", themed.orgName);
-  check("the wordmark falls back to the org name when the theme omits one",
-    resolveBranding({}, "Other Org").wordmark === "Other Org");
+  // First word, cut to the schema's eight characters — a header slot, not a
+  // footer line. The full name is `orgName`, asserted on the row above.
+  check("the wordmark falls back to the org name's first word when the theme omits one",
+    resolveBranding({}, "Other Org").wordmark === "Other");
 
   console.log("\n§11 the coordinator's single colour field writes a real theme");
   const dark = themeWithBrand(NO_THEME, "#4B1D6B");

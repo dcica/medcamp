@@ -559,7 +559,7 @@ async function main(): Promise<void> {
   const pageSrc = readFileSync("src/app/page.tsx", "utf8");
   check(
     "zero events still fall through to the untouched empty state",
-    /events\.length > 0 \?/.test(pageSrc) && /<EmptyEventsState \/>/.test(pageSrc),
+    /events\.length > 0 \?/.test(pageSrc) && /<EmptyEventsState\b/.test(pageSrc),
     "the empty-state branch is gone",
   );
   // Comments stripped: page.tsx's own doc comment explains WHY PageHelp was

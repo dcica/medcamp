@@ -164,6 +164,7 @@ export default async function PerformPage({
       <PerformanceEntryForm
         eventId={event.id}
         eventName={event.name}
+        orgName={org.name}
         /* Analytics dimension only — the same derived slug `/e/<slug>` is
            served at, so a generate_lead can be joined to the view_item that
            preceded it. Derived here rather than in the form because the slug

@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { CONTACT_EMAIL } from "@/lib/contact";
 
 /**
  * The "nothing on the calendar" state for the public event surface (`/`).
@@ -30,14 +29,20 @@ import { CONTACT_EMAIL } from "@/lib/contact";
 // constant rather than a matching literal. There is no /contact route, and no
 // public membership route either (only /admin/membership, behind staff auth), so
 // the membership ask goes to a human here instead of a 404.
-const CONTACT_HREF = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(
-  "Contact DCICA",
-)}`;
-const MEMBERSHIP_HREF = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(
-  "Becoming a DCICA member",
-)}`;
+function mailto(contactEmail: string, subject: string): string {
+  return `mailto:${contactEmail}?subject=${encodeURIComponent(subject)}`;
+}
 
-export function EmptyEventsState() {
+export function EmptyEventsState({
+  orgName,
+  contactEmail,
+}: {
+  orgName: string;
+  /** From the organisation's profile; null hides the two email asks. */
+  contactEmail: string | null;
+}) {
+  const CONTACT_HREF = contactEmail ? mailto(contactEmail, `Contact ${orgName}`) : null;
+  const MEMBERSHIP_HREF = contactEmail ? mailto(contactEmail, `Becoming a ${orgName} member`) : null;
   return (
     // Rounded to match the local idiom of the page, not the design system's
     // border-radius: 0 — a single square box among rounded cards reads as a bug.
@@ -46,34 +51,39 @@ export function EmptyEventsState() {
         Nothing on the calendar just yet
       </h2>
       <p className="mt-2 text-sm leading-relaxed text-gray-600">
-        The committee is planning the next season. Diwali usually falls in early
-        November and Holi in March, and registration opens about six weeks ahead
-        of an event — so that is the moment to look again.
+        The organisers are planning the next season. Registration usually opens
+        a few weeks ahead of an event — so that is the moment to look again.
       </p>
 
-      <a
-        href={CONTACT_HREF}
-        className="mt-4 flex min-h-tap items-center justify-center rounded-lg bg-brand px-4 text-center text-sm font-semibold text-brand-fg"
-      >
-        Contact us
-      </a>
-      <p className="mt-2 text-xs leading-relaxed text-gray-500">
-        This opens an email to the committee — a volunteer reads it and writes
-        back. There are no automatic alerts, so tell us what you are interested
-        in and someone can let you know once it is scheduled.
-      </p>
+      {CONTACT_HREF && (
+        <>
+          <a
+            href={CONTACT_HREF}
+            className="mt-4 flex min-h-tap items-center justify-center rounded-lg bg-brand px-4 text-center text-sm font-semibold text-brand-fg"
+          >
+            Contact us
+          </a>
+          <p className="mt-2 text-xs leading-relaxed text-gray-500">
+            This opens an email to the organisers — a volunteer reads it and
+            writes back. There are no automatic alerts, so tell us what you are
+            interested in and someone can let you know once it is scheduled.
+          </p>
+        </>
+      )}
 
       <div className="mt-5 border-t border-gray-200 pt-4">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
           Meanwhile
         </h3>
         <div className="mt-2 grid grid-cols-1 gap-2">
-          <a
-            href={MEMBERSHIP_HREF}
-            className="flex min-h-tap items-center justify-center rounded-lg border border-brand px-4 text-center text-sm font-medium text-brand"
-          >
-            Ask about membership
-          </a>
+          {MEMBERSHIP_HREF && (
+            <a
+              href={MEMBERSHIP_HREF}
+              className="flex min-h-tap items-center justify-center rounded-lg border border-brand px-4 text-center text-sm font-medium text-brand"
+            >
+              Ask about membership
+            </a>
+          )}
           <Link
             href="/volunteer"
             className="flex min-h-tap items-center justify-center rounded-lg border border-brand px-4 text-center text-sm font-medium text-brand"

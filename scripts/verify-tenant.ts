@@ -18,7 +18,7 @@
  * §3 creates two scratch organisations and deletes them on the way out.
  */
 import * as dotenv from "dotenv";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { PrismaClient } from "@prisma/client";
 
@@ -614,6 +614,102 @@ async function section10(f: Fixtures): Promise<void> {
   check("the staff menu offers 'Switch organisation' only when there is more than one", /canSwitch/.test(src("src/app/_components/StaffMenu.tsx")) && /canSwitch/.test(src("src/app/_components/SiteHeader.tsx")), true);
 }
 
+function rel(p: string): string {
+  return p.replace(process.cwd(), "").replace(/\\/g, "/").replace(/^\//, "");
+}
+
+function stripComments(s: string): string {
+  return s.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+}
+
+/**
+ * §11 — everything that was one tenant's by name becomes a setting: contact
+ * and sender addresses, legal identity for receipts, the analytics id, and
+ * the fallbacks the app renders when an organisation has not said.
+ */
+async function section11(): Promise<void> {
+  const { profileSchema, resolveOrgProfile, resolveOrgSite, senderFor } = await import("../src/lib/orgSettings");
+  const { resolveBranding, themeWithBrand, wordmarkFor } = await import("../src/lib/branding");
+  const { buildRelatedMessage } = await import("../src/lib/mime");
+  const src = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
+
+  console.log("\n§11 per-organisation profile and site settings");
+  const nulls = { contactEmail: null, senderEmail: null, legalName: null, ein: null, taxStatus: null, receiptStatement: null };
+  check("an empty settings blob resolves to a profile of nulls", resolveOrgProfile({}), nulls);
+  check(
+    "a hostile blob is dropped field by field, never thrown",
+    resolveOrgProfile({ profile: { ein: "123", contactEmail: "events@x.org", legalName: 42, taxStatus: "church" } }),
+    { ...nulls, contactEmail: "events@x.org" },
+  );
+  const full = {
+    contactEmail: "events@x.org",
+    senderEmail: "X <no-reply@x.org>",
+    legalName: "X Inc",
+    ein: "12-3456789",
+    taxStatus: "501c3",
+    receiptStatement: "No goods or services were provided in exchange for this contribution.",
+  };
+  check("a full profile round-trips", resolveOrgProfile({ profile: full }), full);
+  check("senderEmail refuses header injection", profileSchema.shape.senderEmail.safeParse("X <a@b.c>\r\nBcc: evil@x.org").success, false);
+  check("senderEmail accepts a display-name form", profileSchema.shape.senderEmail.safeParse("Infinite Minds <no-reply@infinitemindstx.org>").success, true);
+  check("senderEmail accepts a bare address", profileSchema.shape.senderEmail.safeParse("no-reply@x.org").success, true);
+  check(
+    "senderFor prefers the organisation's sender and falls back to the deployment's",
+    [senderFor({ senderEmail: "X <a@x.org>" }, "Fallback <f@y.org>"), senderFor({ senderEmail: null }, "Fallback <f@y.org>")],
+    ["X <a@x.org>", "Fallback <f@y.org>"],
+  );
+  check(
+    "site: a GA id must match the measurement-id shape",
+    [resolveOrgSite({ site: { gaMeasurementId: "G-ABCDEF1234" } }).gaMeasurementId, resolveOrgSite({ site: { gaMeasurementId: "UA-1" } }).gaMeasurementId],
+    ["G-ABCDEF1234", null],
+  );
+  check("site: nothing stored → nulls", resolveOrgSite({}), { gaMeasurementId: null, gaApiSecret: null, googleSiteVerification: null });
+
+  console.log("\n§11 no tenant's name is a fallback for another tenant");
+  check(
+    "wordmarkFor takes the first word, at most 8 characters, else a neutral word",
+    [wordmarkFor("Infinite Minds"), wordmarkFor("Denton County Indian Cultural Association"), wordmarkFor("   "), wordmarkFor(null)],
+    ["Infinite", "Denton", "Events", "Events"],
+  );
+  check("resolveBranding derives the wordmark from the org name when no theme is stored", resolveBranding({}, "Infinite Minds").wordmark, "Infinite");
+  check(
+    "resolveBranding with no organisation at all is neutral",
+    [resolveBranding(undefined, undefined).wordmark, resolveBranding(undefined, undefined).orgName],
+    ["Events", "Events"],
+  );
+  const composed = themeWithBrand({ kind: "none" }, "#1d3557", "Infinite Minds");
+  check("a first brand-colour save on a themeless org stores THAT org's wordmark", composed.ok ? composed.theme.wordmark : composed.error, "Infinite");
+
+  console.log("\n§11 mail carries the organisation's sender and reply-to");
+  const base = { from: "X <no-reply@x.org>", to: "a@b.c", subject: "s", text: "t", html: "<p>t</p>", inlineImages: [], date: new Date(0) };
+  const withReply = buildRelatedMessage({ ...base, replyTo: "events@x.org" }).toString("utf8");
+  check("Reply-To is emitted when given", /^Reply-To: events@x\.org\r?$/m.test(withReply), true);
+  check("…and absent otherwise", /^Reply-To:/m.test(buildRelatedMessage(base).toString("utf8")), false);
+
+  console.log("\n§11 nothing in src names one tenant");
+  const ALLOW = new Set([
+    "src/lib/testAccounts.ts", // the QA accounts are @dcica.test by design
+    "src/lib/emailAddress.ts", // reserved/undeliverable domains
+    "src/lib/mime.ts", // a MIME boundary string
+    "src/lib/platform.ts", // the platform's own repository URL
+    "src/app/admin/membership/MemberSearch.tsx", // the imported-roster placeholder domain
+    // DEFAULT_ORG_SLUG still defaults to the first tenant's slug: local dev and
+    // a one-org self-host resolve it with no env at all. Retired at the T11
+    // cutover, when every deployed environment names its default explicitly.
+    "src/lib/env.ts",
+  ]);
+  const offenders = walk(join(process.cwd(), "src"))
+    .map(rel)
+    .filter((p) => !ALLOW.has(p) && !p.startsWith("src/app/api/dev/"))
+    .filter((p) => /dcica/i.test(stripComments(readFileSync(join(process.cwd(), p), "utf8"))));
+  check("no DCICA literal in app code outside the allowlist", offenders, []);
+  check("the deployment's EMAIL_FROM default names no tenant", /EMAIL_FROM[^\n]*DCICA/.test(src("src/lib/env.ts")), false);
+  check("send() carries ReplyToAddresses", /ReplyToAddresses/.test(src("src/lib/email.ts")), true);
+  check("the confirmation email carries no tenant's hex (its palette comes from the message)", /#0c3543|#f9a200/i.test(src("src/lib/confirmationEmail.ts")), false);
+  check("the settings page saves the profile through its own action", /updateOrgProfile/.test(src("src/app/admin/settings/actions.ts")) && /profileSchema/.test(src("src/app/admin/settings/actions.ts")), true);
+  check("the contact-address module is gone (it is a profile setting now)", existsSync(join(process.cwd(), "src/lib/contact.ts")), false);
+}
+
 async function cleanup(): Promise<void> {
   // Every key this script creates is removed here, most-dependent first, so a
   // run that died halfway leaves nothing behind for the next manual test to
@@ -647,6 +743,7 @@ async function main(): Promise<void> {
   await section7(fixtures);
   await section9();
   await section10(fixtures);
+  await section11();
   await cleanup();
 }
 

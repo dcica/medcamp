@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { offeringKindsByEvent } from "@/server/performance";
 import { saleSummaryByEvent } from "@/server/eventSales";
-import { getActiveOrg, getActiveOrigin } from "@/lib/tenant";
+import { getActiveOrg, getActiveOrigin, getActiveProfile } from "@/lib/tenant";
 import { organizationLd, primaryLocality, resolveTenantSeo } from "@/lib/seo";
 import { formatVenueMonthDay } from "@/lib/eventTime";
 import { JsonLd } from "@/app/_components/JsonLd";
@@ -133,7 +133,8 @@ export default async function Home() {
     saleSummaryByEvent(events, now),
   ]);
 
-  const orgName = org?.name ?? "DCICA platform";
+  const orgName = org?.name ?? "Community events";
+  const profile = await getActiveProfile();
   const local = primaryLocality(events.map((e) => e.location));
 
   return (
@@ -144,6 +145,7 @@ export default async function Home() {
       <JsonLd
         data={organizationLd({
           origin: await getActiveOrigin(),
+          contactEmail: profile.contactEmail,
           orgName,
           seo: resolveTenantSeo(org?.settings),
           locality: local,
@@ -188,7 +190,7 @@ export default async function Home() {
         // The empty state, and nothing more. The front door does not get a
         // past-events section: a landing page leading with events that are over
         // is worse than one leading with nothing.
-        <EmptyEventsState />
+        <EmptyEventsState orgName={orgName} contactEmail={profile.contactEmail} />
       )}
     </main>
   );

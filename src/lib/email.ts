@@ -101,7 +101,16 @@ export function emailConfig(): EmailConfig {
  * still the plain-text part inside that MIME; it is also what the no-provider
  * console path logs, so that path never dumps base64.
  */
+/** Who a message is from, and where a reply goes. Per organisation, never a global. */
+export type Sender = { from: string; replyTo?: string | null };
+
+/** The deployment's own identity (EMAIL_FROM): the fallback when an organisation has no sender. */
+export function defaultSender(): Sender {
+  return { from: env.EMAIL_FROM };
+}
+
 async function send(
+  sender: Sender,
   to: string,
   subject: string,
   body: string,
@@ -110,7 +119,8 @@ async function send(
   if (env.EMAIL_PROVIDER === "ses" && env.AWS_REGION) {
     await getSes().send(
       new SendEmailCommand({
-        FromEmailAddress: env.EMAIL_FROM,
+        FromEmailAddress: sender.from,
+        ReplyToAddresses: sender.replyTo ? [sender.replyTo] : undefined,
         Destination: { ToAddresses: [to] },
         Content: raw
           ? { Raw: { Data: raw } }
@@ -141,7 +151,7 @@ async function send(
 
   log.info("email logged to console (no provider configured)", {
     to,
-    from: env.EMAIL_FROM,
+    from: sender.from,
     subject,
     body,
   });
@@ -156,6 +166,7 @@ async function send(
  * confirmation is idempotent) the retry would skip the email entirely.
  */
 async function dispatch(
+  sender: Sender,
   to: string,
   subject: string,
   body: string,
@@ -193,7 +204,7 @@ async function dispatch(
         });
       }
     }
-    await send(to, subject, body, raw);
+    await send(sender, to, subject, body, raw);
   } catch (err) {
     log.error("email send failed", {
       provider: env.EMAIL_PROVIDER,
@@ -210,15 +221,18 @@ async function dispatch(
  */
 export async function sendTestEmail(
   to: string,
+  orgName: string,
+  sender: Sender = defaultSender(),
 ): Promise<{ delivered: boolean }> {
   return send(
+    sender,
     to,
-    "Test email — DCICA",
+    `Test email — ${orgName}`,
     [
-      "This is a test email from the DCICA admin console.",
+      `This is a test email from the ${orgName} admin console.`,
       "If you received this, your email provider is configured correctly.",
       `Provider: ${env.EMAIL_PROVIDER}`,
-      `From: ${env.EMAIL_FROM}`,
+      `From: ${sender.from}`,
     ].join("\n"),
   );
 }
@@ -259,9 +273,12 @@ export async function getSesAccountStatus(): Promise<SesAccountStatus | null> {
  *
  * The other senders in this file are deliberately still plain text.
  */
-export async function sendConfirmationEmail(msg: ConfirmationEmail): Promise<void> {
-  await dispatch(msg.to, confirmationSubject(msg), confirmationText(msg), () =>
-    buildConfirmationMime(msg, env.EMAIL_FROM),
+export async function sendConfirmationEmail(
+  msg: ConfirmationEmail,
+  sender: Sender = defaultSender(),
+): Promise<void> {
+  await dispatch(sender, msg.to, confirmationSubject(msg), confirmationText(msg), () =>
+    buildConfirmationMime(msg, sender.from, sender.replyTo),
   );
 }
 
@@ -279,6 +296,7 @@ export type VolunteerSignupEmail = {
 /** Immediate acknowledgement when a volunteer signs up (Volunteer-Module §2). */
 export async function sendVolunteerSignupEmail(
   msg: VolunteerSignupEmail,
+  sender: Sender = defaultSender(),
 ): Promise<void> {
   const body = [
     `Hi ${msg.volunteerName},`,
@@ -287,7 +305,7 @@ export async function sendVolunteerSignupEmail(
     `Your confirmation + day-of QR sign-in code: ${msg.confirmUrl}`,
     `We'll send a reminder with arrival details before the event.`,
   ].join("\n");
-  await dispatch(msg.to, `You're signed up for ${msg.eventName}`, body);
+  await dispatch(sender, msg.to, `You're signed up for ${msg.eventName}`, body);
 }
 
 export type VolunteerReminderEmail = {
@@ -303,6 +321,7 @@ export type VolunteerReminderEmail = {
 /** 24–48h reminder with QR + instructions (Volunteer-Module §4). */
 export async function sendVolunteerReminderEmail(
   msg: VolunteerReminderEmail,
+  sender: Sender = defaultSender(),
 ): Promise<void> {
   const body = [
     `Hi ${msg.volunteerName},`,
@@ -314,7 +333,7 @@ export async function sendVolunteerReminderEmail(
   ]
     .filter(Boolean)
     .join("\n");
-  await dispatch(msg.to, `Reminder: ${msg.eventName} is almost here`, body);
+  await dispatch(sender, msg.to, `Reminder: ${msg.eventName} is almost here`, body);
 }
 
 export type VolunteerThankYouEmail = {
@@ -328,6 +347,7 @@ export type VolunteerThankYouEmail = {
 /** Post-event thank-you carrying the certificate link (Volunteer-Module §7). */
 export async function sendVolunteerThankYouEmail(
   msg: VolunteerThankYouEmail,
+  sender: Sender = defaultSender(),
 ): Promise<void> {
   const hours =
     msg.hoursServed != null ? `${msg.hoursServed.toFixed(1)} hours` : "your time";
@@ -338,5 +358,5 @@ export async function sendVolunteerThankYouEmail(
     `Download your certificate of appreciation: ${msg.certUrl}`,
     `Hope to see you at the next one!`,
   ].join("\n");
-  await dispatch(msg.to, `Thank you for volunteering at ${msg.eventName}`, body);
+  await dispatch(sender, msg.to, `Thank you for volunteering at ${msg.eventName}`, body);
 }

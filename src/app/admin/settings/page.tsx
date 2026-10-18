@@ -1,15 +1,16 @@
 import { requireCoordinator } from "@/server/admin";
-import { getActiveOrg, getActiveBranding } from "@/lib/tenant";
+import { getActiveOrg, getActiveBranding, getActiveProfile } from "@/lib/tenant";
 import { DEFAULT_THEME } from "@/lib/branding";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { SettingsForm } from "./SettingsForm";
+import { ProfileForm } from "./ProfileForm";
 
 export const dynamic = "force-dynamic";
 
 /** Branding & org settings — coordinator-only (config-over-code). */
 export default async function SettingsPage() {
   await requireCoordinator();
-  const [org, branding] = await Promise.all([getActiveOrg(), getActiveBranding()]);
+  const [org, branding, profile] = await Promise.all([getActiveOrg(), getActiveBranding(), getActiveProfile()]);
 
   return (
     <div>
@@ -22,6 +23,10 @@ export default async function SettingsPage() {
           {
             label: "Organization name",
             body: "Shown to patients on the registration portal and confirmation pages.",
+          },
+          {
+            label: "Contact, mail and receipts",
+            body: "The contact address appears in the footer and as the reply-to on every email. The sender address is the From line and must be a verified identity with the email provider. Legal name, EIN, tax status and the receipt sentence are printed on receipts and certificates exactly as entered — the platform never asserts a tax status for you.",
           },
           {
             label: "Brand color",
@@ -39,6 +44,7 @@ export default async function SettingsPage() {
         initialName={org?.name ?? ""}
         initialBrand={branding.theme?.brand ?? DEFAULT_THEME.brand}
       />
+      <ProfileForm initial={profile} />
     </div>
   );
 }

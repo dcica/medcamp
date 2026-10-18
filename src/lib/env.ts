@@ -137,7 +137,7 @@ const schema = z.object({
 
   // Email
   EMAIL_PROVIDER: z.enum(["resend", "sendgrid", "smtp", "ses"]).default("resend"),
-  EMAIL_FROM: z.string().default("DCICA <no-reply@example.org>"),
+  EMAIL_FROM: z.string().default("Events <no-reply@example.org>"),
   RESEND_API_KEY: z.string().optional(),
   SENDGRID_API_KEY: z.string().optional(),
   // AWS SES (EMAIL_PROVIDER=ses). Region is required; credentials resolve via

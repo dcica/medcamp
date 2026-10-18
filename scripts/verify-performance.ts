@@ -321,6 +321,7 @@ async function main() {
     lineItems: [{ description: "Competition Entry", quantity: 1, amountCents: 3000 }],
     merch: [], totalPaidCents: 3000, venue: null,
     startsAt: new Date(), endsAt: new Date(), allowsRefunds: false,
+    theme: { brand: "#0c3543", accent: "#f9a200", accentFg: "#16201f" },
   };
   // The registration wording must be untouched by the entry branch.
   check("registration subject unchanged",

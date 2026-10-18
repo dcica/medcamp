@@ -12,6 +12,8 @@ import { newCampId } from "@/lib/campId";
 import { log } from "@/lib/logger";
 import { eventSlug } from "@/lib/seo";
 import { parseGaCookie, sendPurchaseEvent } from "@/lib/ga";
+import { resolveOrgProfile, senderFor } from "@/lib/orgSettings";
+import { emailThemeOf } from "@/lib/branding";
 
 /**
  * The single PaymentService (locked decision #6). Every billable thing is a
@@ -880,6 +882,7 @@ export async function confirmOrderPaid(
         },
       });
       const base = orgBaseUrl(order.org);
+      const profile = resolveOrgProfile(order.org.settings);
       await sendConfirmationEmail({
         to: order.registrantEmail,
         registrantName: order.registrantName,
@@ -919,7 +922,8 @@ export async function confirmOrderPaid(
         startsAt: order.event.startsAt,
         endsAt: order.event.endsAt,
         allowsRefunds: order.event.allowsRefunds,
-      });
+        theme: emailThemeOf(order.org.settings),
+      }, { from: senderFor(profile, env.EMAIL_FROM), replyTo: profile.contactEmail });
 
       // ── GA4 `purchase`, same guard, same side of the transaction ──
       //

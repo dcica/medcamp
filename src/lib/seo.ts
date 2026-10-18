@@ -35,7 +35,6 @@
 import type { Metadata } from "next";
 import { z } from "zod";
 import { env } from "@/lib/env";
-import { CONTACT_EMAIL } from "@/lib/contact";
 
 // ── Canonical origin ────────────────────────────────────────────────────────
 
@@ -358,6 +357,8 @@ export function jsonLdScript(data: unknown): string {
 type OrganizationLdInput = {
   /** The organisation's own origin — `getActiveOrigin()` / `orgBaseUrl(org)`. */
   origin: string;
+  /** From the organisation's profile; omitted from the markup when unset. */
+  contactEmail: string | null;
   orgName: string;
   seo: TenantSeo;
   locality: { locality: string; region: string } | null;
@@ -378,7 +379,7 @@ type OrganizationLdInput = {
  * kind of markup worth shipping.
  */
 export function organizationLd(input: OrganizationLdInput) {
-  const { origin, orgName, seo, locality, logoUrl } = input;
+  const { origin, contactEmail, orgName, seo, locality, logoUrl } = input;
   const address: Record<string, string> = { "@type": "PostalAddress" };
   if (seo.streetAddress) address.streetAddress = seo.streetAddress;
   const town = seo.locality ?? locality?.locality;
@@ -399,7 +400,7 @@ export function organizationLd(input: OrganizationLdInput) {
     url: origin,
     logo: logoUrl ?? undefined,
     description: seo.description,
-    email: CONTACT_EMAIL,
+    email: contactEmail ?? undefined,
     telephone: seo.telephone,
     // Only emit an address once it says something beyond the country.
     address: Object.keys(address).length > 2 ? address : undefined,

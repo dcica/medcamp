@@ -310,6 +310,8 @@ async function watchingEmailLog<T>(
 async function main() {
   const { env } = await import("../src/lib/env");
   const { orgBaseUrl } = await import("../src/lib/orgUrl");
+  const { emailThemeOf } = await import("../src/lib/branding");
+  const { resolveOrgProfile, senderFor } = await import("../src/lib/orgSettings");
   const { getSesAccountStatus, sendTestEmail, sendConfirmationEmail } =
     await import("../src/lib/email");
   const { log } = await import("../src/lib/logger");
@@ -374,7 +376,8 @@ async function main() {
       );
     } else {
       try {
-        const { delivered } = await sendTestEmail(TEST_EMAIL);
+        // A provider proof, before any event is loaded: the deployment's own sender.
+        const { delivered } = await sendTestEmail(TEST_EMAIL, "the platform");
         if (delivered) {
           console.log(`  proof send      ok — delivered to ${TEST_EMAIL}`);
         } else {
@@ -630,6 +633,10 @@ async function main() {
           startsAt: order.event.startsAt,
           endsAt: order.event.endsAt,
           allowsRefunds: order.event.allowsRefunds,
+          theme: emailThemeOf(event.org.settings),
+        }, {
+          from: senderFor(resolveOrgProfile(event.org.settings), env.EMAIL_FROM),
+          replyTo: resolveOrgProfile(event.org.settings).contactEmail,
         }),
       );
       if (problems.length > 0) {
