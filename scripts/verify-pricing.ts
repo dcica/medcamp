@@ -121,6 +121,25 @@ async function main(): Promise<void> {
     },
   });
 
+  // Two MERCH items with a quantity break, for section 7b. Two of them so
+  // the "per line, never cart-wide" row has a second line to be NOT counted.
+  const bulk = await db.serviceType.upsert({
+    where: { orgId_key: { orgId: org.id, key: "verify-bulk" } },
+    update: { kind: "MERCH", priceCents: 1000 },
+    create: { orgId: org.id, key: "verify-bulk", name: "Unlimited Rides", priceCents: 1000, kind: "MERCH" },
+  });
+  const bulk2 = await db.serviceType.upsert({
+    where: { orgId_key: { orgId: org.id, key: "verify-bulk2" } },
+    update: { kind: "MERCH", priceCents: 500 },
+    create: { orgId: org.id, key: "verify-bulk2", name: "Rock Wall", priceCents: 500, kind: "MERCH" },
+  });
+  await db.serviceCap.createMany({
+    data: [
+      { eventId: event.id, serviceTypeId: bulk.id, priceCents: 1000, bulkMinQty: 4, bulkPriceCents: 800 },
+      { eventId: event.id, serviceTypeId: bulk2.id, priceCents: 500, bulkMinQty: 4, bulkPriceCents: 400 },
+    ],
+  });
+
   const plan = await db.membershipPlan.upsert({
     where: { orgId_key: { orgId: org.id, key: "verify-family" } },
     update: { partySize: 4, priceCents: 5000, termYears: 1 },
@@ -451,6 +470,45 @@ async function main(): Promise<void> {
   });
   check("the frozen line item itself carries the early-bird price", earlyBirdLine.amountCents, 1000);
 
+  // ── 7b. The quantity break end to end, through createRegistration ──
+  // The AUTHORITATIVE path, not just the resolver: four of the same MERCH
+  // item on one line are charged at the break, the frozen line carries the
+  // break price, and the description says why. Per LINE: three of one item
+  // plus one of another is four tickets and no break at all.
+  console.log("\n7b. Quantity break charged end to end through createRegistration");
+  const fourBulk = await createRegistration({
+    eventId: event.id,
+    registrant: { ...registrant, email: "verify-bulk@example.test" },
+    marketingConsent: false,
+    quantities: [{ serviceKey: "verify-bulk", quantity: 4 }],
+  });
+  check("four of the same item: the order total is 4 × the break price", fourBulk.totalCents, 3200);
+  check("...and the Stripe-side total agrees", await checkoutTotal(fourBulk.orderId), 3200);
+  const bulkLine = await db.lineItem.findFirstOrThrow({
+    where: { orderId: fourBulk.orderId, serviceTypeId: bulk.id },
+  });
+  check("the frozen line carries the break price per unit", bulkLine.amountCents, 800);
+  check("...for all four units on one line", bulkLine.quantity, 4);
+  check("...and the description says why", bulkLine.description.includes("(4+ price)"), true);
+  const threeBulk = await createRegistration({
+    eventId: event.id,
+    registrant: { ...registrant, email: "verify-bulk@example.test" },
+    marketingConsent: false,
+    quantities: [{ serviceKey: "verify-bulk", quantity: 3 }],
+  });
+  check("three of the same item: the regular price", threeBulk.totalCents, 3000);
+  const mixedBulk = await createRegistration({
+    eventId: event.id,
+    registrant: { ...registrant, email: "verify-bulk@example.test" },
+    marketingConsent: false,
+    quantities: [
+      { serviceKey: "verify-bulk", quantity: 3 },
+      { serviceKey: "verify-bulk2", quantity: 1 },
+    ],
+  });
+  check("three of one and one of another: four tickets and no break — per line, not cart-wide",
+    mixedBulk.totalCents, 3500);
+
   // ── 8. A finished event stops selling (pure predicate, no rows needed) ──
   // `isRegistrationOpen` gates BOTH the public form and createRegistration, so
   // these assertions are the online sell/no-sell rule across the four statuses
@@ -610,7 +668,7 @@ async function cleanup(orgId: string): Promise<void> {
   await db.serviceType.deleteMany({
     where: {
       orgId,
-      key: { in: ["verify-entry", "verify-sticks", "verify-fee", "verify-earlybird"] },
+      key: { in: ["verify-entry", "verify-sticks", "verify-fee", "verify-earlybird", "verify-bulk", "verify-bulk2"] },
     },
   });
 }

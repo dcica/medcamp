@@ -455,16 +455,22 @@ async function createQuantityOrder(
       : 0;
     compRemaining -= compQty * heads;
     const paidQty = q.quantity - compQty;
-    const resolved = resolvePrice(offering, channel, now);
+    // Priced for the units TAKEN on this line (q.quantity), so a quantity
+    // break -- "4+ of the same ticket" -- counts what the buyer picked. The
+    // comp only ever touches ADMISSION, which is also the only kind a comp
+    // could split; a carnival wristband line is one paid line, whole.
+    const resolved = resolvePrice(offering, channel, now, q.quantity);
 
     const lines: {
       offering: Offering;
       amountCents: number;
       quantity: number;
       comped: boolean;
+      /** Set when the unit price is a quantity break, for the description. */
+      bulkMinQty: number | null;
     }[] = [];
     if (compQty > 0) {
-      lines.push({ offering, amountCents: 0, quantity: compQty, comped: true });
+      lines.push({ offering, amountCents: 0, quantity: compQty, comped: true, bulkMinQty: null });
     }
     if (paidQty > 0) {
       lines.push({
@@ -472,6 +478,7 @@ async function createQuantityOrder(
         amountCents: resolved.amountCents,
         quantity: paidQty,
         comped: false,
+        bulkMinQty: resolved.bulkApplied ? resolved.bulk!.minQty : null,
       });
     }
     return lines;
@@ -516,8 +523,11 @@ async function createQuantityOrder(
     orderId: order.id,
     // Order-level (not per-person): the charge for N units of this service.
     serviceTypeId: p.offering.serviceType.id,
+    // The suffix reaches Stripe's hosted page as the product name, so the
+    // buyer sees "Unlimited Rides (4+ price) × 4 @ $8.00" there too.
     description:
-      p.offering.serviceType.name + (p.comped ? " (member comp)" : ""),
+      p.offering.serviceType.name +
+      (p.comped ? " (member comp)" : p.bulkMinQty !== null ? ` (${p.bulkMinQty}+ price)` : ""),
     amountCents: p.amountCents,
     quantity: p.quantity,
     status: "PENDING_PAYMENT" as const,

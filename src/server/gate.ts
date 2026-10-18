@@ -4,7 +4,7 @@ import { getActiveOrg } from "@/lib/tenant";
 import { normalizeCampId } from "@/lib/campId";
 import { planTicketLookup, tokenPrefixFor, MIN_TOKEN_PREFIX } from "@/lib/ticketCode";
 import { confirmOrderPaid } from "@/server/payments";
-import { resolvePrice } from "@/lib/pricing";
+import { resolvePrice, type BulkRule } from "@/lib/pricing";
 import {
   normalizeGateBasket,
   ticketCountFor,
@@ -629,8 +629,10 @@ export async function sellAtGate(
   // Walk-ups pay the door price; a pre-bought will-call order settled here keeps
   // its original online price, because that path confirms existing lines and
   // never routes through this function.
-  const doorCents = (o: (typeof offerings)[number]) =>
-    resolvePrice(o, "door", now).amountCents;
+  // Priced per LINE, with the line's quantity, so a quantity break ("4+ of
+  // the same ticket") applies at the booth exactly as it does online.
+  const doorPrice = (o: (typeof offerings)[number], quantity: number) =>
+    resolvePrice(o, "door", now, quantity);
 
   // ONE CODE PER PERSON ADMITTED, not one per sale. This is the half that was
   // not a UI limitation: `attendees: { create: [{...}] }` was a hard-coded
@@ -682,13 +684,17 @@ export async function sellAtGate(
   await db.lineItem.createMany({
     data: basket.map((b) => {
       const offering = byId.get(b.serviceTypeId)!;
+      const priced = doorPrice(offering, b.quantity);
       return {
         orgId: org.id,
         orderId: order.id,
         attendeeId: lineAttendeeId,
         serviceTypeId: offering.serviceTypeId,
-        description: `${offering.serviceType.name} — ${name}`,
-        amountCents: doorCents(offering),
+        description:
+          offering.serviceType.name +
+          (priced.bulkApplied ? ` (${priced.bulk!.minQty}+ price)` : "") +
+          ` — ${name}`,
+        amountCents: priced.amountCents,
         quantity: b.quantity,
         status: "PENDING_PAYMENT" as const,
       };
@@ -697,7 +703,7 @@ export async function sellAtGate(
 
   const totalCents = basket.reduce((s, b) => {
     const offering = byId.get(b.serviceTypeId);
-    return s + (offering ? doorCents(offering) * b.quantity : 0);
+    return s + (offering ? doorPrice(offering, b.quantity).amountCents * b.quantity : 0);
   }, 0);
   return { orderId: order.id, totalCents, ticketCount };
 }
@@ -757,9 +763,11 @@ export async function getGateCatalog(eventId: string): Promise<{
     remaining: number | null;
     /** People ONE unit admits. A "family of 4" chip is 4, not 1. */
     admitsCount: number;
+    /** The quantity break, so the basket total on the screen mirrors the server. */
+    bulk: BulkRule | null;
   }[];
-  merch: { id: string; name: string; priceCents: number; colorHex: string; remaining: number | null }[];
-  fees: { id: string; name: string; priceCents: number; remaining: number | null }[];
+  merch: { id: string; name: string; priceCents: number; colorHex: string; remaining: number | null; bulk: BulkRule | null }[];
+  fees: { id: string; name: string; priceCents: number; remaining: number | null; bulk: BulkRule | null }[];
 }> {
   const org = await getActiveOrg();
   if (!org) return { admission: [], merch: [], fees: [] };
@@ -773,6 +781,10 @@ export async function getGateCatalog(eventId: string): Promise<{
   const now = new Date();
   const doorCents = (o: (typeof offerings)[number]) =>
     resolvePrice(o, "door", now).amountCents;
+  // Shipped with the item, never recomputed on the client: the screen owns
+  // no price rule (§9), it only applies the one the server sent.
+  const doorBulk = (o: (typeof offerings)[number]) =>
+    resolvePrice(o, "door", now).bulk;
   const left = (o: (typeof offerings)[number]) =>
     o.capacity === null ? null : Math.max(0, o.capacity - o.sold);
   return {
@@ -802,6 +814,7 @@ export async function getGateCatalog(eventId: string): Promise<{
         priceCents: doorCents(o),
         remaining: left(o),
         admitsCount: Math.max(1, o.serviceType.admitsCount),
+        bulk: doorBulk(o),
       })),
     merch: offerings
       .filter((o) => o.serviceType.kind === "MERCH")
@@ -811,11 +824,12 @@ export async function getGateCatalog(eventId: string): Promise<{
         priceCents: doorCents(o),
         colorHex: o.serviceType.colorHex,
         remaining: left(o),
+        bulk: doorBulk(o),
       })),
     // A competition entry sold at the desk. Buying one admits nobody and hands
     // over nothing.
     fees: offerings
       .filter((o) => o.serviceType.kind === "FEE" && !o.serviceType.hasLab)
-      .map((o) => ({ id: o.serviceType.id, name: o.serviceType.name, priceCents: doorCents(o), remaining: left(o) })),
+      .map((o) => ({ id: o.serviceType.id, name: o.serviceType.name, priceCents: doorCents(o), remaining: left(o), bulk: doorBulk(o) })),
   };
 }

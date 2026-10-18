@@ -373,7 +373,9 @@ async function main(): Promise<void> {
     data: [
       // Door price differs from the online price — the gate charges the door one.
       { eventId: event.id, serviceTypeId: admission.id, priceCents: 2500, onsitePriceCents: 3000, capacity: 200 },
-      { eventId: event.id, serviceTypeId: merch.id, priceCents: 1500, capacity: 200 },
+      // A quantity break on the merch line: 4+ at $12 instead of $15. §8c
+      // sells two, so nothing before §9b is priced differently by it.
+      { eventId: event.id, serviceTypeId: merch.id, priceCents: 1500, capacity: 200, bulkMinQty: 4, bulkPriceCents: 1200 },
       { eventId: event.id, serviceTypeId: fee.id, priceCents: 3000, capacity: 40 },
     ],
   });
@@ -974,6 +976,29 @@ async function main(): Promise<void> {
     () => gate.sellAtGate(event.id, [{ serviceTypeId: other.id, quantity: 1 }], { buyerName: "Chancer" }), "not offered at this event");
   await rejectsWith("an empty basket is refused",
     () => gate.sellAtGate(event.id, [], { buyerName: "Nobody" }), "Pick at least one item");
+
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§9b the quantity break at the door, and the menu that carries it");
+  // Diwali's carnival: four wristbands at the booth cost 4 × the break price,
+  // the frozen door line says why, and the menu ships the rule so the basket
+  // total on the cash button is the number the server records.
+  const bulkSale = await gate.sellAtGate(event.id,
+    [{ serviceTypeId: merch.id, quantity: 4 }], { buyerName: "Bulk Buyer" });
+  eq("four of the same item at the door: 4 × the break price", bulkSale.totalCents, 4800);
+  const bulkLine = await db.lineItem.findFirstOrThrow({ where: { orderId: bulkSale.orderId } });
+  eq("the frozen door line carries the break price per unit", bulkLine.amountCents, 1200);
+  check("...and says why", bulkLine.description.includes("(4+ price)"), bulkLine.description);
+  const threeSale = await gate.sellAtGate(event.id,
+    [{ serviceTypeId: merch.id, quantity: 3 }], { buyerName: "Three Buyer" });
+  eq("three at the door: the regular door price", threeSale.totalCents, 4500);
+  const bulkMenu = await gate.getGateCatalog(event.id);
+  eq("the menu carries the break so the basket total can mirror it",
+    bulkMenu.merch.find((m) => m.id === merch.id)?.bulk, { minQty: 4, unitCents: 1200 });
+  eq("...and null where there is none",
+    bulkMenu.admission.find((a) => a.id === admission.id)?.bulk, null);
+  const gmSrc = readFileSync(join(process.cwd(), "src/app/scan/GateMode.tsx"), "utf8");
+  check("the basket total mirrors the shared line rule rather than restating it",
+    /function basketTotal[\s\S]{0,400}unitCentsFor\(/.test(gmSrc));
 
   await cleanup(org.id);
 }
