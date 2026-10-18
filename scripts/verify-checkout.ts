@@ -870,6 +870,52 @@ async function main() {
   check("the handler takes account.updated", /"account\.updated"/.test(hookSrc));
   check("the handler takes charge.refunded", /"charge\.refunded"/.test(hookSrc));
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // §13 Onboarding a connected account: Standard account + Account Links. The
+  // pieces that are silent when wrong are pinned — the id stored BEFORE the
+  // link is minted (an abandoned link can then resume), one snapshot mapping
+  // shared by the return route and the webhook, and every action behind the
+  // coordinator guard.
+  console.log("\n§13 onboarding a connected account");
+  const { accountSnapshot, connectReturnUrls } = await import("../src/server/stripeConnect");
+  check("the snapshot maps the four facts a session create and the UI need",
+    JSON.stringify(accountSnapshot({
+      charges_enabled: true, payouts_enabled: false, details_submitted: true,
+      capabilities: { us_bank_account_ach_payments: "active" },
+    })) === JSON.stringify({ stripeChargesEnabled: true, stripePayoutsEnabled: false, stripeDetailsSubmitted: true, stripeAchEnabled: true }));
+  check("a pending ACH capability is not enabled",
+    accountSnapshot({ charges_enabled: true, payouts_enabled: true, details_submitted: true, capabilities: { us_bank_account_ach_payments: "pending" } }).stripeAchEnabled === false);
+  check("missing fields read as not enabled, never as enabled",
+    JSON.stringify(accountSnapshot({})) === JSON.stringify({ stripeChargesEnabled: false, stripePayoutsEnabled: false, stripeDetailsSubmitted: false, stripeAchEnabled: false }));
+  const urls = connectReturnUrls({ slug: "infinite-minds" }, "https://platform.test");
+  check("the return and refresh urls land on the platform host under the org's /o/ path",
+    urls.return_url === "https://platform.test/o/infinite-minds/admin/settings/stripe/return" &&
+      urls.refresh_url === "https://platform.test/o/infinite-minds/admin/settings/stripe/refresh");
+
+  const connectActions = readFileSync("src/app/admin/settings/stripe/actions.ts", "utf8");
+  check("the connect action creates a STANDARD account", /accounts\.create\(\{[\s\S]*?type: "standard"/.test(connectActions));
+  const storeAt = connectActions.indexOf("stripeAccountId: account.id");
+  const linkAt = connectActions.indexOf("accountLinks.create(");
+  check("…and stores the account id BEFORE minting the onboarding link", storeAt > 0 && linkAt > storeAt);
+  for (const m of connectActions.matchAll(/export async function (\w+)\(/g)) {
+    const from = m.index ?? 0;
+    const to = connectActions.indexOf("\nexport ", from + 1);
+    const body = connectActions.slice(from, to === -1 ? undefined : to);
+    check(`${m[1]}() is wrapped in requireCoordinator`, /requireCoordinator\(/.test(body));
+  }
+  const returnRoute = readFileSync("src/app/admin/settings/stripe/return/route.ts", "utf8");
+  check("the return route re-reads the account and stores the shared snapshot",
+    /accounts\.retrieve\(/.test(returnRoute) && /accountSnapshot\(/.test(returnRoute));
+  check("the refresh route mints a fresh link (links are single-use)",
+    /accountLinks\.create\(/.test(readFileSync("src/app/admin/settings/stripe/refresh/route.ts", "utf8")));
+  check("the webhook's account.updated uses the same snapshot mapping", /accountSnapshot\(/.test(hookSrc));
+  const card = readFileSync("src/app/admin/settings/StripeCard.tsx", "utf8");
+  check("the settings card shows the three states",
+    /Connect Stripe/.test(card) && /Continue onboarding/.test(card) && /Connected/.test(card) &&
+      /<StripeCard/.test(readFileSync("src/app/admin/settings/page.tsx", "utf8")));
+  check("the dead OAuth client id is gone from the env template",
+    !/STRIPE_CONNECT_CLIENT_ID/.test(readFileSync(".env.example", "utf8")));
+
   await cleanup(org.id);
 }
 

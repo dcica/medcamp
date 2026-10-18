@@ -9,6 +9,7 @@ import {
   MissingCapError,
   OverCapacityError,
 } from "@/server/payments";
+import { accountSnapshot } from "@/server/stripeConnect";
 
 /**
  * The Stripe webhook — the authoritative confirmation path (locked decision
@@ -46,12 +47,8 @@ export async function handleStripeEvent(event: Stripe.Event, scope: WebhookScope
     if (!org) return json({ received: true, note: "account not in this deployment" });
     await db.organization.update({
       where: { id: org.id },
-      data: {
-        stripeChargesEnabled: Boolean(acct.charges_enabled),
-        stripePayoutsEnabled: Boolean(acct.payouts_enabled),
-        stripeDetailsSubmitted: Boolean(acct.details_submitted),
-        stripeAchEnabled: acct.capabilities?.us_bank_account_ach_payments === "active",
-      },
+      // One mapping, shared with the onboarding return route.
+      data: accountSnapshot(acct),
     });
     return json({ received: true });
   }

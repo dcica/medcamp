@@ -6,6 +6,7 @@ import { SettingsForm } from "./SettingsForm";
 import { ProfileForm } from "./ProfileForm";
 import { SiteForm } from "./SiteForm";
 import { LegalForm } from "./LegalForm";
+import { StripeCard } from "./StripeCard";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,10 @@ export default async function SettingsPage() {
           {
             label: "Organization name",
             body: "Shown to patients on the registration portal and confirmation pages.",
+          },
+          {
+            label: "Payments",
+            body: "Your organisation's own Stripe account, connected through Stripe's guided setup. Money settles there directly; the platform's service fee is split off by Stripe at charge time and we never hold your funds. Online sales are refused until Stripe has enabled charges on the account.",
           },
           {
             label: "Contact, mail and receipts",
@@ -59,6 +64,12 @@ export default async function SettingsPage() {
       <SettingsForm
         initialName={org?.name ?? ""}
         initialBrand={branding.theme?.brand ?? DEFAULT_THEME.brand}
+      />
+      <StripeCard
+        state={!org?.stripeAccountId ? "none" : org.stripeChargesEnabled ? "connected" : "incomplete"}
+        accountId={org?.stripeAccountId ?? null}
+        payoutsEnabled={org?.stripePayoutsEnabled ?? false}
+        achEnabled={org?.stripeAchEnabled ?? false}
       />
       <ProfileForm initial={profile} />
       <SiteForm initial={site} />
