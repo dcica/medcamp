@@ -5,99 +5,60 @@ import { config } from "dotenv";
 config({ path: process.env.ENV_FILE ?? ".env", override: true });
 
 import { PrismaClient } from "@prisma/client";
+import { ORG_SEEDS } from "./orgs";
+import { seedOrg } from "./orgs/seedOrg";
+import { SEED_ENVS, type SeedEnv } from "./orgs/types";
 
 const db = new PrismaClient();
 
 /**
- * Seeds the DCICA reference tenant: the organisation row and its service menu.
+ * Provisions every TENANT: the organisation row, its service catalogue, its
+ * membership plans, its hostnames for this environment and its first-admin
+ * invites. One deployment serves every organisation, so one database holds
+ * every module under prisma/orgs — a new tenant is a new module there.
+ *
  * Nothing time-bound — no events, and therefore no capacity caps, stations or
- * volunteer roles, all of which hang off an event. Everything here is
- * config-over-code — a second tenant would seed its own rows, not fork code.
+ * volunteer roles, all of which hang off an event. Events come from
+ * seed-events.ts (the real published lineup) and seed-test.ts (throwaway QA
+ * fixtures), so a fresh production database comes up with its tenants and no
+ * invented calendar.
+ *
+ *   SEED_ENV   development | test | production — which hostnames to write.
+ *              Defaults to development (no hostnames; localhost resolves
+ *              DEFAULT_ORG_SLUG). CI sets it per job.
+ *   SEED_ORGS  comma-separated slugs to narrow to; every module by default.
+ *
+ * Each module runs on its own: a red one is reported and fails the run at the
+ * end, but the modules before it stay committed. dcica is first.
  */
 async function main() {
-  const org = await db.organization.upsert({
-    where: { slug: "dcica" },
-    update: {},
-    create: {
-      slug: "dcica",
-      name: "DCICA",
-      // The palette the app actually renders (globals.css `:root`), under the
-      // namespaced `theme` key the layout reads. The old value here was a single
-      // top-level `brand: "#0d6e6e"` teal that disagreed with the navy on every
-      // screen; nothing read it, so nobody noticed for as long as it existed.
-      // Written in full because a theme is validated as three colour PAIRS — a
-      // half-theme is refused, not merged. Locale is unrelated config, kept.
-      settings: {
-        theme: {
-          brand: "#0c3543", // deep navy — DCICA wordmark
-          brandFg: "#ffffff",
-          accent: "#f9a200", // saffron — dcica.org nav bar
-          accentFg: "#16201f", // dark: saffron cannot carry white text at 4.5:1
-          accent2: "#138808", // India-flag green — dcica.org footer band
-          accent2Fg: "#ffffff",
-          wordmark: "DCICA",
-        },
-        locale: "en",
-      },
-    },
-  });
-
-  // ── Service menu ──
-  const services = [
-    { key: "vision", name: "Vision Screening", priceCents: 1500, colorHex: "#2563eb", hasLab: false, kind: "ADMISSION" as const },
-    { key: "dental", name: "Dental Check", priceCents: 2000, colorHex: "#16a34a", hasLab: false, kind: "ADMISSION" as const },
-    { key: "bloodwork", name: "Bloodwork", priceCents: 3500, colorHex: "#dc2626", hasLab: true, kind: "ADMISSION" as const },
-    { key: "general", name: "General Consult", priceCents: 0, colorHex: "#7c3aed", hasLab: false, kind: "ADMISSION" as const },
-  ];
-
-  for (const s of services) {
-    await db.serviceType.upsert({
-      where: { orgId_key: { orgId: org.id, key: s.key } },
-      update: { name: s.name, priceCents: s.priceCents, colorHex: s.colorHex, hasLab: s.hasLab },
-      create: { orgId: org.id, ...s },
-    });
+  const env = process.env.SEED_ENV ?? "development";
+  if (!SEED_ENVS.includes(env as SeedEnv)) {
+    throw new Error(`SEED_ENV must be one of ${SEED_ENVS.join(", ")}; got ${JSON.stringify(env)}`);
   }
-
-  // ── Family membership plans (catalogue) ──
-  // Tenant configuration, not fixtures: these are the products the org sells,
-  // exactly like the service menu above. They lived in seed-test.ts, which
-  // never runs in production — so a prod database had no plans at all, and an
-  // event with honorsMembership=true had nothing to comp against and no upsell
-  // to show at registration. Member INSTANCES stay in seed-test; only the
-  // catalogue belongs here.
-  //
-  // The odd prices are deliberate (51 / 101 / 251, not 50 / 100 / 250) — the
-  // card fee is passed to the buyer. partySize 5 is what the comp admits free
-  // at an honoring event, and compUnits reads it exactly, not approximately.
-  const membershipPlans = [
-    { key: "family-1yr", name: "Family Membership — 1 Year", termYears: 1, priceCents: 5100, partySize: 5 },
-    { key: "family-2yr", name: "Family Membership — 2 Year", termYears: 2, priceCents: 10100, partySize: 5 },
-    { key: "family-5yr", name: "Family Membership — 5 Year", termYears: 5, priceCents: 25100, partySize: 5 },
-  ];
-  for (const p of membershipPlans) {
-    await db.membershipPlan.upsert({
-      where: { orgId_key: { orgId: org.id, key: p.key } },
-      update: { name: p.name, termYears: p.termYears, priceCents: p.priceCents, partySize: p.partySize },
-      create: { orgId: org.id, ...p },
-    });
+  const only = process.env.SEED_ORGS?.split(",").map((s) => s.trim()).filter(Boolean);
+  if (only) {
+    const known = new Set(ORG_SEEDS.map((o) => o.slug));
+    const unknown = only.filter((s) => !known.has(s));
+    if (unknown.length) throw new Error(`SEED_ORGS names no module: ${unknown.join(", ")}`);
   }
+  const modules = only ? ORG_SEEDS.filter((o) => only.includes(o.slug)) : ORG_SEEDS;
 
-  // No event is seeded here on purpose. This file provisions the TENANT —
-  // the org and its service catalogue — and nothing that is a specific thing
-  // happening on a specific day. Events come from seed-events.ts (the real
-  // published lineup) and seed-test.ts (throwaway QA fixtures), so a fresh
-  // production database comes up with a tenant and no invented calendar.
-  //
-  // This used to create a sample camp MC-2026W plus its capacity caps, Care
-  // Spine stations and volunteer roles. Because CI runs db:seed on every push,
-  // that sample kept reappearing in production as a real-looking event. When a
-  // genuine medical camp is scheduled, add it to seed-events.ts or create it in
-  // the admin UI; the per-event stations and roles are seeded from there.
-
-  console.log(
-    `Seeded org ${org.slug} (${services.length} service types, ` +
-      `${membershipPlans.length} membership plans, no events).`,
-  );
+  let failed = 0;
+  for (const seed of modules) {
+    try {
+      await seedOrg(db, seed, env as SeedEnv);
+      console.log(
+        `Seeded org ${seed.slug} for ${env} (${seed.services.length} service types, ` +
+          `${seed.membershipPlans.length} membership plans, ` +
+          `${seed.domains[env as SeedEnv].length} hostnames, no events).`,
+      );
+    } catch (err) {
+      failed += 1;
+      console.error(`Seed FAILED for org ${seed.slug}:`, err);
+    }
+  }
+  if (failed) process.exit(1);
 }
 
 main()

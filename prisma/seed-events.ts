@@ -446,15 +446,10 @@ const EVENTS: Seed[] = [
 ];
 
 async function main() {
-  const org = await db.organization.upsert({
-    where: { slug: "dcica" },
-    update: {},
-    create: {
-      slug: "dcica",
-      name: "DCICA",
-      settings: { brand: "#0d6e6e", locale: "en" },
-    },
-  });
+  // The organisation row belongs to db:seed (prisma/orgs/dcica.ts), which runs
+  // first. This file never creates it — the upsert that used to live here
+  // wrote a legacy `{ brand }` blob over whatever theme the row had.
+  const org = await db.organization.findUniqueOrThrow({ where: { slug: "dcica" } });
 
   // Counts for the end-of-run summary — an operator must be able to tell
   // whether a run changed anything without querying the database. Scoped to

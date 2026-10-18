@@ -489,11 +489,77 @@ async function section4(): Promise<void> {
   check("a session on /o/<slug>/scan is rewritten, not redirected", [sessionOrgPath.status, sessionOrgPath.rewrite?.endsWith("/scan"), sessionOrgPath.orgHeader], [200, true, "dcica"]);
 }
 
+const SLUG_C = "verify-tenant-c";
+const HOST_C = "c.verify-tenant.invalid";
+
+/**
+ * §9 — the organisation seed modules and the seeder they feed. Every tenant
+ * is a module under prisma/orgs; `seedOrg` is what db:seed runs per module,
+ * so it is exercised here on a scratch module rather than trusted.
+ */
+async function section9(): Promise<void> {
+  const { ORG_SEEDS } = await import("../prisma/orgs");
+  const { seedOrg } = await import("../prisma/orgs/seedOrg");
+  const { themeSchema } = await import("../src/lib/branding");
+  const { normalizeHost } = await import("../src/lib/tenantResolve");
+
+  console.log("\n§9 organisation seed modules");
+  check("both tenants have a seed module", ORG_SEEDS.map((o) => o.slug).sort(), ["dcica", "infinite-minds"]);
+  for (const o of ORG_SEEDS) {
+    check(`${o.slug}: the theme passes the branding validator at seed time`, themeSchema.safeParse(o.settings.theme).success, true);
+    const hosts = Object.values(o.domains).flat();
+    check(`${o.slug}: every seeded hostname is already normalised`, hosts.every((h) => normalizeHost(h) === h), true);
+  }
+  const allHosts = ORG_SEEDS.flatMap((o) => Object.values(o.domains).flat());
+  check("no hostname is claimed by two tenants", new Set(allHosts).size, allHosts.length);
+  const dcica = ORG_SEEDS.find((o) => o.slug === "dcica");
+  const im = ORG_SEEDS.find((o) => o.slug === "infinite-minds");
+  check("dcica keeps its production host", dcica?.domains.production, ["events.dcica.org"]);
+  check("dcica keeps its test host", dcica?.domains.test, ["test.dcica.org"]);
+  check("infinite-minds has no test host (its test surface is /o/<slug> on the platform host)", im?.domains.test, []);
+  check("development seeds no domain rows (localhost resolves DEFAULT_ORG_SLUG)", ORG_SEEDS.every((o) => o.domains.development.length === 0), true);
+
+  console.log("\n§9 seedOrg on a scratch module");
+  const scratch = {
+    slug: SLUG_C,
+    name: "Verify Tenant C",
+    settings: { theme: dcica!.settings.theme, locale: "en" },
+    services: [{ key: "vt-c-admit", name: "VT C Admission", priceCents: 1000, kind: "ADMISSION" as const }],
+    membershipPlans: [{ key: "vt-c-1yr", name: "VT C Membership", termYears: 1, priceCents: 5100, partySize: 2 }],
+    invites: [{ email: "chair@verify-tenant.invalid", role: "COORDINATOR" as const }],
+    domains: { production: ["prod.verify-tenant.invalid"], test: [HOST_C], development: [] as string[] },
+  };
+  await seedOrg(db, scratch, "test");
+  const c = await db.organization.findUnique({
+    where: { slug: SLUG_C },
+    include: { domains: true, serviceTypes: true, membershipPlans: true, invites: true },
+  });
+  check("seedOrg creates the organisation", c?.name, "Verify Tenant C");
+  check("seedOrg writes the domain rows for the named environment only", c?.domains.map((d) => [d.hostname, d.isPrimary]), [[HOST_C, true]]);
+  check("seedOrg seeds the service catalogue", c?.serviceTypes.map((s) => s.key), ["vt-c-admit"]);
+  check("seedOrg seeds the membership plans", c?.membershipPlans.map((p) => p.key), ["vt-c-1yr"]);
+  check("seedOrg seeds the first-admin invite", c?.invites.map((i) => [i.email, i.role]), [["chair@verify-tenant.invalid", "COORDINATOR"]]);
+  await seedOrg(db, { ...scratch, name: "Renamed C" }, "test");
+  const again = await db.organization.findUnique({ where: { slug: SLUG_C }, include: { domains: true, serviceTypes: true } });
+  check("seedOrg is idempotent (no duplicate rows on a second run)", [again?.domains.length, again?.serviceTypes.length], [1, 1]);
+  check("seedOrg never renames an existing organisation (a rename is a deliberate manual write)", again?.name, "Verify Tenant C");
+  await seedOrg(db, scratch, "development");
+  check("seedOrg for development adds no domain row", (await db.orgDomain.count({ where: { org: { slug: SLUG_C } } })), 1);
+
+  console.log("\n§9 the other seeds and the health check follow");
+  const src = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
+  check("seed-events.ts no longer upserts the organisation (it looks dcica up)", /organization\.upsert\(/.test(src("prisma/seed-events.ts")), false);
+  check("seed-test.ts no longer upserts the organisation", /organization\.upsert\(/.test(src("prisma/seed-test.ts")), false);
+  check("seed.ts seeds every module unless SEED_ORGS narrows it", /SEED_ORGS/.test(src("prisma/seed.ts")) && /ORG_SEEDS/.test(src("prisma/seed.ts")), true);
+  check("deploy.yml names SEED_ENV on the test and production seed steps", (src(".github/workflows/deploy.yml").match(/SEED_ENV: (test|production)/g) ?? []).length >= 2, true);
+  check("health counts service types, not events (a fresh tenant has none)", /serviceType\.count\(\)/.test(src("src/app/api/health/route.ts")), true);
+}
+
 async function cleanup(): Promise<void> {
   // Every key this script creates is removed here, most-dependent first, so a
   // run that died halfway leaves nothing behind for the next manual test to
   // trip over. OrgDomain rows cascade from the organisation.
-  const org = { slug: { in: [SLUG_A, SLUG_B] } };
+  const org = { slug: { in: [SLUG_A, SLUG_B, SLUG_C] } };
   await db.performanceEntry.deleteMany({ where: { org } });
   await db.ledgerEntry.deleteMany({ where: { org } });
   await db.payment.deleteMany({ where: { org } });
@@ -505,6 +571,8 @@ async function cleanup(): Promise<void> {
   await db.volunteer.deleteMany({ where: { org } });
   await db.serviceCap.deleteMany({ where: { event: { org } } });
   await db.serviceType.deleteMany({ where: { org } });
+  await db.membershipPlan.deleteMany({ where: { org } });
+  await db.invite.deleteMany({ where: { org } });
   await db.event.deleteMany({ where: { org } });
   await db.organization.deleteMany({ where: org });
 }
@@ -516,6 +584,7 @@ async function main(): Promise<void> {
   await section4();
   await section6();
   await section7(fixtures);
+  await section9();
   await cleanup();
 }
 
