@@ -54,8 +54,35 @@ model Organization {
   checklist          ChecklistItem[]
   invites            Invite[]
   performanceEntries PerformanceEntry[]
+  domains            OrgDomain[]
 
   @@map("organizations")
+}
+
+/// One row per hostname across ALL tenants. The Host header resolves a request
+/// to its organisation here (src/lib/tenant.ts), which is why `hostname` is
+/// globally unique: two organisations can never claim one host, so the lookup
+/// can never pick "whichever row came first". A `String[]` on Organization or a
+/// list inside `settings` would have no such guarantee.
+model OrgDomain {
+  id         String       @id @default(cuid())
+  orgId      String
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  /// Normalised the way src/lib/tenantResolve.ts normalises a request host:
+  /// lowercase, no port, no trailing dot. Seeds and the admin write path must
+  /// store it that way or the lookup never matches.
+  hostname   String       @unique
+  /// The host every absolute URL for this organisation is built on. One per
+  /// organisation, enforced on the write path and pinned by verify-tenant —
+  /// Prisma cannot express a partial unique index.
+  isPrimary  Boolean      @default(false)
+  verifiedAt DateTime?
+  createdAt  DateTime     @default(now())
+
+  // Child side of the FK: the cascade on Organization delete and every
+  // `include: { domains: true }` look up by orgId (PR #6 policy, verify:schema).
+  @@index([orgId])
+  @@map("org_domains")
 }
 
 // ── Auth / RBAC (tenant-scoped) ──────────────────────────────────────────────
