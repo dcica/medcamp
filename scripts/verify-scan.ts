@@ -449,8 +449,37 @@ async function main(): Promise<void> {
     /admitsNobody: boolean/.test(gate));
   check("...populated from the shared predicate, not re-derived",
     /admitsNobody: admitsNobody\(/.test(gate));
-  check("...and the door settles it on the SCAN, before any tap",
-    /g\.admitsNobody[\s\S]{0,120}notATicket/.test(gateMode));
+  // ...AND A PAID RECEIPT WITH GOODS ON IT SETTLES AS A PICKUP, NOT A REFUSAL.
+  // Diwali's carnival sells wristbands and tokens as MERCH on a free-entry
+  // festival, so every carnival order is merch-only, and "Sell them admission"
+  // was the booth's verdict for everyone who had paid. Still settled on the
+  // SCAN, before any tap; still NOT_A_TICKET when there is nothing to collect.
+  check("...and the door settles a paid receipt as a pickup on the SCAN, before any tap",
+    /g\.admitsNobody[\s\S]{0,900}kind: "pickup"/.test(gateMode));
+  check("...only when it is paid and has goods on it",
+    /g\.isPaid && g\.pickupItems\.length > 0/.test(gateMode));
+  check("...and a receipt with nothing to collect still reads not-a-ticket",
+    /kind: "pickup"[\s\S]{0,600}kind: "notATicket"/.test(gateMode));
+  check("...with every pending line pre-ticked, so the hand-over is one tap",
+    /setPickupSel\(new Set\(pending\.map/.test(gateMode));
+  // The dock used to offer "Admit & wristband" under that red verdict, and
+  // "Take cash & admit" for an unpaid receipt -- which took the cash,
+  // confirmed, and THEN threw NOT_A_TICKET before the goods were stamped.
+  check("the dock never offers Admit or Take-cash-and-admit on a receipt",
+    /view\.admitsNobody\) return null/.test(gateMode));
+  // A guest found by name search is the same guest as one found by scan.
+  check("a search hit is classified by the same rule as a scan",
+    /settleFor\(hit, "acted"\)/.test(gateMode) && /settleFor\(g, "resolved"\)/.test(gateMode));
+  // A walk-up basket that admits nobody -- four carnival wristbands -- is
+  // sold AND handed over by the server in one call. "Admitted · Give
+  // wristband" was the cash verdict for it, and "Already in" the card one,
+  // because party(0, 0) collapses to a re-scan.
+  check("a cash walk-up that admits nobody settles as a hand-over, not an admit",
+    /admits === 0\s*\?\s*handedOver\("Sold and handed over"/.test(gateMode));
+  check("...and so does a card walk-up",
+    /cardSale\.admits === 0\s*\?\s*handedOver\("Paid/.test(gateMode));
+  check("...and the cash button says hand over, not admit 0",
+    /admits === 0 \? "& hand over"/.test(gateMode));
 
   // PART OF A PARTY CAN ARRIVE FIRST. The redesign replaced the old
   // per-ticket Admit buttons with pips, which are not tappable, so a family
