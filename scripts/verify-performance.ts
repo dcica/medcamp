@@ -26,6 +26,8 @@
  * about the server contract, and standing up a dev server here would only test
  * Next's routing.
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import * as dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 
@@ -345,6 +347,45 @@ async function main() {
   check("music-received variant drops the chase",
     !confirmationText(doneMail).includes("WE STILL NEED"));
 
+  // A MERCH-ONLY ORDER IS A PICKUP RECEIPT. Diwali's carnival sells wristbands
+  // and tokens on a free-entry festival, so every carnival order mints one
+  // code that admits nobody -- and the registration wording promised it
+  // "admits 1 guest". Same shape as the entry branch, same rule: the
+  // registration and entry wording stay byte-identical.
+  const pickupMail = {
+    ...baseMail,
+    pickupOnly: true,
+    lineItems: [{ description: "Unlimited Rides", quantity: 2, amountCents: 1000 }],
+    merch: [{ description: "Unlimited Rides", quantity: 2 }],
+    totalPaidCents: 2000,
+  };
+  check("pickup subject says order, not registration",
+    confirmationSubject(pickupMail).endsWith("order confirmed"),
+    confirmationSubject(pickupMail));
+  const pickupBody = confirmationText(pickupMail);
+  check("pickup body states it is a receipt, not a ticket",
+    pickupBody.includes("pickup receipt, not an entry ticket"));
+  check("pickup body never claims to admit guests", !pickupBody.includes("admits"));
+  check("pickup body lists what to collect", pickupBody.includes("Unlimited Rides ×2"));
+  check("registration subject is untouched by the pickup branch",
+    confirmationSubject(baseMail).endsWith("registration confirmed"));
+
+  // The same rule on the three other surfaces that say "ticket" or "gate":
+  // confirmOrderPaid derives the flag from the line kinds, the wallet page
+  // says collect rather than gate, and the register form's footnote stops
+  // promising "a QR per entry" when nothing on the form admits anyone.
+  const paymentsSrc = readFileSync(join(process.cwd(), "src/server/payments.ts"), "utf8");
+  check("confirmOrderPaid derives pickupOnly from the line kinds",
+    /pickupOnly:[\s\S]{0,600}kind === "MERCH"[\s\S]{0,300}kind === "ADMISSION"/.test(paymentsSrc));
+  const walletSrc = readFileSync(join(process.cwd(), "src/app/t/[campId]/page.tsx"), "utf8");
+  check("the wallet says collect, not gate, for a pickup-only order",
+    /pickupOnly[\s\S]{0,900}collect your items/.test(walletSrc));
+  check("...and reads All collected once every line is stamped",
+    /All collected/.test(walletSrc));
+  const registerSrc = readFileSync(join(process.cwd(), "src/app/register/RegisterForm.tsx"), "utf8");
+  check("the register footnote stops promising a QR per entry when nothing admits",
+    /show it at the booth to collect your items/.test(registerSrc));
+
   // ───────────────────────────────────────────────────────────────────────────
   console.log("\n§9b one code at a time, on a phone, at a gate");
   // "design the email ... surfaces only one code at a time on the phone"
@@ -358,6 +399,15 @@ async function main() {
     .map((t) => `PERF-2026-${t}`);
   const partyMail = { ...baseMail, campIds: five };
   const html = confirmationHtml(partyMail);
+
+  // The HTML half of the pickup receipt. "admits" must not appear anywhere in
+  // it; it still appears in the registration email, which is the proof the
+  // branch did not leak.
+  const pickupHtml = confirmationHtml(pickupMail);
+  check("pickup html never says admits", !pickupHtml.includes("admits"));
+  check("pickup html calls the code a pickup code", pickupHtml.includes("Your pickup code"));
+  check("pickup html says it is a pickup receipt", pickupHtml.includes("pickup receipt"));
+  check("registration html still says admits", confirmationHtml(baseMail).includes("admits"));
 
   check("every ticket is rendered",
     five.filter((id) => html.includes(id)).length === 5);

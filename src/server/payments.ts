@@ -888,6 +888,15 @@ export async function confirmOrderPaid(
               entryUrl: `${env.NEXT_PUBLIC_APP_URL}/perform/${result.campIds[0] ?? ""}`,
             }
           : null,
+        // The email twin of gate.admitsNobody, narrowed to "has goods": a
+        // MERCH-only order (Diwali's carnival wristbands) is a pickup receipt,
+        // and "this email admits 1 guest" would promise floor access nobody
+        // bought. Derived from the line kinds here rather than imported from
+        // gate.ts, which imports this file.
+        pickupOnly:
+          !order.performanceEntry &&
+          order.lineItems.some((li) => li.serviceType?.kind === "MERCH") &&
+          !order.lineItems.some((li) => li.serviceType?.kind === "ADMISSION"),
         lineItems: order.lineItems.map((li) => ({
           description: li.serviceType?.name ?? li.description,
           quantity: li.quantity,

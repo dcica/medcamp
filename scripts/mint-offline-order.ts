@@ -610,6 +610,11 @@ async function main() {
                 entryUrl: `${env.NEXT_PUBLIC_APP_URL}/perform/${campIds[0] ?? ""}`,
               }
             : null,
+          // Mirrors confirmOrderPaid: a MERCH-only order is a pickup receipt.
+          pickupOnly:
+            !order.performanceEntry &&
+            order.lineItems.some((li) => li.serviceType?.kind === "MERCH") &&
+            !order.lineItems.some((li) => li.serviceType?.kind === "ADMISSION"),
           lineItems: order.lineItems.map((li) => ({
             description: li.serviceType?.name ?? li.description,
             quantity: li.quantity,
