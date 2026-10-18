@@ -85,7 +85,7 @@ async function main() {
   );
   const draftMod = await import("../src/lib/checkoutDraft");
   const { hasEdits, snapshot } = draftMod;
-  const { reapExpiredCheckout, resumeCheckoutForOrder, getResumableCheckout, isKnownOrder } =
+  const { reapExpiredCheckout, resumeCheckoutForOrder, getResumableCheckout, isKnownOrder, createCheckoutForOrder } =
     await import("../src/server/payments");
   const { guardKey } = await import("../src/server/requestGuard");
   const { resetRateLimits } = await import("../src/lib/rateLimit");
@@ -779,11 +779,76 @@ async function main() {
     /catch \{\s*return null;\s*\}\s*\}\s*\n\s*\/\*\* Mint the Stripe session/.test(paySrc),
   );
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // §11 Stripe Connect: every Stripe call carries the ORDER's organisation.
+  // Organization.stripeAccountId null ⇒ today's platform-key path, byte for
+  // byte; non-null ⇒ a direct charge on the connected account, which is where
+  // the money must land. One helper builds the option so a call cannot forget.
+  console.log("\n§11 the Stripe account option follows the order's organisation");
+  const { stripeRequestOptions } = await import("../src/lib/stripe");
+  const none = stripeRequestOptions({ stripeAccountId: null });
+  check("a platform-key org gets NO account option (dcica's path is byte-identical)",
+    JSON.stringify(none) === "{}" && !("stripeAccount" in none));
+  check("a connected org gets the stripeAccount option",
+    JSON.stringify(stripeRequestOptions({ stripeAccountId: "acct_x" })) === JSON.stringify({ stripeAccount: "acct_x" }));
+  check("…merged with any other request option",
+    JSON.stringify(stripeRequestOptions({ stripeAccountId: "acct_x" }, { idempotencyKey: "k" })) ===
+      JSON.stringify({ idempotencyKey: "k", stripeAccount: "acct_x" }));
+  // Per call, not "somewhere nearby": each regex ends on the options argument
+  // of THAT call, so an option dropped from one cannot be covered by the next.
+  check("sessions.create carries the order's account option",
+    /sessions\.create\(\{[\s\S]*?\n  \}, stripeRequestOptions\(order\.org\)\);/.test(paySrc));
+  check("sessions.expire carries it",
+    /sessions\.expire\([^)]*, stripeRequestOptions\(/.test(paySrc));
+  check("sessions.retrieve carries it",
+    /sessions\.retrieve\([^)]*, stripeRequestOptions\(/.test(paySrc));
+  check("the confirm page keeps no session retrieve of its own (one path passes the option)",
+    !/sessions\.retrieve\(/.test(readFileSync("src/app/confirm/[orderId]/page.tsx", "utf8")));
+
+  // A connected organisation whose onboarding is not finished must not reach
+  // Stripe at all: the buyer gets a sentence, not a 400 from session create.
+  const connected = await db.organization.create({
+    data: { slug: CONNECTED_SLUG, name: "Verify Connected", stripeAccountId: "acct_verifycheckout", stripeChargesEnabled: false },
+  });
+  const cEvent = await db.event.create({
+    data: {
+      orgId: connected.id, type: "GENERAL", status: "OPEN", code: "VC-CONN", name: "Connected Verification",
+      startsAt: new Date(Date.now() + 30 * 24 * 3600_000), endsAt: new Date(Date.now() + 30 * 24 * 3600_000 + 4 * 3600_000),
+      collectsAttendeeDetails: false,
+    },
+  });
+  const cService = await db.serviceType.create({
+    data: { orgId: connected.id, key: "vc-admit", name: "VC Admission", priceCents: 2500, kind: "ADMISSION" },
+  });
+  const cOrder = await db.order.create({
+    data: {
+      orgId: connected.id, eventId: cEvent.id, status: "PENDING",
+      registrantName: "Connected Buyer", registrantEmail: "vc@example.org", registrantPhone: "5551234567",
+      lineItems: { create: [{ orgId: connected.id, serviceTypeId: cService.id, description: "VC Admission", amountCents: 2500, quantity: 1, status: "PENDING_PAYMENT" }] },
+    },
+    select: { id: true },
+  });
+  const refusedConnected = await createCheckoutForOrder(cOrder.id).then(() => "created", (e: Error) => e.message);
+  check("a connected org with charges disabled is refused with a buyer-readable sentence, before Stripe",
+    /not enabled yet/i.test(refusedConnected), refusedConnected);
+  check("…and no Payment row was minted for it",
+    (await db.payment.count({ where: { orderId: cOrder.id } })) === 0);
+
   await cleanup(org.id);
 }
 
+const CONNECTED_SLUG = "verify-checkout-connected";
+
 /** Remove everything this script creates (cascades don't cover payments/ledger). */
 async function cleanup(orgId: string): Promise<void> {
+  // §11's scratch connected organisation, most-dependent first.
+  const c = { org: { slug: CONNECTED_SLUG } };
+  await db.payment.deleteMany({ where: c });
+  await db.lineItem.deleteMany({ where: c });
+  await db.order.deleteMany({ where: c });
+  await db.serviceType.deleteMany({ where: c });
+  await db.event.deleteMany({ where: c });
+  await db.organization.deleteMany({ where: { slug: CONNECTED_SLUG } });
   const events = await db.event.findMany({ where: { orgId, code: CODE } });
   for (const event of events) {
     const orders = await db.order.findMany({ where: { eventId: event.id }, select: { id: true } });

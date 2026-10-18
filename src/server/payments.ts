@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { stripe } from "@/lib/stripe";
+import { stripe, stripeRequestOptions } from "@/lib/stripe";
 import { env } from "@/lib/env";
 import { orgBaseUrl } from "@/lib/orgUrl";
 import {
@@ -187,7 +187,7 @@ export async function resumeCheckoutForOrder(
   // The window is small and this is the better trade — the reverse ordering
   // turns a rare double charge into a routine dead order — but it is real and
   // it is not closed. Do not describe it as fixed.
-  await expireOtherPendingSessions(order.id, session.id);
+  await expireOtherPendingSessions(order.id, session.id, order.org);
 
   return {
     ok: true,
@@ -352,14 +352,27 @@ async function openCheckoutSession(
     eventId: string;
     registrantEmail: string;
     lineItems: { description: string; amountCents: number; quantity: number }[];
-    /** The organisation the return URLs are built for (orgBaseUrl). */
-    org: { slug: string; domains: { hostname: string; isPrimary: boolean }[] };
+    /** The organisation: return URLs (orgBaseUrl) and the Stripe account the session is created on. */
+    org: {
+      slug: string;
+      domains: { hostname: string; isPrimary: boolean }[];
+      stripeAccountId: string | null;
+      stripeChargesEnabled: boolean;
+    };
   },
   totalCents: number,
   routes?: CheckoutRoutes,
 ): Promise<{ id: string; url: string }> {
   if (!stripe) {
     throw new Error("Stripe is not configured (STRIPE_SECRET_KEY missing).");
+  }
+  // A connected organisation whose onboarding is not finished: Stripe would
+  // answer session-create with a 400 nobody can act on. The buyer gets a
+  // sentence instead, and no Payment row is minted for a session never opened.
+  if (order.org.stripeAccountId && !order.org.stripeChargesEnabled) {
+    throw new Error(
+      "Online payments are not enabled yet for this organisation. Please try again later, or contact the organisers.",
+    );
   }
 
   const { successUrl, cancelUrl, expiresAt } = buildCheckoutReturn(
@@ -393,7 +406,7 @@ async function openCheckoutSession(
           product_data: { name: li.description },
         },
       })),
-  });
+  }, stripeRequestOptions(order.org));
 
   await db.payment.create({
     data: {
@@ -403,6 +416,7 @@ async function openCheckoutSession(
       status: "PENDING",
       amountCents: totalCents,
       stripeCheckoutId: session.id,
+      stripeAccountId: order.org.stripeAccountId,
     },
   });
 
@@ -449,6 +463,7 @@ async function openCheckoutSession(
 async function expireOtherPendingSessions(
   orderId: string,
   keepSessionId: string,
+  org: { stripeAccountId: string | null },
 ): Promise<void> {
   const stale = await db.payment.findMany({
     where: {
@@ -464,7 +479,7 @@ async function expireOtherPendingSessions(
   for (const payment of stale) {
     try {
       if (stripe && payment.stripeCheckoutId) {
-        await stripe.checkout.sessions.expire(payment.stripeCheckoutId);
+        await stripe.checkout.sessions.expire(payment.stripeCheckoutId, stripeRequestOptions(org));
       }
     } catch (err) {
       log.warn("resume: could not expire superseded checkout session", {
@@ -501,14 +516,14 @@ export async function confirmFromCheckoutSession(
 ): Promise<boolean> {
   const order = await db.order.findUnique({
     where: { id: orderId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, org: { select: { stripeAccountId: true } } },
   });
   if (!order) return false;
   if (order.status === "CONFIRMED") return true;
   if (!sessionId || !stripe) return false;
 
   try {
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const session = await stripe.checkout.sessions.retrieve(sessionId, stripeRequestOptions(order.org));
     // The session must actually be paid AND belong to THIS order
     // (metadata.orderId is set when we create it) — never confirm an order from
     // a session id pasted in from elsewhere.

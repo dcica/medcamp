@@ -38,6 +38,22 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// Stripe Connect (Standard account). null = charges run on the platform's
+  /// own key, which is the first tenant's path and stays byte-identical. Set =
+  /// direct charges on THIS account: the money lands with the organisation,
+  /// the platform's service fee is split off by Stripe at charge time, and the
+  /// organisation owns refunds and disputes. Unique: one account, one tenant.
+  stripeAccountId        String?   @unique
+  /// Snapshot of the connected account's state (Account Links return, and
+  /// `account.updated` on the Connect webhook). Charges are refused while
+  /// onboarding is incomplete, with a sentence rather than a Stripe 400.
+  stripeChargesEnabled   Boolean   @default(false)
+  stripePayoutsEnabled   Boolean   @default(false)
+  stripeDetailsSubmitted Boolean   @default(false)
+  /// `us_bank_account_ach_payments` capability active — bank debits allowed.
+  stripeAchEnabled       Boolean   @default(false)
+  stripeConnectedAt      DateTime?
+
   memberships        Membership[]
   events             Event[]
   serviceTypes       ServiceType[]
@@ -854,6 +870,10 @@ model Payment {
   // Stripe
   stripePaymentIntentId String? @unique
   stripeCheckoutId      String? @unique
+  /// The connected account the session was created on (null = platform key),
+  /// denormalised at creation so a refund or a webhook knows where the charge
+  /// lives even if the organisation later disconnects. Never queried by.
+  stripeAccountId       String?
 
   // Cash bookkeeping
   cashTenderedCents Int?

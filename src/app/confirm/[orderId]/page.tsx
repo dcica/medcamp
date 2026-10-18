@@ -3,13 +3,7 @@ import { notFound } from "next/navigation";
 import { getActiveOrg } from "@/lib/tenant";
 import { findPublicOrder } from "@/server/public";
 import QRCode from "qrcode";
-import { stripe } from "@/lib/stripe";
-import { log } from "@/lib/logger";
-import {
-  confirmOrderPaid,
-  MissingCapError,
-  OverCapacityError,
-} from "@/server/payments";
+import { confirmFromCheckoutSession } from "@/server/payments";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { SimulatePayButton } from "./SimulatePayButton";
 import { PRIVATE_PAGE_METADATA } from "@/lib/seo";
@@ -59,43 +53,13 @@ export default async function ConfirmPage({
   // session with Stripe and confirm synchronously. confirmOrderPaid is
   // idempotent + atomically claimed, so whichever path wins, the other is a
   // no-op (and only the winner sends the email).
-  if (order && order.status !== "CONFIRMED" && session_id && stripe) {
-    try {
-      const session = await stripe.checkout.sessions.retrieve(session_id);
-      // Guard: the session must actually be paid AND belong to THIS order
-      // (metadata.orderId is set when we create the session) — never confirm an
-      // order from a session id pasted in from elsewhere.
-      if (
-        session.payment_status === "paid" &&
-        session.metadata?.orderId === order.id
-      ) {
-        await confirmOrderPaid(order.id, {
-          method: "STRIPE",
-          stripeCheckoutId: session.id,
-          stripePaymentIntentId:
-            typeof session.payment_intent === "string"
-              ? session.payment_intent
-              : undefined,
-          idempotencyKey: `checkout-${session.id}`,
-        });
-        order = await findPublicOrder(org.id, orderId, { include: orderInclude });
-      }
-    } catch (err) {
-      // A genuinely-full cap stays quiet by design: the buyer paid, staff
-      // handles the refund, and this page just falls through to its pending
-      // state. A MISSING cap row is a different animal — a misconfigured event,
-      // where every purchase of that service fails — so it is logged at error
-      // rather than swallowed with the sold-out case. Any other failure is
-      // logged too. Either way the webhook remains the backstop (and now
-      // returns a 5xx for both of these, so Stripe retries).
-      if (err instanceof MissingCapError) {
-        log.error("confirm: service cap row missing (misconfigured event)", {
-          orderId,
-          serviceKey: err.serviceKey,
-        });
-      } else if (!(err instanceof OverCapacityError)) {
-        log.error("confirm: stripe session verify failed", { orderId, err });
-      }
+  if (order && order.status !== "CONFIRMED" && session_id) {
+    // ONE path verifies the session — the same confirmFromCheckoutSession the
+    // /perform/after-payment page uses — and it carries the organisation's
+    // Stripe account option. A second copy here is how that option would be
+    // forgotten on exactly the page a connected organisation's buyer lands on.
+    if (await confirmFromCheckoutSession(order.id, session_id)) {
+      order = await findPublicOrder(org.id, orderId, { include: orderInclude });
     }
   }
 
