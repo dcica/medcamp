@@ -85,7 +85,14 @@ type Seed = {
     kind: ServiceKind;
     /** Heads admitted per purchased unit. Gate bundles only (family of 4 = 4). */
     admitsCount?: number;
-    capacity: number;
+    /** Null = uncapped (a vendor that runs continuously). Never 0. */
+    capacity: number | null;
+    /**
+     * Quantity break: from `bulkMinQty` units of this service on one line,
+     * each unit costs `bulkPriceCents`. Both or neither — see ServiceCap.
+     */
+    bulkMinQty?: number;
+    bulkPriceCents?: number;
     /**
      * Competition entry rules, enforced server-side at submit (see
      * src/server/performance.ts). Only meaningful on a fee-kind service.
@@ -418,6 +425,13 @@ const EVENTS: Seed[] = [
     offersRegistration: true,
     offersVendors: true,
     offersVolunteers: true,
+    // QUANTITY MODE, for the carnival below: a parent buys "2 rides, 1 laser
+    // tag" with steppers and no names per child. The competition entry is
+    // unaffected — a fee-only order routes to the quantity path whatever this
+    // flag says (src/server/registration.ts). `eventFields` reasserts this
+    // under SEED_FORCE_UPDATE=1; on an existing environment the coordinator
+    // unticks "Collect attendee details" in the admin UI.
+    collectsAttendeeDetails: false,
     services: [
       {
         // Same org catalogue key as RON-2026 above, deliberately. One
@@ -439,6 +453,59 @@ const EVENTS: Seed[] = [
         // competition's rules and enforcing them here would reject entries
         // nobody told the entrants were invalid.
         capacity: 25,
+      },
+      // ── Kids Carnival (2026-10-18, six days out). MERCH, deliberately:
+      // entry is free, so there is no door to admit through. A wristband or a
+      // token is "a physical good handed over at the gate" — the booth scans
+      // one code, reads the list, hands everything over — and nothing here
+      // admits anyone. Keys equal slugify(name), so a fresh environment
+      // matches what the coordinator created by hand on prod through
+      // /admin/services. Uncapped: the vendors run continuously. 4+ of the
+      // SAME ticket is 20% off, per line (ServiceCap.bulkMinQty).
+      {
+        key: "unlimited-rides",
+        name: "Unlimited Rides",
+        colorHex: "#f97316",
+        // Bounce houses, bubble party, lawn games. Excludes laser tag and the
+        // rock wall, which the banner prices separately.
+        priceCents: 1000,
+        kind: "MERCH",
+        capacity: null,
+        bulkMinQty: 4,
+        bulkPriceCents: 800,
+      },
+      {
+        key: "laser-tag",
+        name: "Laser Tag",
+        colorHex: "#8b5cf6",
+        priceCents: 1000,
+        kind: "MERCH",
+        capacity: null,
+        bulkMinQty: 4,
+        bulkPriceCents: 800,
+      },
+      {
+        key: "rock-wall",
+        name: "Rock Wall",
+        colorHex: "#10b981",
+        priceCents: 500,
+        kind: "MERCH",
+        capacity: null,
+        bulkMinQty: 4,
+        bulkPriceCents: 400,
+      },
+      {
+        // All three for $20 against $25 face. Its own service, as every
+        // bundle here is (Dandiya's family-of-4 above); the booth hands over
+        // all three on this one line.
+        key: "all-access-pass",
+        name: "All-Access Pass",
+        colorHex: "#eab308",
+        priceCents: 2000,
+        kind: "MERCH",
+        capacity: null,
+        bulkMinQty: 4,
+        bulkPriceCents: 1600,
       },
     ],
     volunteerRoles: COMMUNITY_VOL_ROLES,
@@ -638,7 +705,12 @@ async function main() {
       const existingCap = await db.serviceCap.findUnique({
         where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: svc.id } },
       });
-      const capacity = existingCap ? Math.max(s.capacity, existingCap.sold) : s.capacity;
+      const capacity =
+        s.capacity === null
+          ? null
+          : existingCap
+            ? Math.max(s.capacity, existingCap.sold)
+            : s.capacity;
 
       await db.serviceCap.upsert({
         where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: svc.id } },
@@ -648,6 +720,8 @@ async function main() {
               onsitePriceCents: s.onsitePriceCents ?? null,
               earlyBirdPriceCents: s.earlyBirdPriceCents ?? null,
               earlyBirdUntil: s.earlyBirdUntil ? new Date(s.earlyBirdUntil) : null,
+              bulkMinQty: s.bulkMinQty ?? null,
+              bulkPriceCents: s.bulkPriceCents ?? null,
               capacity,
               minParticipants: s.minParticipants ?? null,
               maxParticipants: s.maxParticipants ?? null,
@@ -662,6 +736,8 @@ async function main() {
           onsitePriceCents: s.onsitePriceCents ?? null,
           earlyBirdPriceCents: s.earlyBirdPriceCents ?? null,
           earlyBirdUntil: s.earlyBirdUntil ? new Date(s.earlyBirdUntil) : null,
+          bulkMinQty: s.bulkMinQty ?? null,
+          bulkPriceCents: s.bulkPriceCents ?? null,
           capacity,
           minParticipants: s.minParticipants ?? null,
           maxParticipants: s.maxParticipants ?? null,

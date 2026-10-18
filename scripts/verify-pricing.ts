@@ -17,6 +17,8 @@
  * There is no test framework in this repo (a deliberate call — see the Oct 10
  * deadline). This script is the money-path safety net until one lands.
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import * as dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 
@@ -450,6 +452,28 @@ async function main(): Promise<void> {
   check("validateBulkRule: price without threshold is refused", validateBulkRule(null, 800, 1000) !== null, true);
   check("validateBulkRule: a threshold of 1 is refused", validateBulkRule(1, 800, 1000) !== null, true);
   check("validateBulkRule: a break at or above the regular price is refused", validateBulkRule(4, 1000, 1000) !== null, true);
+
+  // The admin screen writes the pair through that same validator and feeds
+  // both halves back to the editor, and the seed declares Diwali's carnival
+  // with the break, so a fresh environment matches what the coordinator set
+  // by hand on prod. Source-text rows, because a server action behind
+  // requireAdmin has no seam a tsx script can call.
+  const offeringActions = readFileSync(
+    join(process.cwd(), "src/app/admin/camps/[id]/services/actions.ts"), "utf8");
+  check("saveOffering validates the pair with validateBulkRule", /validateBulkRule\(/.test(offeringActions), true);
+  check("...and writes both columns", /bulkMinQty,\s*bulkPriceCents,/.test(offeringActions), true);
+  const offeringEditor = readFileSync(
+    join(process.cwd(), "src/app/admin/camps/[id]/services/ServicesManager.tsx"), "utf8");
+  check("the offering editor submits both halves of the rule",
+    /bulkMinQty: blankToNull\(bulkMinQty\)/.test(offeringEditor) &&
+      /bulkPriceDollars: blankToNull\(bulkPrice\)/.test(offeringEditor), true);
+  const seedSrc = readFileSync(join(process.cwd(), "prisma/seed-events.ts"), "utf8");
+  check("the seed copies both bulk columns on create AND on force-update",
+    (seedSrc.match(/bulkMinQty: s\.bulkMinQty \?\? null/g) ?? []).length, 2);
+  for (const key of ["unlimited-rides", "laser-tag", "rock-wall", "all-access-pass"]) {
+    check(`the seed declares Diwali's ${key}`, seedSrc.includes(`key: "${key}"`), true);
+  }
+  check("...each with the 4+ break", (seedSrc.match(/bulkMinQty: 4,/g) ?? []).length >= 4, true);
 
   // ── 7. Early bird end to end, through createRegistration ──
   // Proves the AUTHORITATIVE server path (not just the resolver in isolation)

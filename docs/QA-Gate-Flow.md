@@ -104,6 +104,9 @@ admit, confirm the **Admitted** headcount increments and a green flash appears.
 | 12 | Member comp: set count, Comp & admit | Headcount **+count**, flash "Comped N — give wristband" |
 | 13 | Walk-up: No-ticket → pick Dandia Entry → Take cash & admit | Headcount **+1**, flash "Walk-up admitted" |
 | 14 | (Negative) Sign in as `regdesk-notill` or `volunteer`, try a cash action | `/403` — cash blocked for non-till |
+| 15 | Resolve a paid **merch-only** code (a carnival order: nothing admits) | Amber **"Hand over · <items>"**, items pre-ticked; **no** Admit button, **not** "Not a ticket" |
+| 16 | Hand over selected → re-scan the same code | "Handed over ✓", then amber **"Already collected (time)"** |
+| 17 | Walk-up: 4 × a merch item that has a 4+ price, cash | Button **"Take cash $X & hand over"** at the 4+ unit price (never "& admit 0"); verdict "Sold and handed over" |
 
 **Server guarantees to confirm:** admission requires a CONFIRMED (paid) order
 unless paid at the gate; a re-scan never double-counts (wristband owns

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
 import { requireAdmin } from "@/server/admin";
+import { validateBulkRule } from "@/lib/pricing";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -22,6 +23,12 @@ type OfferingInput = {
   earlyBirdUntil: string | null;
   /** Null = uncapped. Never 0 — a DB CHECK constraint refuses it. */
   capacity: number | null;
+  /**
+   * Quantity break: from `bulkMinQty` units of this item on one line, each
+   * costs `bulkPriceDollars`. Both or neither; validated by validateBulkRule.
+   */
+  bulkMinQty: number | null;
+  bulkPriceDollars: number | null;
   minParticipants: number | null;
   maxParticipants: number | null;
   /** "m:ss" exactly as typed; parsed here so the rule lives server-side. */
@@ -238,6 +245,24 @@ export async function saveOffering(
     }
   }
 
+  // The quantity break: both halves or neither, a threshold of at least 2,
+  // and a break below the regular price. Half a rule resolves as NO rule
+  // (src/lib/pricing.ts), so a coordinator who saved one half would believe
+  // a discount was live while buyers paid full price — the early-bird
+  // failure above, again. Refused before writing, through the same pure
+  // validator verify-pricing pins.
+  const priceCents = Math.max(0, Math.round(input.priceDollars * 100));
+  const bulkMinQty =
+    input.bulkMinQty === null || Number.isNaN(input.bulkMinQty)
+      ? null
+      : Math.round(input.bulkMinQty);
+  const bulkPriceCents =
+    input.bulkPriceDollars === null || Number.isNaN(input.bulkPriceDollars)
+      ? null
+      : Math.max(0, Math.round(input.bulkPriceDollars * 100));
+  const bulkError = validateBulkRule(bulkMinQty, bulkPriceCents, priceCents);
+  if (bulkError !== null) return { ok: false, error: bulkError };
+
   const minParticipants = normalizeCount(input.minParticipants, "Minimum participants");
   if (!minParticipants.ok) return minParticipants;
   const maxParticipants = normalizeCount(input.maxParticipants, "Maximum participants");
@@ -265,10 +290,12 @@ export async function saveOffering(
   await db.serviceCap.update({
     where: { id: cap.id },
     data: {
-      priceCents: Math.max(0, Math.round(input.priceDollars * 100)),
+      priceCents,
       onsitePriceCents: onsiteCents(input.onsitePriceDollars),
       earlyBirdPriceCents: earlyBird.priceCents,
       earlyBirdUntil: earlyBird.untilDate,
+      bulkMinQty,
+      bulkPriceCents,
       capacity,
       minParticipants: minParticipants.value,
       maxParticipants: maxParticipants.value,
