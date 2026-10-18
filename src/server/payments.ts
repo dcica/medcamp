@@ -311,6 +311,30 @@ export async function reapExpiredCheckout(
  * webhook lands. An id we minted that is absent here belongs to the other
  * deployment, and no number of retries will conjure it up.
  */
+/**
+ * Is this Stripe event MINE to act on? Mine means the order exists in this
+ * deployment AND the account the event came from is the order's
+ * organisation's: none at all on the platform path (`stripeAccountId` null,
+ * platform endpoint), or exactly the connected account on the Connect path.
+ * The platform key is shared by every deployment and the Connect endpoint
+ * receives every connected account's events, so the endpoint cannot tell —
+ * only this can. Anything else is acknowledged with a 200 and ignored.
+ */
+export async function resolveOwnedOrder(
+  orderId: string,
+  eventAccount: string | undefined,
+  scope: "platform" | "connect",
+): Promise<{ id: string } | null> {
+  const order = await db.order.findUnique({
+    where: { id: orderId },
+    select: { id: true, org: { select: { stripeAccountId: true } } },
+  });
+  if (!order) return null;
+  const owned = order.org.stripeAccountId;
+  if (scope === "platform") return !owned && !eventAccount ? { id: order.id } : null;
+  return owned && eventAccount === owned ? { id: order.id } : null;
+}
+
 export async function isKnownOrder(orderId: string): Promise<boolean> {
   const hit = await db.order.findUnique({
     where: { id: orderId },

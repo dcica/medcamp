@@ -116,6 +116,14 @@ const schema = z.object({
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
   /**
+   * The signing secret of the CONNECT endpoint (/api/stripe/connect — "Listen
+   * to events on connected accounts"). A separate endpoint with a separate
+   * secret, per environment and per mode, exactly like the platform one: the
+   * two are never tried against each other. Unset ⇒ the route answers 503,
+   * which is honest until a first organisation connects an account.
+   */
+  STRIPE_CONNECT_WEBHOOK_SECRET: z.string().optional(),
+  /**
    * HMAC key for the checkout-resume cookie (src/lib/checkoutResume.ts), which
    * is what lets a buyer who backed out of Stripe finish paying without
    * retyping. Optional: falls back to NEXTAUTH_SECRET, then STRIPE_SECRET_KEY,

@@ -210,6 +210,19 @@ Copy each endpoint's **signing secret** → `STRIPE_WEBHOOK_SECRET` in the
 matching Vercel project. (A mismatched secret means payments never confirm —
 confirmation is webhook-authoritative.)
 
+**Connect endpoint (second tenant onward).** A direct charge on a connected
+account reports to a SEPARATE endpoint: in the Stripe dashboard create a
+destination with "Listen to events on connected accounts" pointing at
+`https://<env-domain>/api/stripe/connect`, subscribed to
+`checkout.session.completed`, `checkout.session.expired`,
+`checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`,
+`charge.refunded` and `account.updated`, and put ITS signing secret in
+`STRIPE_CONNECT_WEBHOOK_SECRET` (`scripts/push-stripe-env-to-vercel.sh` takes it
+when exported). Per environment and per mode, like the platform secret. Every
+deployment's Connect endpoint receives every connected account's events; the
+handler's ownership guard (`resolveOwnedOrder`) is what keeps them apart.
+Locally: `stripe listen --forward-to localhost:3100/api/stripe/webhook --forward-connect-to localhost:3100/api/stripe/connect`.
+
 ### 6. GitHub (CI migrations)
 
 Repo → Settings → Environments. Create `test` and `production` (`staging` is

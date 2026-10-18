@@ -65,6 +65,14 @@ case "$STRIPE_WEBHOOK_SECRET" in
   whsec_*) ;;
   *) echo "REFUSING: STRIPE_WEBHOOK_SECRET must start with whsec_." >&2; exit 1 ;;
 esac
+# The Connect endpoint's secret is optional until a first organisation has
+# connected an account, but when present it gets the same shape check.
+if [ -n "${STRIPE_CONNECT_WEBHOOK_SECRET:-}" ]; then
+  case "$STRIPE_CONNECT_WEBHOOK_SECRET" in
+    whsec_*) ;;
+    *) echo "REFUSING: STRIPE_CONNECT_WEBHOOK_SECRET must start with whsec_." >&2; exit 1 ;;
+  esac
+fi
 if [ "$TARGET" = test ] && [ "$SEC_MODE" = live ]; then
   echo "REFUSING: live keys into medcamp-test. Rehearsal sales would be real money." >&2
   exit 1
@@ -95,6 +103,11 @@ put() {
 
 put STRIPE_SECRET_KEY "$STRIPE_SECRET_KEY"
 put STRIPE_WEBHOOK_SECRET "$STRIPE_WEBHOOK_SECRET"
+if [ -n "${STRIPE_CONNECT_WEBHOOK_SECRET:-}" ]; then
+  put STRIPE_CONNECT_WEBHOOK_SECRET "$STRIPE_CONNECT_WEBHOOK_SECRET"
+else
+  echo "  (STRIPE_CONNECT_WEBHOOK_SECRET not exported — /api/stripe/connect stays 503 until it is)"
+fi
 
 echo
 echo "  Done. An env change does NOT reach a running deployment —"

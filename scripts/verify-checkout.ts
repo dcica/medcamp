@@ -492,9 +492,11 @@ async function main() {
   // Structural, same reasoning as §7: the predicate above cannot prove the
   // route CONSULTS it. If the guard is dropped "because confirmOrderPaid throws
   // anyway", the retry storm comes straight back.
-  const hookSrc = readFileSync("src/app/api/stripe/webhook/route.ts", "utf8");
-  check("the webhook consults isKnownOrder before acting",
-    /if\s*\(!\(await isKnownOrder\(orderId\)\)\)/.test(hookSrc));
+  // The handler body lives in src/server/stripeWebhook.ts since Connect: two
+  // routes (platform secret, Connect secret), one handler, one guard.
+  const hookSrc = readFileSync("src/server/stripeWebhook.ts", "utf8");
+  check("the webhook consults the ownership guard before acting",
+    /if\s*\(!\(await resolveOwnedOrder\(orderId, /.test(hookSrc));
   check("…and answers 200 for a foreign order, never a 5xx",
     /order not in this deployment/.test(hookSrc) &&
       !/order not in this deployment[\s\S]{0,200}status:\s*5/.test(hookSrc));
@@ -833,6 +835,40 @@ async function main() {
     /not enabled yet/i.test(refusedConnected), refusedConnected);
   check("…and no Payment row was minted for it",
     (await db.payment.count({ where: { orderId: cOrder.id } })) === 0);
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // §12 A Connect event is mine only if the ACCOUNT and the ORDER are mine.
+  // The platform account is shared by every deployment, and its Connect
+  // endpoint receives every connected account's events — the predicate, not
+  // the endpoint, is what keeps tenants and deployments apart (commit 411c01c's
+  // lesson, generalised).
+  console.log("\n§12 a Connect event is mine only if the account and the order are mine");
+  const { resolveOwnedOrder } = await import("../src/server/payments");
+  check("platform scope: a platform-key org's order with no event.account is mine",
+    (await resolveOwnedOrder(pending, undefined, "platform")) !== null);
+  check("platform scope: the same order arriving with an event.account is NOT mine",
+    (await resolveOwnedOrder(pending, "acct_x", "platform")) === null);
+  check("connect scope: a platform-key org's order is NOT mine",
+    (await resolveOwnedOrder(pending, undefined, "connect")) === null);
+  check("connect scope: the owning account's event is mine",
+    (await resolveOwnedOrder(cOrder.id, "acct_verifycheckout", "connect")) !== null);
+  check("connect scope: another account's event is NOT mine",
+    (await resolveOwnedOrder(cOrder.id, "acct_other", "connect")) === null);
+  check("platform scope: a connected org's order is NOT mine",
+    (await resolveOwnedOrder(cOrder.id, undefined, "platform")) === null);
+  check("an unknown order is nobody's", (await resolveOwnedOrder("cmt0000notours0000000000", undefined, "platform")) === null);
+  const connectSrc = readFileSync("src/app/api/stripe/connect/route.ts", "utf8");
+  const platformSrc = readFileSync("src/app/api/stripe/webhook/route.ts", "utf8");
+  check("the Connect route verifies with STRIPE_CONNECT_WEBHOOK_SECRET and never the platform secret",
+    /STRIPE_CONNECT_WEBHOOK_SECRET/.test(connectSrc) && !/[^_]STRIPE_WEBHOOK_SECRET/.test(connectSrc));
+  check("the platform route verifies with STRIPE_WEBHOOK_SECRET and never the Connect secret",
+    /[^_]STRIPE_WEBHOOK_SECRET/.test(platformSrc) && !/STRIPE_CONNECT_WEBHOOK_SECRET/.test(platformSrc));
+  check("both routes hand the event to one handler with their scope",
+    /handleStripeEvent\(event, "connect"\)/.test(connectSrc) && /handleStripeEvent\(event, "platform"\)/.test(platformSrc));
+  check("the handler confirms a completed session only when it is PAID (a bank debit completes unpaid)",
+    /payment_status\s*!==\s*"paid"/.test(hookSrc));
+  check("the handler takes account.updated", /"account\.updated"/.test(hookSrc));
+  check("the handler takes charge.refunded", /"charge\.refunded"/.test(hookSrc));
 
   await cleanup(org.id);
 }
