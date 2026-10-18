@@ -15,11 +15,29 @@ export const GA_MEASUREMENT_ID_RE = /^G-[A-Z0-9]{4,24}$/;
  */
 const schema = z.object({
   // App
+  /**
+   * Fallback origin ONLY — local dev and a self-hoster's first boot. Every
+   * absolute URL the app emits (Stripe return URLs, email links, canonicals,
+   * the sitemap) comes from the organisation's own domain via `orgBaseUrl()`
+   * (src/lib/orgUrl.ts), not from this value. It keeps a localhost default
+   * because OAuth callbacks on localhost still need one.
+   */
   NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
-  NEXT_PUBLIC_ROOT_DOMAIN: z.string().default("localhost:3000"),
-  TENANT_ROUTING: z.enum(["subdomain", "path"]).default("path"),
-  // Approach C: single active tenant for now. Resolved by slug; subdomain
-  // routing is the future seam. See getActiveOrg().
+  /**
+   * The neutral platform host (bare hostname, no scheme): where staff sign in,
+   * where `/o/<slug>` paths resolve a tenant that has no domain of its own, and
+   * the one host that never defaults to a tenant. Unset in local dev and on a
+   * single-org self-host, where the app behaves as it did before 2026-10:
+   * every host resolves DEFAULT_ORG_SLUG. See src/lib/tenantResolve.ts.
+   */
+  PLATFORM_HOST: z.string().min(1).optional(),
+  /**
+   * The organisation an UNKNOWN host resolves to — a Vercel preview alias, a
+   * custom domain attached before its OrgDomain row was seeded, a self-hoster
+   * with one organisation. A tenant's own domain and `/o/<slug>` paths beat it;
+   * the platform host ignores it. Never "the oldest org": a slug that names no
+   * row resolves to nothing, and the page says so.
+   */
   DEFAULT_ORG_SLUG: z.string().default("dcica"),
   // Comma-separated emails auto-granted COORDINATOR on first login (bootstrap).
   BOOTSTRAP_ADMIN_EMAILS: z.string().optional(),

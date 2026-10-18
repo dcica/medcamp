@@ -158,8 +158,8 @@ Vercel side and the DNS side are two separate steps:
 2. In GoDaddy → Domain → DNS → Records, add `CNAME <sub> → <target>`, TTL
    **600** during cutover so a rollback propagates in minutes.
 3. Wait for Vercel to verify and issue the TLS certificate.
-4. Only then flip `NEXT_PUBLIC_APP_URL`, `NEXTAUTH_URL` and
-   `NEXT_PUBLIC_ROOT_DOMAIN` to the custom host and redeploy. Certificate first,
+4. Only then flip `NEXTAUTH_URL` and `PLATFORM_HOST` to the custom host and
+   redeploy (a tenant's own domain comes from its `OrgDomain` row, not from env). Certificate first,
    env second, redeploy third — that order avoids serving a broken host.
 
 Attaching a domain does not migrate the integrations that are registered
@@ -252,8 +252,7 @@ keys live only in prod.
 | Var | test | prod |
 |---|---|---|
 | `NEXT_PUBLIC_APP_URL` / `NEXTAUTH_URL` | `https://test.dcica.org` | `https://events.dcica.org` |
-| `NEXT_PUBLIC_ROOT_DOMAIN` | `test.dcica.org` | `events.dcica.org` |
-| `TENANT_ROUTING` | path | path |
+| `PLATFORM_HOST` | `medcamp-test.vercel.app` | `medcamp-prod.vercel.app` |
 | `DEFAULT_ORG_SLUG` | dcica | dcica |
 | `BOOTSTRAP_ADMIN_EMAILS` | QA emails | **real coordinators** |
 | `DATABASE_URL` | pooled, `&schema=test` | pooled, `&schema=prod` |

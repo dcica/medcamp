@@ -36,7 +36,8 @@
     "verify:seo": "tsx scripts/verify-seo.ts",
     "verify:registrations": "tsx scripts/verify-registrations.ts",
     "verify:analytics": "tsx scripts/verify-analytics.ts",
-    "verify": "npm run verify:schema && npm run verify:pricing && npm run verify:validation && npm run verify:storage && npm run verify:branding && npm run verify:performance && npm run verify:gate && npm run verify:scan && npm run verify:logging && npm run verify:readiness && npm run verify:checkout && npm run verify:csv && npm run verify:testlogin && npm run verify:home && npm run verify:seo && npm run verify:registrations && npm run verify:analytics"
+    "verify:tenant": "tsx scripts/verify-tenant.ts",
+    "verify": "npm run verify:schema && npm run verify:pricing && npm run verify:validation && npm run verify:storage && npm run verify:branding && npm run verify:performance && npm run verify:gate && npm run verify:scan && npm run verify:logging && npm run verify:readiness && npm run verify:checkout && npm run verify:csv && npm run verify:testlogin && npm run verify:home && npm run verify:seo && npm run verify:registrations && npm run verify:analytics && npm run verify:tenant"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
