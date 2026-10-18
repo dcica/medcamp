@@ -10,6 +10,7 @@ import { JsonLd } from "@/app/_components/JsonLd";
 import { EmptyEventsState } from "@/app/_components/EmptyEventsState";
 import { EventRail } from "@/app/_components/EventRail";
 import { EventExtras } from "@/app/_components/EventExtras";
+import { PlatformShell } from "@/app/_components/PlatformShell";
 import {
   EventPosterCard,
   type PosterEvent,
@@ -121,6 +122,8 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function Home() {
   const { org, events } = await loadHome();
+  // The platform host (or an unknown host with no default) owns no events.
+  if (!org) return <PlatformShell />;
 
   // One `now` for the whole render, so two cards can never resolve opposite
   // sides of the same early-bird deadline.

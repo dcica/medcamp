@@ -15,7 +15,16 @@ import { destinationsFor } from "./staffNav";
  * the rule and why. Nothing here is ever rendered disabled: an entry a user
  * cannot use is removed, not greyed out.
  */
-export function StaffMenu({ name, role }: { name: string; role: Role }) {
+export function StaffMenu({
+  name,
+  role,
+  canSwitch = false,
+}: {
+  name: string;
+  role: Role;
+  /** More than one membership: offer the organisation picker. */
+  canSwitch?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
@@ -122,6 +131,18 @@ export function StaffMenu({ name, role }: { name: string; role: Role }) {
               </div>
             );
           })}
+          {canSwitch && (
+            <div className="border-t border-gray-100 py-1">
+              <Link
+                href="/staff/org"
+                role="menuitem"
+                onClick={() => setOpen(false)}
+                className="flex min-h-tap items-center px-4 py-2 text-sm text-gray-800 hover:bg-gray-50"
+              >
+                Switch organisation
+              </Link>
+            </div>
+          )}
           <div className="border-t border-gray-100 py-1">
             <button
               type="button"

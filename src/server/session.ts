@@ -47,12 +47,16 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
 /** Require a signed-in member of the active org, else redirect to login. */
 export async function requireMember(callbackUrl?: string): Promise<CurrentMember> {
   const member = await getCurrentMember();
-  if (!member) {
-    redirect(
-      callbackUrl ? `/login?callbackUrl=${encodeURIComponent(callbackUrl)}` : "/login",
-    );
+  if (member) return member;
+  // Signed in, but the request resolved no organisation (the platform host
+  // with no cookie yet): the user picks one. Only then is it "not signed in".
+  const session = await getServerSession(authOptions);
+  if (session?.user?.id && !(await getActiveOrg())) {
+    redirect("/staff/org");
   }
-  return member;
+  redirect(
+    callbackUrl ? `/login?callbackUrl=${encodeURIComponent(callbackUrl)}` : "/login",
+  );
 }
 
 /**

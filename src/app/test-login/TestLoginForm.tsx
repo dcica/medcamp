@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 
 type AccountOption = { username: string; label: string };
+type OrgOption = { slug: string; name: string };
 
 /**
  * Test login form. Posts to /api/test-login (which sets the session cookie), then
@@ -12,12 +13,16 @@ type AccountOption = { username: string; label: string };
 export function TestLoginForm({
   accounts,
   callbackUrl,
+  orgs = [],
 }: {
   accounts: AccountOption[];
   callbackUrl: string;
+  /** Offered only when the request resolved no organisation (the platform host). */
+  orgs?: OrgOption[];
 }) {
   const [username, setUsername] = useState(accounts[0]?.username ?? "");
   const [password, setPassword] = useState("");
+  const [orgSlug, setOrgSlug] = useState(orgs[0]?.slug ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -30,7 +35,7 @@ export function TestLoginForm({
       const res = await fetch("/api/test-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, orgSlug: orgSlug || undefined }),
       });
       if (res.ok) {
         window.location.href = callbackUrl;
@@ -44,6 +49,22 @@ export function TestLoginForm({
   return (
     <div className="space-y-3">
       <div>
+      {orgs.length > 0 && (
+        <label className="block text-sm">
+          Organisation
+          <select
+            value={orgSlug}
+            onChange={(e) => setOrgSlug(e.target.value)}
+            className="mt-1 block min-h-tap w-full rounded-md border border-gray-300 px-3"
+          >
+            {orgs.map((o) => (
+              <option key={o.slug} value={o.slug}>
+                {o.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
         <label className="mb-1 block text-xs font-medium text-gray-500">
           Role username
         </label>

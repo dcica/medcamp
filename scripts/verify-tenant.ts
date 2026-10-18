@@ -555,11 +555,72 @@ async function section9(): Promise<void> {
   check("health counts service types, not events (a fresh tenant has none)", /serviceType\.count\(\)/.test(src("src/app/api/health/route.ts")), true);
 }
 
+const STAFF_EMAIL = "staff@verify-tenant.invalid";
+const OTHER_EMAIL = "other@verify-tenant.invalid";
+const INVITEE_EMAIL = "invitee@verify-tenant.invalid";
+
+/**
+ * §10 — staff on the platform host. The session cookie is host-only and the
+ * tenant domains share no parent, so staff sign in on the platform host and
+ * pick the organisation they work in: from the host they came from, from
+ * their memberships, or from a pending invite in any organisation.
+ */
+async function section10(f: Fixtures): Promise<void> {
+  const { a, b } = f;
+  const { safeThenPath, selectOrgForUser, orgForHost, listMemberships, acceptPendingInvites } = await import(
+    "../src/server/staffOrg"
+  );
+
+  console.log("\n§10 the organisation a staff member works in");
+  check("safeThenPath keeps a same-origin path", safeThenPath("/o/dcica/scan?x=1"), "/o/dcica/scan?x=1");
+  check("safeThenPath refuses a protocol-relative url", safeThenPath("//evil.example/x"), "/staff");
+  check("safeThenPath refuses an absolute url", safeThenPath("https://evil.example/x"), "/staff");
+  check("safeThenPath defaults when absent", safeThenPath(null), "/staff");
+
+  const staff = await db.user.create({ data: { email: STAFF_EMAIL, name: "VT Staff" } });
+  await db.membership.create({ data: { orgId: b.id, userId: staff.id, role: "COORDINATOR" } });
+  // Somebody ELSE belongs to A, so a lookup that forgets the user has a row to
+  // leak — without this, "not a member of A" would pass for the wrong reason.
+  const other = await db.user.create({ data: { email: OTHER_EMAIL, name: "VT Other" } });
+  await db.membership.create({ data: { orgId: a.id, userId: other.id, role: "COORDINATOR" } });
+  check("selectOrgForUser: a member's organisation is selectable", (await selectOrgForUser(staff.id, SLUG_B))?.id, b.id);
+  check("selectOrgForUser: an organisation they do not belong to is not", await selectOrgForUser(staff.id, SLUG_A), null);
+  check("selectOrgForUser: an unknown slug is not", await selectOrgForUser(staff.id, "verify-tenant-nope"), null);
+  check("listMemberships: exactly the organisations they belong to", (await listMemberships(staff.id)).map((m) => m.org.slug), [SLUG_B]);
+  check("orgForHost: a tenant host resolves its organisation", (await orgForHost(HOST_A))?.id, a.id);
+  check("orgForHost: normalises before looking up", (await orgForHost(`${HOST_A.toUpperCase()}:443`))?.id, a.id);
+  check("orgForHost: an unknown host is null", await orgForHost("nope.verify-tenant.invalid"), null);
+
+  // A pending invite in each organisation: accepted together on first sign-in,
+  // because a sign-in on the platform host resolves no organisation at all.
+  const invitee = await db.user.create({ data: { email: INVITEE_EMAIL, name: "VT Invitee" } });
+  await db.invite.create({ data: { orgId: a.id, email: INVITEE_EMAIL, role: "COORDINATOR", canHoldTill: true } });
+  await db.invite.create({ data: { orgId: b.id, email: INVITEE_EMAIL, role: "STATION_VOLUNTEER" } });
+  check("acceptPendingInvites grants every pending invite across organisations", await acceptPendingInvites(invitee.id, INVITEE_EMAIL), 2);
+  const granted = await db.membership.findMany({ where: { userId: invitee.id }, include: { org: true }, orderBy: { org: { slug: "asc" } } });
+  check("…with each invite's role and flags", granted.map((m) => [m.org.slug, m.role, m.canHoldTill]), [[SLUG_A, "COORDINATOR", true], [SLUG_B, "STATION_VOLUNTEER", false]]);
+  check("…and marks the invites accepted", (await db.invite.count({ where: { email: INVITEE_EMAIL, acceptedAt: null } })), 0);
+  check("acceptPendingInvites is idempotent", await acceptPendingInvites(invitee.id, INVITEE_EMAIL), 0);
+
+  console.log("\n§10 the routes and the switcher exist and are wired");
+  const src = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
+  check("GET /api/org/select exists and validates `then`", /safeThenPath\(/.test(src("src/app/api/org/select/route.ts")) && /selectOrgForUser\(/.test(src("src/app/api/org/select/route.ts")), true);
+  check("GET /staff/from exists and resolves the host", /orgForHost\(/.test(src("src/app/staff/from/route.ts")), true);
+  check("/staff/org lists memberships", /listMemberships\(/.test(src("src/app/staff/org/page.tsx")), true);
+  check("requireMember sends a signed-in user with no organisation to /staff/org", /redirect\("\/staff\/org"\)/.test(src("src/server/session.ts")), true);
+  check("the sign-in event accepts pending invites across organisations", /acceptPendingInvites\(/.test(src("src/lib/auth.ts")), true);
+  check("test-login takes an orgSlug and sets the staff cookie", /orgSlug/.test(src("src/app/api/test-login/route.ts")) && /ORG_COOKIE/.test(src("src/app/api/test-login/route.ts")), true);
+  check("dev login takes an orgSlug", /orgSlug/.test(src("src/app/api/dev/login/route.ts")), true);
+  check("the staff menu offers 'Switch organisation' only when there is more than one", /canSwitch/.test(src("src/app/_components/StaffMenu.tsx")) && /canSwitch/.test(src("src/app/_components/SiteHeader.tsx")), true);
+}
+
 async function cleanup(): Promise<void> {
   // Every key this script creates is removed here, most-dependent first, so a
   // run that died halfway leaves nothing behind for the next manual test to
   // trip over. OrgDomain rows cascade from the organisation.
   const org = { slug: { in: [SLUG_A, SLUG_B, SLUG_C] } };
+  await db.membership.deleteMany({ where: { user: { email: { in: [STAFF_EMAIL, OTHER_EMAIL, INVITEE_EMAIL] } } } });
+  await db.user.deleteMany({ where: { email: { in: [STAFF_EMAIL, OTHER_EMAIL, INVITEE_EMAIL] } } });
   await db.performanceEntry.deleteMany({ where: { org } });
   await db.ledgerEntry.deleteMany({ where: { org } });
   await db.payment.deleteMany({ where: { org } });
@@ -585,6 +646,7 @@ async function main(): Promise<void> {
   await section6();
   await section7(fixtures);
   await section9();
+  await section10(fixtures);
   await cleanup();
 }
 
