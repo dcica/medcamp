@@ -171,7 +171,11 @@ async function main(): Promise<void> {
     };
   };
 
-  const org = await db.organization.findFirstOrThrow();
+  const org = await db.organization.findUniqueOrThrow({
+    // Pin the org getActiveOrg() resolves in script scope — DEFAULT_ORG_SLUG — so
+    // fixtures land where the code under test looks, not in "the oldest row".
+    where: { slug: process.env.DEFAULT_ORG_SLUG ?? "dcica" },
+  });
   await cleanup(org.id);
 
   // Relative to now, never a literal date: isRegistrationOpen refuses a finished

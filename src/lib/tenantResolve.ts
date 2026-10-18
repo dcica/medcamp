@@ -66,6 +66,16 @@ export function normalizeHost(raw: string | null | undefined): string | null {
   return host || null;
 }
 
+/** A developer's machine: served over http, and "platform-like" for the staff cookie. */
+export function isLocalHost(host: string): boolean {
+  return (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host === "127.0.0.1" ||
+    host === "[::1]"
+  );
+}
+
 /** `/o/<slug>` and `/o/<slug>/rest`. Slug charset is the same as Organization.slug. */
 const ORG_PATH_RE = /^\/o\/([a-z0-9][a-z0-9-]{0,62})(\/.*)?$/;
 

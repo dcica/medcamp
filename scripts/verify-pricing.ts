@@ -51,7 +51,11 @@ async function main(): Promise<void> {
   const { confirmOrderPaid } = await import("../src/server/payments");
   const { resolvePrice } = await import("../src/lib/pricing");
 
-  const org = await db.organization.findFirstOrThrow();
+  const org = await db.organization.findUniqueOrThrow({
+    // Pin the org getActiveOrg() resolves in script scope — DEFAULT_ORG_SLUG — so
+    // fixtures land where the code under test looks, not in "the oldest row".
+    where: { slug: process.env.DEFAULT_ORG_SLUG ?? "dcica" },
+  });
   await cleanup(org.id);
 
   // ── Scratch event: quantity mode, honors membership ──

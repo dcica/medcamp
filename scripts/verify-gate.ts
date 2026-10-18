@@ -261,7 +261,11 @@ async function main(): Promise<void> {
 
   // ───────────────────────────────────────────────────────────────────────────
   console.log("\n§3b the guard reads the DATABASE, not the session token");
-  const org = await db.organization.findFirstOrThrow();
+  const org = await db.organization.findUniqueOrThrow({
+    // Pin the org getActiveOrg() resolves in script scope — DEFAULT_ORG_SLUG — so
+    // fixtures land where the code under test looks, not in "the oldest row".
+    where: { slug: process.env.DEFAULT_ORG_SLUG ?? "dcica" },
+  });
   await cleanup(org.id);
   const tillMember = await makeMember(org.id, TILL_EMAIL, "REGISTRATION_TILL", true);
   const noTillMember = await makeMember(org.id, NOTILL_EMAIL, "REGISTRATION_NO_TILL", false);
@@ -408,12 +412,21 @@ async function main(): Promise<void> {
   check("POS_TILL lands on the station it can actually use", navSrc.includes(String.raw`return "/scan"`));
 
   // BOTH lists. Naming a path in PROTECTED while leaving it out of the matcher
-  // is a silent no-op — the middleware never runs for that path at all.
+  // is a silent no-op — the middleware never runs for that path at all. The
+  // matcher is compiled with Next's own path-to-regexp and ASKED, rather than
+  // grepped for a literal entry: since tenant routing it is one catch-all
+  // pattern with an asset exclusion, and a literal check would pass or fail on
+  // spelling, not on whether the middleware runs.
+  const { config: mwConfig } = await import("../src/middleware");
+  const { pathToRegexp } = await import("next/dist/compiled/path-to-regexp");
+  const matchers = (Array.isArray(mwConfig.matcher) ? mwConfig.matcher : [mwConfig.matcher]) as string[];
+  const runsOn = (p: string) => matchers.some((m) => pathToRegexp(m).test(p));
   check("middleware protects /scan", mwSrc.includes(String.raw`/^\/scan(\/|$)/`));
-  check("...and its matcher actually runs there", mwSrc.includes(String.raw`"/scan/:path*"`));
+  check("...and its matcher actually runs there", runsOn("/scan") && runsOn("/scan/x"));
   // /gate was missing from BOTH until this merge, so pin it too.
   check("middleware protects /gate", mwSrc.includes(String.raw`/^\/gate(\/|$)/`));
-  check("...and its matcher actually runs there", mwSrc.includes(String.raw`"/gate/:path*"`));
+  check("...and its matcher actually runs there", runsOn("/gate") && runsOn("/gate/x"));
+  check("...and the matcher still skips static assets", !runsOn("/_next/static/x.js") && !runsOn("/events/poster.png"));
 
   // The old routes stay reachable, and must NOT re-decide access: two places
   // deciding who may open a door is how they drift apart.
