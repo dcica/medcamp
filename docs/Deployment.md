@@ -251,8 +251,9 @@ keys live only in prod.
 
 | Var | test | prod |
 |---|---|---|
-| `NEXT_PUBLIC_APP_URL` / `NEXTAUTH_URL` | `https://test.dcica.org` | `https://events.dcica.org` |
-| `PLATFORM_HOST` | `medcamp-test.vercel.app` | `medcamp-prod.vercel.app` |
+| `PLATFORM_HOST` | `medcamp-test.vercel.app` | `medcamp-prod.vercel.app` (a bought platform domain later) |
+| `NEXTAUTH_URL` | `https://$PLATFORM_HOST` | `https://$PLATFORM_HOST` |
+| `NEXT_PUBLIC_APP_URL` | fallback origin only (`https://test.dcica.org`) | fallback origin only (`https://events.dcica.org`) |
 | `DEFAULT_ORG_SLUG` | dcica | dcica |
 | `BOOTSTRAP_ADMIN_EMAILS` | QA emails | **real coordinators** |
 | `DATABASE_URL` | pooled, `&schema=test` | pooled, `&schema=prod` |
@@ -265,6 +266,37 @@ keys live only in prod.
 | `TEST_LOGIN_ENABLED` / `TEST_LOGIN_PASSWORD` | set | **unset** |
 | `EMAIL_PROVIDER` / `EMAIL_FROM` | ses / `no-reply@dcica.org` | ses / `no-reply@dcica.org` |
 | `AWS_REGION` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | set (explicit) | set (explicit) |
+
+---
+
+## Adding a tenant (one shared instance)
+
+One deployment serves every organisation. A tenant is a seed module under
+`prisma/orgs/` plus a domain; nothing else is per tenant.
+
+1. **Seed module.** Add `prisma/orgs/<slug>.ts` to `prisma/orgs/index.ts`
+   (theme validated at seed time, catalogue, first-admin `Invite`, and its
+   hostnames per environment). `db:seed` runs every module; CI sets `SEED_ENV`
+   per job, so the `OrgDomain` rows for `events.<tenant>` land on prod only.
+2. **Domain.** `npx vercel domains add events.<tenant> medcamp-prod`, the
+   tenant's DNS admin adds `CNAME events → cname.vercel-dns.com`, and the
+   certificate issues (`vercel certs issue` if it stalls). Until the row is
+   seeded the host resolves `DEFAULT_ORG_SLUG`, which is why the seed runs
+   first.
+3. **Test surface.** None to buy: `https://medcamp-test.vercel.app/o/<slug>`
+   resolves the tenant on the test deployment through the path.
+4. **Staff.** Sign in on the platform host; `/staff/from` carries a bookmark on
+   the tenant domain across. The first coordinator's invite is in the seed
+   module and is accepted on their first sign-in.
+5. **Settings.** Contact and sender addresses, legal identity, analytics ids
+   and the privacy/terms text are entered in Admin → Settings by the tenant;
+   the sender needs an SES identity for its domain (DKIM CNAMEs) first.
+
+**The `PLATFORM_HOST` cutover** is one deliberate step: set `PLATFORM_HOST` and
+`NEXTAUTH_URL` together (`scripts/push-ses-env-to-vercel.sh` does), register
+`https://<platform>/api/auth/callback/google` on the one OAuth client, redeploy.
+Staff sign-in moves hosts; every bookmark on a tenant domain redirects in one
+hop. Rollback is the same two env vars.
 
 ---
 

@@ -31,9 +31,16 @@ VERCEL="npx --yes vercel@latest"
 EMAIL_PROVIDER="${EMAIL_PROVIDER:-ses}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 EMAIL_FROM="${EMAIL_FROM:-dcica <no-reply@dcica.org>}"
-# Canonical host for the test site. Pinning NEXTAUTH_URL stops NextAuth from
-# falling back to the raw VERCEL_URL (medcamp-sigma.vercel.app) and bouncing
-# logins off the custom domain. For a preview env, export APP_URL to override.
+# The PLATFORM host: where staff sign in and where /o/<slug> resolves a tenant
+# without a domain of its own. NEXTAUTH_URL is derived from it, because the
+# session cookie is host-only and tenant domains share no parent — a session
+# can live on exactly one host. Setting these two is the cutover: staff
+# sign-in moves to this host and bookmarks on tenant domains redirect in one
+# hop. Register https://$PLATFORM_HOST/api/auth/callback/google on the OAuth
+# client BEFORE running this, or every login 400s.
+PLATFORM_HOST="${PLATFORM_HOST:-medcamp-test.vercel.app}"
+# Fallback origin only (localhost / an unknown host): every absolute URL a
+# tenant's pages emit comes from its OrgDomain row, not from this value.
 APP_URL="${APP_URL:-https://test.dcica.org}"
 
 # ── Required secrets ──
@@ -61,12 +68,14 @@ put AWS_REGION           "$AWS_REGION"
 put EMAIL_FROM           "$EMAIL_FROM"
 put AWS_ACCESS_KEY_ID    "$AWS_ACCESS_KEY_ID"
 put AWS_SECRET_ACCESS_KEY "$AWS_SECRET_ACCESS_KEY"
-put NEXTAUTH_URL         "$APP_URL"
+put PLATFORM_HOST        "$PLATFORM_HOST"
+put NEXTAUTH_URL         "https://$PLATFORM_HOST"
 put NEXT_PUBLIC_APP_URL  "$APP_URL"
 
 echo
 echo "Done. Reminders:"
 echo "  - Do NOT set AWS_PROFILE on Vercel (there is no ~/.aws there)."
+echo "  - Staff now sign in on https://$PLATFORM_HOST; tenant-domain bookmarks redirect there."
 echo "  - Google OAuth must have this redirect URI registered, or login 400s:"
 echo "      ${APP_URL}/api/auth/callback/google"
 echo "  - Redeploy for the new env to take effect:"
