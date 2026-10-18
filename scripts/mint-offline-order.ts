@@ -7,6 +7,8 @@
  *   ENV_FILE=<env> MINT_TEST_EMAIL=you@example.com \
  *     npx tsx scripts/mint-offline-order.ts --commit                 # writes
  *   ENV_FILE=<env> npx tsx scripts/mint-offline-order.ts --resend    # email only
+ *   ENV_FILE=<env> npx tsx scripts/mint-offline-order.ts \
+ *     --commit --historical          # reconstruct a FINISHED event, no email
  *
  * WHY THIS EXISTS. The org publishes a Zelle handle alongside the online form,
  * so money arrives with no order attached to it. Before this script the only
@@ -75,6 +77,18 @@ dotenv.config({ path: process.env.ENV_FILE ?? ".env", override: true });
 const db = new PrismaClient();
 const COMMIT = process.argv.includes("--commit");
 const RESEND = process.argv.includes("--resend");
+/**
+ * Reconstruct sales at an event that has ALREADY FINISHED — money taken on a
+ * rail the app could not see (a card terminal, cash never rung up). Records the
+ * order, tickets, cap decrement, payment and ledger row exactly as a live mint
+ * does, but sends no confirmation email and fires no GA4 purchase: those
+ * describe something happening now, and this is history.
+ *
+ * Refuses on an event that has not ended — see the guard in main(). That is the
+ * whole safety of it: it can never be used to skip the ticket email on a sale
+ * someone is waiting for.
+ */
+const HISTORICAL = process.argv.includes("--historical");
 /** Where the mandatory pre-commit proof send goes. */
 const TEST_EMAIL = process.env.MINT_TEST_EMAIL ?? "";
 
@@ -88,14 +102,48 @@ type Entry = {
   /** Required by registrationSchema (min 7 chars) — the only contact channel a
    *  ticket has besides email. A sentinel is honest; an invented number is not. */
   phone: string;
-  /** Service key on the event's menu. Price comes from the cap row, not here. */
-  serviceKey: string;
-  quantity: number;
+  /**
+   * Which event this payment was for. Defaults to EVENT_CODE.
+   *
+   * The manifest is a cumulative LOG across every offline payment ever minted
+   * (see its header), and the org runs more than one event — so it necessarily
+   * spans events, while a single run can only target one. Entries for other
+   * events are SKIPPED, not failed: an entry for last season's camp is not an
+   * error, it is simply not this run's work.
+   */
+  eventCode?: string;
+  /**
+   * What was bought, as service keys on the event's menu. Prices come from the
+   * cap rows, never from here.
+   *
+   * A LIST because one payment is routinely one basket: a card terminal charge
+   * of $27 at Dandiya 2026 was one adult at $15 plus one child at $12. Forcing
+   * that into two entries would split one real charge across two orders and
+   * break the 1:1 mapping between `ref` and the payment it reconstructs.
+   */
+  items: { serviceKey: string; quantity: number }[];
+  /**
+   * Which price the buyer was actually charged.
+   *
+   * `"online"` (the default) is the advertised price and is right for money that
+   * arrived before the event — a Zelle transfer, a mailed cheque.
+   *
+   * `"door"` is for a sale taken AT the event on a rail the app could not see:
+   * a card terminal, or cash into a till that was never rung up. Those were
+   * charged the onsite price, and recording them at the online price makes the
+   * ledger read light. Dandiya 2026: floor admission was $12 online and $15 at
+   * the door, so 20 terminal charges would have under-recorded by ~$60.
+   */
+  channel?: "online" | "door";
   /** What actually landed in the bank, in cents. Checked against the resolved
    *  price BEFORE anything is created — see assertAmount. */
   amountCents: number;
-  /** How the money arrived. */
-  method: "ZELLE" | "CHECK" | "CASH";
+  /**
+   * How the money arrived. STRIPE covers a card read on a standalone terminal:
+   * Stripe captured it, the app never saw it, so the order is reconstructed
+   * here while the charge already exists on the Stripe side.
+   */
+  method: "ZELLE" | "CHECK" | "CASH" | "STRIPE";
   /** Stable idempotency ref — the payment's transaction number where there is
    *  one. Becomes Order.idempotencyKey and Payment.idempotencyKey. */
   ref: string;
@@ -122,8 +170,7 @@ const MANIFEST: Entry[] = [
     name: "Bhuvana Mohan",
     email: "gbhuvana10@gmail.com",
     phone: "000-000-0000",
-    serviceKey: "garba-class-entry",
-    quantity: 1,
+    items: [{ serviceKey: "garba-class-entry", quantity: 1 }],
     amountCents: 500,
     method: "ZELLE",
     ref: "zelle-30500227223",
@@ -133,8 +180,7 @@ const MANIFEST: Entry[] = [
     name: "Saurabh Shukla",
     email: "sssauurabh@gmail.com",
     phone: "000-000-0000",
-    serviceKey: "garba-class-entry",
-    quantity: 4,
+    items: [{ serviceKey: "garba-class-entry", quantity: 4 }],
     amountCents: 2000,
     method: "ZELLE",
     ref: "zelle-30509174880",
@@ -146,8 +192,7 @@ const MANIFEST: Entry[] = [
     name: "Latha Pamarthi",
     email: "latha.murala11@gmail.com",
     phone: "000-000-0000",
-    serviceKey: "garba-class-entry",
-    quantity: 1,
+    items: [{ serviceKey: "garba-class-entry", quantity: 1 }],
     amountCents: 500,
     method: "ZELLE",
     ref: "zelle-30526441724",
@@ -157,8 +202,7 @@ const MANIFEST: Entry[] = [
     name: "Ashutosh Jaiswal",
     email: "jaiswal.ashutosh@gmail.com",
     phone: "000-000-0000",
-    serviceKey: "garba-class-entry",
-    quantity: 2,
+    items: [{ serviceKey: "garba-class-entry", quantity: 2 }],
     amountCents: 1000,
     method: "ZELLE",
     ref: "zelle-30527014305",
@@ -172,8 +216,7 @@ const MANIFEST: Entry[] = [
     name: "Sonal Mahajan",
     email: "sonal.work.6@gmail.com",
     phone: "000-000-0000",
-    serviceKey: "garba-class-entry",
-    quantity: 3,
+    items: [{ serviceKey: "garba-class-entry", quantity: 3 }],
     amountCents: 1500,
     // ASSUMED, not evidenced. No amount, method or transaction number was
     // supplied for this one — only "three tickets". $15.00 is the only value
@@ -271,6 +314,7 @@ async function main() {
   const { log } = await import("../src/lib/logger");
   const { createRegistration } = await import("../src/server/registration");
   const { confirmOrderPaid } = await import("../src/server/payments");
+  const { resolvePrice } = await import("../src/lib/pricing");
 
   console.log(`\n${RESEND ? "RESEND" : COMMIT ? "COMMIT" : "DRY RUN"} — mint-offline-order`);
   console.log(`  env file        ${process.env.ENV_FILE ?? ".env"}`);
@@ -314,7 +358,13 @@ async function main() {
   // sendTestEmail RETHROWS provider errors (unlike the dispatch() path the
   // confirmation goes through), so this is the one place a broken SES setup can
   // still stop the run. Everything after this point fails silently instead.
-  if (COMMIT || RESEND) {
+  if (HISTORICAL) {
+    // Nothing is sent on this path, so there is nothing to prove. Say so loudly
+    // rather than silently skipping the safeguard the other modes depend on.
+    console.log(
+      `  proof send      skipped — --historical sends no email (and no GA4 purchase)`,
+    );
+  } else if (COMMIT || RESEND) {
     if (!TEST_EMAIL) {
       fail(
         "MINT_TEST_EMAIL is unset. The confirmation email IS the ticket, and the " +
@@ -353,10 +403,59 @@ async function main() {
   console.log(`  ${event.code}  ${event.name}`);
   console.log(`  org ${event.org.slug}   status ${event.status}   mode ${event.collectsAttendeeDetails ? "ATTENDEE" : "QUANTITY"}`);
 
+  // ── The guard that makes --historical safe ────────────────────────────────
+  //
+  // Suppressing the ticket email is only ever defensible for an event that is
+  // OVER. On anything still ahead, a buyer is waiting for the email that IS
+  // their ticket, and silently not sending it is the worst failure this script
+  // has. So the mode is gated on the event's own end time rather than on the
+  // operator remembering which kind of run this is.
+  if (HISTORICAL) {
+    if (event.endsAt > new Date()) {
+      fail(
+        `--historical refused: ${event.code} has not ended (ends ${event.endsAt.toISOString()}). ` +
+          "This mode suppresses the confirmation email, which IS the ticket. " +
+          "Use a normal --commit run so the buyer is actually sent their pass.",
+      );
+      return;
+    }
+    if (RESEND) {
+      fail("--historical and --resend are contradictory: one sends nothing, the other sends only email.");
+      return;
+    }
+    console.log(`  mode            HISTORICAL — no confirmation email, no GA4 purchase`);
+  }
+
+  // ── This run's slice of a cumulative log ──────────────────────────────────
+  //
+  // The manifest spans every event the org has ever taken offline money for; a
+  // run targets exactly one. Filtering (rather than failing) is what lets the
+  // file keep its append-only audit trail — see Entry.eventCode. An unknown
+  // SERVICE on a matching event is still a hard failure below: that is a typo,
+  // not another event's business.
+  const ENTRIES = MANIFEST.filter((e) => (e.eventCode ?? EVENT_CODE) === EVENT_CODE);
+  const otherEvents = MANIFEST.length - ENTRIES.length;
+  if (otherEvents > 0) {
+    console.log(`  manifest        ${ENTRIES.length} entries for ${EVENT_CODE}, ${otherEvents} for other events (skipped)`);
+  }
+
   const byKey = new Map(event.caps.map((c) => [c.serviceType.key, c]));
+
+  /**
+   * Scannable codes an entry mints. Mirrors createQuantityOrder: only ADMISSION
+   * services mint a ticket, and one purchased unit of a bundle mints
+   * `admitsCount` of them. Merch and fees mint none — a $5 pair of dandiya
+   * sticks admits nobody, so counting it as a ticket would overstate the gate.
+   */
+  const headsFor = (e: Entry) =>
+    e.items.reduce((s, it) => {
+      const st = byKey.get(it.serviceKey)?.serviceType;
+      return s + (st?.kind === "ADMISSION" ? it.quantity * Math.max(1, st.admitsCount) : 0);
+    }, 0);
   for (const c of event.caps) {
     console.log(
       `  service ${c.serviceType.key}  ${usd(c.priceCents)} online  ` +
+        `${usd(c.onsitePriceCents ?? c.priceCents)} door  ` +
         `cap ${c.capacity ?? "uncapped"}  sold ${c.sold}`,
     );
   }
@@ -372,31 +471,42 @@ async function main() {
   const priorByRef = new Map(
     (
       await db.order.findMany({
-        where: { idempotencyKey: { in: MANIFEST.map((e) => e.ref) } },
+        where: { idempotencyKey: { in: ENTRIES.map((e) => e.ref) } },
         select: { idempotencyKey: true, status: true },
       })
     ).map((o) => [o.idempotencyKey as string, o.status]),
   );
 
-  console.log(`\n§ manifest (${MANIFEST.length} entries)`);
+  console.log(`\n§ manifest (${ENTRIES.length} entries)`);
   const wanted = new Map<string, number>(); // serviceKey -> units still to sell
-  for (const e of MANIFEST) {
-    const cap = byKey.get(e.serviceKey);
-    if (!cap) {
-      fail(`${e.email}: service "${e.serviceKey}" is not offered at ${EVENT_CODE}`);
+  for (const e of ENTRIES) {
+    const missing = e.items.filter((it) => !byKey.has(it.serviceKey));
+    if (missing.length > 0) {
+      fail(
+        `${e.email}: service${missing.length > 1 ? "s" : ""} ` +
+          `${missing.map((it) => `"${it.serviceKey}"`).join(", ")} not offered at ${EVENT_CODE}`,
+      );
       continue;
     }
     const prior = priorByRef.get(e.ref);
-    // The price the buyer WOULD have been charged online, straight off the cap
-    // row. If the manifest disagrees with it, the ticket count and the money
-    // disagree, and one of the two is wrong — refuse rather than guess.
-    const expected = cap.priceCents * e.quantity;
+    // The price the buyer WOULD have been charged on their channel, resolved
+    // through the SAME resolvePrice the live paths use rather than reading a
+    // price column — reading `cap.priceCents` directly is what made every door
+    // sale record light. If the manifest disagrees with it, the ticket count and
+    // the money disagree, and one of the two is wrong — refuse rather than guess.
+    const channel = e.channel ?? "online";
+    const priced = e.items.map((it) => {
+      const unit = resolvePrice(byKey.get(it.serviceKey)!, channel, new Date()).amountCents;
+      return { ...it, unit, lineCents: unit * it.quantity };
+    });
+    const expected = priced.reduce((s, p) => s + p.lineCents, 0);
     const ok = expected === e.amountCents;
     const state =
       prior === "CONFIRMED" ? "done" : prior ? `${prior.toLowerCase()}` : "new";
     console.log(
       `  ${ok ? (state === "done" ? "done" : "ok  ") : "FAIL"}  ${e.name} <${e.email}>  ` +
-        `${e.quantity} x ${usd(cap.priceCents)} = ${usd(expected)}  ` +
+        `${priced.map((p) => `${p.quantity} x ${usd(p.unit)} ${p.serviceKey}`).join(" + ")} ` +
+        `${channel} = ${usd(expected)}  ` +
         `paid ${usd(e.amountCents)} by ${e.method}  ref ${e.ref}` +
         // "done" is already the status column; only a stalled prior state
         // (PENDING from an interrupted run, CANCELLED) needs calling out.
@@ -408,7 +518,9 @@ async function main() {
     }
     // Already CONFIRMED ⇒ already counted in cap.sold. Not pending work.
     if (prior === "CONFIRMED") continue;
-    wanted.set(e.serviceKey, (wanted.get(e.serviceKey) ?? 0) + e.quantity);
+    for (const it of e.items) {
+      wanted.set(it.serviceKey, (wanted.get(it.serviceKey) ?? 0) + it.quantity);
+    }
   }
 
   // ── Capacity headroom, in aggregate ───────────────────────────────────────
@@ -433,11 +545,11 @@ async function main() {
   // Two totals, because the manifest is cumulative: what THIS run will do, and
   // what the file accounts for in total. Reporting only the second would claim
   // credit for every past run every time.
-  const pending = MANIFEST.filter((e) => priorByRef.get(e.ref) !== "CONFIRMED");
-  const totalCents = MANIFEST.reduce((s, e) => s + e.amountCents, 0);
-  const totalTickets = MANIFEST.reduce((s, e) => s + e.quantity, 0);
+  const pending = ENTRIES.filter((e) => priorByRef.get(e.ref) !== "CONFIRMED");
+  const totalCents = ENTRIES.reduce((s, e) => s + e.amountCents, 0);
+  const totalTickets = ENTRIES.reduce((s, e) => s + headsFor(e), 0);
   const pendingCents = pending.reduce((s, e) => s + e.amountCents, 0);
-  const pendingTickets = pending.reduce((s, e) => s + e.quantity, 0);
+  const pendingTickets = pending.reduce((s, e) => s + headsFor(e), 0);
   console.log(
     `\n  this run: ${pendingTickets} tickets, ${usd(pendingCents)}` +
       `   |   manifest total: ${totalTickets} tickets, ${usd(totalCents)}`,
@@ -460,7 +572,7 @@ async function main() {
   // ticket that disagrees with the one the card path sends.
   if (RESEND) {
     console.log(`\n§ resending`);
-    for (const e of MANIFEST) {
+    for (const e of ENTRIES) {
       const order = await db.order.findUnique({
         where: { idempotencyKey: e.ref },
         include: {
@@ -537,7 +649,7 @@ async function main() {
 
   // ── Write ─────────────────────────────────────────────────────────────────
   console.log(`\n§ minting`);
-  for (const e of MANIFEST) {
+  for (const e of ENTRIES) {
     // Already handled? `ref` is the order's idempotencyKey, so this is the
     // guard against a double-mint on a re-run. CONFIRMED -> skip; PENDING ->
     // the previous run died between create and confirm, so finish the job.
@@ -558,11 +670,11 @@ async function main() {
       const created = await createRegistration({
         eventId: event.id,
         registrant: { name: e.name, email: e.email, phone: e.phone },
-        quantities: [{ serviceKey: e.serviceKey, quantity: e.quantity }],
+        quantities: e.items,
         // These people paid by bank transfer; none of them was shown a consent
         // checkbox, so the honest value is false.
         marketingConsent: false,
-      });
+      }, { channel: e.channel ?? "online" });
       orderId = created.orderId;
 
       // Belt to the pre-check's braces: this is the total the ORDER actually
@@ -589,7 +701,11 @@ async function main() {
     // logger so a swallowed failure becomes a FAIL line here rather than a
     // ticket that never arrives.
     const { result, problems } = await watchingEmailLog(log, () =>
-      confirmOrderPaid(orderId, { method: e.method, idempotencyKey: e.ref }),
+      confirmOrderPaid(orderId, {
+        method: e.method,
+        idempotencyKey: e.ref,
+        historical: HISTORICAL,
+      }),
     );
     const { alreadyConfirmed, campIds } = result;
     console.log(
@@ -608,7 +724,7 @@ async function main() {
 
   // ── Verify what landed ────────────────────────────────────────────────────
   console.log(`\n§ verify`);
-  const refs = MANIFEST.map((e) => e.ref);
+  const refs = ENTRIES.map((e) => e.ref);
   const orders = await db.order.findMany({
     where: { idempotencyKey: { in: refs } },
     select: {
@@ -621,7 +737,7 @@ async function main() {
       payments: { select: { status: true, method: true, amountCents: true } },
     },
   });
-  for (const e of MANIFEST) {
+  for (const e of ENTRIES) {
     const o = orders.find((x) => x.idempotencyKey === e.ref);
     if (!o) {
       fail(`${e.email}: no order found for ref ${e.ref}`);
@@ -633,12 +749,12 @@ async function main() {
     const ok =
       o.status === "CONFIRMED" &&
       o.method === e.method &&
-      codes === e.quantity &&
+      codes === headsFor(e) &&
       cents === e.amountCents;
     if (!ok) failures++;
     console.log(
       `  ${ok ? "ok  " : "FAIL"}  ${e.email}  ${o.status}/${o.method}  ` +
-        `${codes}/${e.quantity} codes  ${usd(cents)}/${usd(e.amountCents)}`,
+        `${codes}/${headsFor(e)} codes  ${usd(cents)}/${usd(e.amountCents)}`,
     );
   }
 
@@ -654,23 +770,28 @@ async function main() {
     select: { amountCents: true, method: true },
   });
   const ledgerCents = ledger.reduce((s, l) => s + l.amountCents, 0);
-  const ledgerOk = ledger.length === MANIFEST.length && ledgerCents === totalCents;
+  const ledgerOk = ledger.length === ENTRIES.length && ledgerCents === totalCents;
   if (!ledgerOk) failures++;
   console.log(
-    `  ${ledgerOk ? "ok  " : "FAIL"}  ledger: ${ledger.length}/${MANIFEST.length} CREDIT rows, ` +
+    `  ${ledgerOk ? "ok  " : "FAIL"}  ledger: ${ledger.length}/${ENTRIES.length} CREDIT rows, ` +
       `${usd(ledgerCents)}/${usd(totalCents)}`,
   );
 
-  const after = await db.serviceCap.findUnique({
-    where: {
-      eventId_serviceTypeId: {
-        eventId: event.id,
-        serviceTypeId: byKey.get(MANIFEST[0].serviceKey)!.serviceTypeId,
+  // Every cap this run touched, not just the first entry's — a mixed basket
+  // moves several, and reporting one of them silently hides the rest.
+  const touched = [...new Set(ENTRIES.flatMap((e) => e.items.map((it) => it.serviceKey)))];
+  for (const key of touched) {
+    const after = await db.serviceCap.findUnique({
+      where: {
+        eventId_serviceTypeId: {
+          eventId: event.id,
+          serviceTypeId: byKey.get(key)!.serviceTypeId,
+        },
       },
-    },
-    select: { sold: true, capacity: true },
-  });
-  console.log(`  ---   cap now: ${after?.sold} / ${after?.capacity ?? "uncapped"} sold`);
+      select: { sold: true, capacity: true },
+    });
+    console.log(`  ---   cap now: ${key} ${after?.sold} / ${after?.capacity ?? "uncapped"} sold`);
+  }
 
   console.log(
     failures === 0

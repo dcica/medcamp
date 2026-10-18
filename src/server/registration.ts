@@ -1,15 +1,25 @@
 import { z } from "zod";
 import type { ServiceCap, ServiceType } from "@prisma/client";
 import { db } from "@/lib/db";
-import { resolvePrice } from "@/lib/pricing";
+import { resolvePrice, type PriceChannel } from "@/lib/pricing";
 
 /**
  * Registration service. Creates a PENDING order from a validated submission;
  * payment confirmation (webhook or cash) is the authoritative step (payments.ts).
  * Prices come from the event's offerings, resolved through the single
- * resolvePrice (src/lib/pricing.ts) for the "online" channel — never the
- * client, and never re-resolved later: a LineItem's amountCents is frozen at
- * creation.
+ * resolvePrice (src/lib/pricing.ts) — never the client, and never re-resolved
+ * later: a LineItem's amountCents is frozen at creation.
+ *
+ * The channel defaults to "online" and every web caller leaves it there. It is
+ * an option at all for ONE caller: scripts/mint-offline-order.ts, reconstructing
+ * a sale that was taken AT THE DOOR on a rail the app could not see (a card
+ * terminal, cash handed over). Those must record what was actually charged —
+ * $15 at the door, not the $12 online price — or the ledger reads light and the
+ * till will not reconcile. Dandiya 2026 produced ~$60 of that error across 20
+ * charges before this existed.
+ *
+ * NOT a way to price a live web checkout at the door rate: the door's own sales
+ * go through sellAtGate (src/server/gate.ts), which resolves "door" itself.
  *
  * Two modes, chosen by Event.collectsAttendeeDetails (server-authoritative):
  *   - ATTENDEE (medcamp/CAMP): one row per person with a profile + per-person
@@ -166,7 +176,7 @@ export async function createRegistration(
    * createPerformanceEntry — which writes the details in the same breath — is
    * allowed through.
    */
-  opts?: { allowFeeServices?: boolean },
+  opts?: { allowFeeServices?: boolean; channel?: PriceChannel },
 ): Promise<CreatedOrder> {
   const data = registrationSchema.parse(input);
 
@@ -277,8 +287,8 @@ export async function createRegistration(
   // Mode-specific: create the order + attendees + service line items.
   const { orderId, serviceTotalCents } =
     event.collectsAttendeeDetails && !sellsOnlyFees
-      ? await createAttendeeOrder(event.orgId, event.id, baseOrder, data, byKey, compUnits, now)
-      : await createQuantityOrder(event.orgId, event.id, baseOrder, data, byKey, compUnits, now);
+      ? await createAttendeeOrder(event.orgId, event.id, baseOrder, data, byKey, compUnits, now, opts?.channel ?? "online")
+      : await createQuantityOrder(event.orgId, event.id, baseOrder, data, byKey, compUnits, now, opts?.channel ?? "online");
 
   let total = serviceTotalCents;
 
@@ -333,6 +343,7 @@ async function createAttendeeOrder(
   byKey: Map<string, Offering>,
   compUnits: number,
   now: Date,
+  channel: PriceChannel,
 ): Promise<{ orderId: string; serviceTotalCents: number }> {
   const attendees = data.attendees ?? [];
   if (attendees.length === 0) throw new Error("Add at least one attendee.");
@@ -356,7 +367,7 @@ async function createAttendeeOrder(
       const offering = byKey.get(key)!;
       const comped = offering.serviceType.kind === "ADMISSION" && compRemaining > 0;
       if (comped) compRemaining -= 1;
-      const resolved = resolvePrice(offering, "online", now);
+      const resolved = resolvePrice(offering, channel, now);
       return { offering, resolved, amountCents: comped ? 0 : resolved.amountCents };
     }),
   );
@@ -413,6 +424,7 @@ async function createQuantityOrder(
   byKey: Map<string, Offering>,
   compUnits: number,
   now: Date,
+  channel: PriceChannel,
 ): Promise<{ orderId: string; serviceTotalCents: number }> {
   const picked = (data.quantities ?? []).filter((q) => q.quantity > 0);
   if (picked.length === 0) throw new Error("Pick at least one item.");
@@ -443,7 +455,7 @@ async function createQuantityOrder(
       : 0;
     compRemaining -= compQty * heads;
     const paidQty = q.quantity - compQty;
-    const resolved = resolvePrice(offering, "online", now);
+    const resolved = resolvePrice(offering, channel, now);
 
     const lines: {
       offering: Offering;

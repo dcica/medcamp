@@ -545,6 +545,29 @@ type ConfirmInput = {
   /** Guards against double-processing on webhook retries (decision #2). */
   idempotencyKey: string;
   cashTenderedCents?: number;
+  /**
+   * This is a RECONSTRUCTION of a sale that already happened, not a live one.
+   * Exactly one caller sets it: scripts/mint-offline-order.ts --historical,
+   * recording money taken at a finished event on a rail the app could not see
+   * (a card terminal, cash never rung up).
+   *
+   * Suppresses both post-sale side effects, and both for the same reason —
+   * they describe something happening NOW:
+   *   - the confirmation email: those people attended, so mailing them a QR
+   *     pass for a night that is over is worse than sending nothing;
+   *   - the GA4 `purchase`: it would book last night's revenue against today's
+   *     date and pollute acquisition attribution.
+   *
+   * Everything that makes the record true still runs, because it is inside the
+   * transaction and is the whole point: atomic cap decrement, campId
+   * assignment, line items PAID, Payment{SUCCEEDED}, LedgerEntry{CREDIT}.
+   *
+   * NEVER set this on a live sale. The email IS the ticket on every other path,
+   * and the mint script's three delivery safeguards exist precisely because
+   * dispatch() swallows provider errors. The script gates it on the event
+   * having ended.
+   */
+  historical?: boolean;
 };
 
 /**
@@ -834,7 +857,7 @@ export async function confirmOrderPaid(
   }).then(async (result) => {
     // Side-effect (email) outside the transaction so a slow provider can't hold
     // a DB lock. Re-read the confirmed order for the message.
-    if (!result.alreadyConfirmed) {
+    if (!result.alreadyConfirmed && !input.historical) {
       const order = await db.order.findUniqueOrThrow({
         where: { id: orderId },
         // Line items (with their service type) drive the PAID block and the
