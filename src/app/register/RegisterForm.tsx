@@ -4,6 +4,7 @@ import type { ServiceKind } from "@prisma/client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { formatCents } from "@/lib/money";
+import { computeOrderFees, coverLabel, PLATFORM_FEE_LABEL, type FeePolicy } from "@/lib/fees";
 import { trackBeginCheckout } from "@/lib/analyticsEvents";
 import {
   clearDraft,
@@ -70,6 +71,7 @@ type RegisterDraft = {
   quantities: Record<string, number>;
   planId: string | null;
   donation: string;
+  coverFee: boolean;
 };
 
 /**
@@ -90,6 +92,8 @@ export function RegisterForm({
   resumable,
   eventSlug,
   eventKind,
+  feePolicy,
+  orgName,
 }: {
   eventId: string;
   services: Service[];
@@ -113,6 +117,15 @@ export function RegisterForm({
    */
   eventSlug?: string;
   eventKind?: string;
+  /**
+   * The organisation's fee policy as it applies today (src/lib/fees.ts), or
+   * null when nothing is charged: no connected Stripe account, no policy. The
+   * numbers shown here are the same pure math ensureFeeLines runs on the
+   * server, so the Total line and the Stripe page agree to the cent.
+   */
+  feePolicy: FeePolicy | null;
+  /** Named in the cover label: the money goes to them, not to the platform. */
+  orgName: string;
 }) {
   const [registrant, setRegistrant] = useState({ name: "", email: "", phone: "" });
   const [iAmAttending, setIAmAttending] = useState(false);
@@ -121,6 +134,11 @@ export function RegisterForm({
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [planId, setPlanId] = useState<string | null>(null);
   const [donation, setDonation] = useState("");
+  // Starts as the organisation set it (industry default on; an organisation
+  // may default it off). It is the buyer's to clear in one tap, and it is
+  // never a gratuity: the label names the exact amount and who receives it.
+  const coverDefault = feePolicy?.feeCoverDefaultChecked ?? false;
+  const [coverFee, setCoverFee] = useState(coverDefault);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -132,6 +150,7 @@ export function RegisterForm({
     quantities,
     planId,
     donation,
+    coverFee,
   };
 
   /** Snapshot as restored, so `dirty` is a comparison rather than a flag
@@ -180,6 +199,7 @@ export function RegisterForm({
       quantities: v.quantities ?? {},
       planId: v.planId ?? null,
       donation: v.donation ?? "",
+      coverFee: typeof v.coverFee === "boolean" ? v.coverFee : coverDefault,
     };
 
     setRegistrant(applied.registrant);
@@ -189,6 +209,7 @@ export function RegisterForm({
     setQuantities(applied.quantities);
     setPlanId(applied.planId);
     setDonation(applied.donation);
+    setCoverFee(applied.coverFee);
     // The APPLIED values, not the raw draft: if a guard above substituted
     // anything, comparing against the raw draft would read as an edit the buyer
     // never made and would retract the resume button on arrival.
@@ -213,25 +234,32 @@ export function RegisterForm({
   // Admission comp: on a honoring event, a purchased membership comps admission.
   const admissionComped = Boolean(selectedPlan) && honorsMembership;
 
-  const servicesCost = collectsAttendeeDetails
-    ? attendees.reduce(
-        (sum, a) =>
-          sum +
-          a.serviceKeys.reduce(
-            (s, k) => s + (admissionComped && isAdmission(k) ? 0 : priceOf(k)),
-            0,
-          ),
-        0,
-      )
-    : services.reduce(
-        (s, svc) =>
-          s +
-          (admissionComped && svc.kind === "ADMISSION" ? 0 : priceOf(svc.key)) *
-            (quantities[svc.key] ?? 0),
-        0,
-      );
+  // The cart as lines, in the shape the fee math reads, so the fee and the
+  // cover are computed per unit exactly as the server will compute them.
+  const cartLines = [
+    ...(collectsAttendeeDetails
+      ? attendees.flatMap((a) =>
+          a.serviceKeys.map((k) => ({
+            amountCents: admissionComped && isAdmission(k) ? 0 : priceOf(k),
+            quantity: 1,
+          })),
+        )
+      : services.map((svc) => ({
+          amountCents: admissionComped && svc.kind === "ADMISSION" ? 0 : priceOf(svc.key),
+          quantity: quantities[svc.key] ?? 0,
+        }))),
+    ...(selectedPlan
+      ? [{ amountCents: selectedPlan.priceCents, quantity: 1, membershipPlanId: selectedPlan.id }]
+      : []),
+    ...(donationCents > 0 ? [{ amountCents: donationCents, quantity: 1, isDonation: true }] : []),
+  ];
+  const fees = computeOrderFees(cartLines, feePolicy, { coverProcessing: coverFee, orgName });
+  // What ticking the box would add, shown on the label whether or not it is ticked.
+  const coverIfTicked = coverFee
+    ? fees.coverCents
+    : computeOrderFees(cartLines, feePolicy, { coverProcessing: true, orgName }).coverCents;
 
-  const total = servicesCost + (selectedPlan?.priceCents ?? 0) + donationCents;
+  const total = fees.totalCents;
 
   // ── Attendee mode helpers ──
   function copyContactToFirstAttendee(name: string) {
@@ -277,6 +305,7 @@ export function RegisterForm({
         marketingConsent,
         membershipPlanId: planId ?? undefined,
         donationCents: donationCents > 0 ? donationCents : undefined,
+        coverProcessingFee: coverFee,
         attendees: collectsAttendeeDetails
           ? attendees.map((a) => ({
               name: a.name,
@@ -619,6 +648,32 @@ export function RegisterForm({
               onChange={(e) => setDonation(e.target.value)}
             />
           </div>
+        </section>
+      )}
+
+      {/* Service fee + processing-cost cover. The fee is a disclosed line,
+          never a box the buyer could have missed; the cover is the ONE box,
+          it names its exact amount and its recipient, and one tap clears it.
+          Hidden entirely while the cart is empty — there is nothing to fee. */}
+      {feePolicy && fees.subtotalCents > 0 && (
+        <section className="space-y-2">
+          {fees.buyerFeeCents > 0 && (
+            <div className="flex items-center justify-between text-sm text-gray-600">
+              <span>{PLATFORM_FEE_LABEL}</span>
+              <span>{formatCents(fees.buyerFeeCents)}</span>
+            </div>
+          )}
+          {feePolicy.allowBuyerCover && coverIfTicked > 0 && (
+            <label className="flex min-h-tap items-center gap-3 text-sm">
+              <input
+                type="checkbox"
+                className="h-5 w-5"
+                checked={coverFee}
+                onChange={(e) => setCoverFee(e.target.checked)}
+              />
+              {coverLabel(coverIfTicked, orgName)}
+            </label>
+          )}
         </section>
       )}
 

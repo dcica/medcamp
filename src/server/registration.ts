@@ -69,6 +69,8 @@ export const registrationSchema = z.object({
   marketingConsent: z.boolean().default(false),
   membershipPlanId: z.string().optional(),
   donationCents: z.number().int().min(0).optional(),
+  /** The buyer ticked "cover the processing cost". Priced at Checkout, never here. */
+  coverProcessingFee: z.boolean().optional(),
   // Exactly one of these is used, per the event's mode.
   attendees: z.array(attendeeInput).optional(),
   quantities: z.array(quantityInput).optional(),
@@ -92,6 +94,7 @@ type BaseOrder = {
   registrantPhone: string;
   marketingConsent: boolean;
   marketingConsentAt: Date | null;
+  coverProcessingFee: boolean;
 };
 
 /**
@@ -250,6 +253,7 @@ export async function createRegistration(
     registrantPhone: data.registrant.phone,
     marketingConsent: data.marketingConsent,
     marketingConsentAt: data.marketingConsent ? new Date() : null,
+    coverProcessingFee: data.coverProcessingFee ?? false,
   };
 
   // Resolved once and reused for every line on this order — price resolution

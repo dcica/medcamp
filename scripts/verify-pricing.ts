@@ -529,6 +529,111 @@ async function main(): Promise<void> {
     false,
   );
 
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 9. The platform service fee. Computed per UNIT (a qty-2 line is two fees,
+  // and the cap binds per ticket, not per order), never on a $0 line, never on
+  // a gift, buyer-pays unless the organisation absorbs it, and written in ONE
+  // place: ensureFeeLines, which only a Stripe Checkout ever reaches. A null
+  // connected account — the first tenant — gets zeros without a database
+  // write. The "cover the processing fee" gross-up is the organisation's money,
+  // not the platform's, which is why receiptLines keeps it and drops the fee.
+  console.log("\n9. Platform service fee: per unit, capped, buyer-pays, never on a gift");
+  const fees = await import("../src/lib/fees");
+  const P = fees.DEFAULT_FEE_POLICY;
+  const ORG = "Infinite Minds";
+  const ticket40 = { amountCents: 4000, quantity: 1 };
+  const noCover = { coverProcessing: false, orgName: ORG };
+  const withCover = { coverProcessing: true, orgName: ORG };
+
+  check("a $40 ticket carries 1.5% + 49¢ = $1.09",
+    fees.computeOrderFees([ticket40], P, noCover).platformFeeCents, 109);
+  check("per UNIT × quantity, not on the line total: 2 × $40 → $2.18 (one fee on $80 would be $1.69)",
+    fees.computeOrderFees([{ amountCents: 4000, quantity: 2 }], P, noCover).platformFeeCents, 218);
+  check("the $5 cap binds on a $400 ticket (uncapped it would be $6.49)",
+    fees.computeOrderFees([{ amountCents: 40000, quantity: 1 }], P, noCover).platformFeeCents, 500);
+  check("a $0 (comped) line carries no fee, whatever its quantity",
+    fees.computeOrderFees([{ amountCents: 0, quantity: 3 }], P, noCover).platformFeeCents, 0);
+  check("a donation carries no fee",
+    fees.computeOrderFees([{ amountCents: 5000, quantity: 1, isDonation: true }], P, noCover).platformFeeCents, 0);
+  check("a membership is in the tickets bucket: $50 → $1.24",
+    fees.computeOrderFees([{ amountCents: 5000, quantity: 1, membershipPlanId: "plan" }], P, noCover).platformFeeCents, 124);
+
+  const buyerPays = fees.computeOrderFees([ticket40], P, noCover);
+  check("buyer-pays: one Service fee line, total $41.09",
+    { lines: buyerPays.lines.map((l) => [l.feeKind, l.amountCents, l.quantity]), total: buyerPays.totalCents },
+    { lines: [["PLATFORM_FEE", 109, 1]], total: 4109 });
+  const absorbed = fees.computeOrderFees([ticket40], { ...P, payer: "absorb" }, noCover);
+  check("absorb: no buyer line, the fee is still owed to the platform, total $40.00",
+    { lines: absorbed.lines, fee: absorbed.platformFeeCents, total: absorbed.totalCents },
+    { lines: [], fee: 109, total: 4000 });
+
+  check("gross-up for the card fee on $100.00 is $3.30 — ceil, never floor",
+    fees.grossUpForCardFee(10000, P.processing), 330);
+  check("gross-up on nothing is nothing: a $0 order has no charge to cover",
+    fees.grossUpForCardFee(0, P.processing), 0);
+  const covered = fees.computeOrderFees([ticket40], P, withCover);
+  check("the cover is grossed up over the WHOLE charge, service fee included: $1.54 on $41.09 (on $40 alone it would be $1.51)",
+    covered.coverCents, 154);
+  check("...as one FEE_COVER line after the service fee, total $42.63",
+    { kinds: covered.lines.map((l) => l.feeKind), total: covered.totalCents },
+    { kinds: ["PLATFORM_FEE", "FEE_COVER"], total: 4263 });
+  check("the cover label is the shared one",
+    covered.lines[1]?.description, fees.coverLabel(154, ORG));
+  check("...and it names the exact amount and the recipient",
+    [/\$1\.54\b/.test(covered.lines[1]?.description ?? ""), (covered.lines[1]?.description ?? "").includes(ORG)],
+    [true, true]);
+  check("the cover on a $0 order is $0",
+    fees.computeOrderFees([{ amountCents: 0, quantity: 1 }], P, withCover).coverCents, 0);
+  check("the cover is ignored when the organisation does not offer it",
+    fees.computeOrderFees([ticket40], { ...P, allowBuyerCover: false }, withCover).coverCents, 0);
+  check("existing fee lines are not fee'd again — recomputing from an order that already carries them is a no-op",
+    fees.computeOrderFees([ticket40, ...covered.lines], P, withCover), covered);
+  check("no policy → no fee, no cover, no lines, total = goods",
+    fees.computeOrderFees([ticket40], null, withCover),
+    { subtotalCents: 4000, platformFeeCents: 0, buyerFeeCents: 0, coverCents: 0, totalCents: 4000, lines: [] });
+
+  check("readFeePolicy: nothing stored → none", fees.readFeePolicy({}), { kind: "none" });
+  check("readFeePolicy: the default round-trips", fees.readFeePolicy({ fees: P }), { kind: "ok", policy: P });
+  check("readFeePolicy: garbage is unreadable — classified, never thrown, never charged",
+    fees.readFeePolicy({ fees: { tickets: "x" } }).kind, "unreadable");
+  check("receiptLines drops the platform's fee and keeps the cover (it is the organisation's money)",
+    fees.receiptLines([ticket40, ...covered.lines]).map((l) => ("feeKind" in l ? l.feeKind : null) ?? "goods"), ["goods", "FEE_COVER"]);
+  check("the fee lines never say \"tip\"", /\btips?\b/i.test(JSON.stringify(covered.lines)), false);
+
+  // ── ensureFeeLines: the ONE writer of fee lines, driven by the order's org ──
+  const { ensureFeeLines } = await import("../src/server/payments");
+  const feeLinesOrder = await createRegistration({
+    eventId: event.id,
+    registrant: { ...registrant, email: "verify-fee-lines@example.test" },
+    marketingConsent: false,
+    quantities: [{ serviceKey: "verify-entry", quantity: 2 }],
+  });
+  check("the fixture order is 2 × $15 of goods", feeLinesOrder.totalCents, 3000);
+  const loadFeeOrder = () =>
+    db.order.findUniqueOrThrow({ where: { id: feeLinesOrder.orderId }, include: { lineItems: true } });
+  const feeKindsInDb = async () =>
+    (await loadFeeOrder()).lineItems.map((l) => l.feeKind).filter(Boolean).sort();
+  const connectedOrg = { name: ORG, settings: { fees: P }, stripeAccountId: "acct_verify_pricing" };
+  const legacyOrg = { name: org.name, settings: org.settings, stripeAccountId: null };
+  const f1 = await ensureFeeLines({ ...(await loadFeeOrder()), org: connectedOrg });
+  check("a connected organisation gets a Service fee line written: 2 × $15 → 2 × $0.72 = $1.44, total $31.44 (one fee on $30 would be $0.94)",
+    { fee: f1.platformFeeCents, total: f1.totalCents, kinds: await feeKindsInDb() },
+    { fee: 144, total: 3144, kinds: ["PLATFORM_FEE"] });
+  const f2 = await ensureFeeLines({ ...(await loadFeeOrder()), org: connectedOrg });
+  check("...idempotent across a resume: still exactly one fee line, same total",
+    { kinds: await feeKindsInDb(), total: f2.totalCents },
+    { kinds: ["PLATFORM_FEE"], total: 3144 });
+  await db.order.update({ where: { id: feeLinesOrder.orderId }, data: { coverProcessingFee: true } });
+  const f3 = await ensureFeeLines({ ...(await loadFeeOrder()), org: connectedOrg });
+  check("the buyer's cover choice on the order adds the FEE_COVER line: $1.25 on $31.44, total $32.69",
+    { cover: f3.coverCents, total: f3.totalCents, kinds: await feeKindsInDb() },
+    { cover: 125, total: 3269, kinds: ["FEE_COVER", "PLATFORM_FEE"] });
+  const f4 = await ensureFeeLines({ ...(await loadFeeOrder()), org: legacyOrg });
+  check("no connected account → zeros, and any stale fee line is removed",
+    { fee: f4.platformFeeCents, cover: f4.coverCents, total: f4.totalCents, kinds: await feeKindsInDb() },
+    { fee: 0, cover: 0, total: 3000, kinds: [] });
+
   await cleanup(org.id);
 }
 

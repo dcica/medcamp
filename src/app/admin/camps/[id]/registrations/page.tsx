@@ -38,7 +38,8 @@ export default async function EventRegistrationsPage({
   if (!event) notFound();
 
   const data = await getEventRegistrations(org.id, event.id);
-  const otherRevenue = data.donationCents + data.membershipCents;
+  const otherRevenue =
+    data.donationCents + data.membershipCents + data.platformFeeCents + data.feeCoverCents;
 
   return (
     <div className="space-y-6">
@@ -98,6 +99,18 @@ export default async function EventRegistrationsPage({
               <li className="flex justify-between text-gray-600">
                 <span>of which membership</span>
                 <span>{formatCents(data.membershipCents)}</span>
+              </li>
+            )}
+            {data.feeCoverCents > 0 && (
+              <li className="flex justify-between text-gray-600">
+                <span>of which processing-cost cover (yours)</span>
+                <span>{formatCents(data.feeCoverCents)}</span>
+              </li>
+            )}
+            {data.platformFeeCents > 0 && (
+              <li className="flex justify-between text-gray-600">
+                <span>of which platform service fee (not yours)</span>
+                <span>{formatCents(data.platformFeeCents)}</span>
               </li>
             )}
           </ul>

@@ -604,6 +604,10 @@ model Order {
   /// primary key. verify:schema enforces covering indexes on FK children only.
   gaClientId String?
 
+  /// The buyer ticked "cover the processing cost" on the form. Persisted so a
+  /// resumed Checkout recomputes the same FEE_COVER line. Never a tip.
+  coverProcessingFee Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -662,6 +666,14 @@ enum LineItemStatus {
   VOID
 }
 
+/// A line that is not goods. Written only by ensureFeeLines (src/server/payments.ts)
+/// at Checkout time, from the organisation's fee policy (src/lib/fees.ts).
+/// Deliberately NOT ServiceKind.FEE — that is a competition-entry offering.
+enum FeeLineKind {
+  PLATFORM_FEE // the platform's service fee; Stripe moves it to the platform at charge time
+  FEE_COVER // the buyer's opt-in gross-up covering the organisation's processing cost; the organisation's money
+}
+
 /// The single billable unit. Attached to an order (and usually an attendee).
 /// Doctor add-ons mid-visit are LineItems with status PENDING_PAYMENT.
 model LineItem {
@@ -691,6 +703,9 @@ model LineItem {
   /// A purchaser-entered donation (variable amount, no serviceType). Flagged so
   /// reconciliation/reports break donations out from service revenue.
   isDonation  Boolean        @default(false)
+  /// Null = goods. Set on the two fee lines a Checkout may carry; both are
+  /// recomputed from the goods lines every time a session is opened.
+  feeKind     FeeLineKind?
   status      LineItemStatus @default(PENDING_PAYMENT)
   /// True if added mid-visit by a doctor (routes patient back to registration).
   addedOnsite Boolean        @default(false)
@@ -874,6 +889,10 @@ model Payment {
   /// denormalised at creation so a refund or a webhook knows where the charge
   /// lives even if the organisation later disconnects. Never queried by.
   stripeAccountId       String?
+  /// The application fee the session was opened with (what Stripe moves to the
+  /// platform on success). Null on cash and on every platform-key session.
+  /// Read by confirmOrderPaid to book the DEBIT, and by a refund to return it.
+  applicationFeeCents   Int?
 
   // Cash bookkeeping
   cashTenderedCents Int?

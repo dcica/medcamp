@@ -4,7 +4,7 @@ import { findDefaultPublicEvent, findPublicEvent } from "@/server/public";
 import { db } from "@/lib/db";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { RegisterForm } from "./RegisterForm";
-import { getResumableCheckout } from "@/server/payments";
+import { activeFeePolicy, getResumableCheckout } from "@/server/payments";
 import { readResumeCookie } from "@/server/resumeCookie";
 import { resolvePrice } from "@/lib/pricing";
 import { isRegistrationOpen } from "@/server/registration";
@@ -241,6 +241,8 @@ export default async function RegisterPage({
         plans={plans}
         returnedFromCheckout={Boolean(cancelled)}
         resumable={resumable}
+        feePolicy={activeFeePolicy(org)}
+        orgName={org.name}
       />
     </main>
   );

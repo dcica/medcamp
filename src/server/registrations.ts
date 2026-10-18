@@ -70,6 +70,14 @@ export type EventRegistrations = {
   /** Broken out for reconciliation, the way LineItem flags them. */
   donationCents: number;
   membershipCents: number;
+  /**
+   * The platform's service fee the buyers paid: inside `collectedCents`
+   * because the card was charged it, and NOT the organisation's revenue —
+   * Stripe moved it to the platform at charge time.
+   */
+  platformFeeCents: number;
+  /** The buyers' processing-cost cover: the organisation's money, kept apart so it is not mistaken for ticket revenue. */
+  feeCoverCents: number;
   orders: PaidOrderRow[];
 };
 
@@ -102,6 +110,7 @@ export async function getEventRegistrations(
             serviceTypeId: true,
             isDonation: true,
             membershipPlanId: true,
+            feeKind: true,
           },
         },
         payments: {
@@ -131,6 +140,8 @@ export async function getEventRegistrations(
   let unpaidCents = 0;
   let donationCents = 0;
   let membershipCents = 0;
+  let platformFeeCents = 0;
+  let feeCoverCents = 0;
 
   for (const o of orders) {
     const campIds = o.attendees
@@ -155,7 +166,9 @@ export async function getEventRegistrations(
     for (const li of o.lineItems) {
       const total = li.amountCents * li.quantity;
       if (li.status !== "PAID") continue;
-      if (li.isDonation) donationCents += total;
+      if (li.feeKind === "PLATFORM_FEE") platformFeeCents += total;
+      else if (li.feeKind === "FEE_COVER") feeCoverCents += total;
+      else if (li.isDonation) donationCents += total;
       else if (li.membershipPlanId) membershipCents += total;
       else if (li.serviceTypeId) {
         revenueByService.set(
@@ -211,6 +224,8 @@ export async function getEventRegistrations(
     })),
     donationCents,
     membershipCents,
+    platformFeeCents,
+    feeCoverCents,
     orders: paid,
   };
 }

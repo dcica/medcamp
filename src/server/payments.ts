@@ -14,6 +14,14 @@ import { eventSlug } from "@/lib/seo";
 import { parseGaCookie, sendPurchaseEvent } from "@/lib/ga";
 import { resolveOrgProfile, resolveOrgSite, senderFor } from "@/lib/orgSettings";
 import { emailThemeOf } from "@/lib/branding";
+import {
+  computeOrderFees,
+  readFeePolicy,
+  receiptLines,
+  type FeeLineKind,
+  type FeePolicy,
+  type OrderFees,
+} from "@/lib/fees";
 
 /**
  * The single PaymentService (locked decision #6). Every billable thing is a
@@ -58,6 +66,8 @@ export class MissingCapError extends Error {
  */
 export type CheckoutHandoff = {
   url: string;
+  /** What Checkout will charge, fee lines included — the only total a screen may show. */
+  totalCents: number;
   resumeProof: string | null;
 };
 
@@ -87,19 +97,19 @@ export async function createCheckoutForOrder(
     include: { lineItems: true, event: true, org: { include: { domains: true } } },
   });
 
-  // Quantity-aware: a qty-5 merch line costs 5 × the unit price. Must match the
-  // total confirmOrderPaid records, or Stripe under-collects and the ledger and
-  // the charge disagree (only bites quantity-mode events — camps are all qty 1).
-  const totalCents = orderTotalCents(order.lineItems);
-  if (totalCents === 0) {
+  // Quantity-aware: a qty-5 merch line costs 5 × the unit price. GOODS only:
+  // any fee lines an earlier session left behind are recomputed inside
+  // openCheckoutSession, and a $0 order never had any to begin with.
+  const goodsCents = orderTotalCents(order.lineItems.filter((li) => !li.feeKind));
+  if (goodsCents === 0) {
     throw new Error("Order total is $0 — confirm directly, no checkout needed.");
   }
   if (!stripe) {
     throw new Error("Stripe is not configured (STRIPE_SECRET_KEY missing).");
   }
 
-  const session = await openCheckoutSession(order, totalCents, routes);
-  return { url: session.url, resumeProof: signResumeProof(order.id) };
+  const session = await openCheckoutSession(order, routes);
+  return { url: session.url, totalCents: session.totalCents, resumeProof: signResumeProof(order.id) };
 }
 
 export type ResumeOutcome =
@@ -165,11 +175,11 @@ export async function resumeCheckoutForOrder(
     return { ok: false, reason: "not-resumable" };
   }
 
-  const totalCents = orderTotalCents(order.lineItems);
-  if (totalCents === 0) return { ok: false, reason: "not-resumable" };
+  const goodsCents = orderTotalCents(order.lineItems.filter((li) => !li.feeKind));
+  if (goodsCents === 0) return { ok: false, reason: "not-resumable" };
   if (!stripe) return { ok: false, reason: "not-resumable" };
 
-  const session = await openCheckoutSession(order, totalCents, routes);
+  const session = await openCheckoutSession(order, routes);
 
   // ── ORDERING IS LOAD-BEARING: create the new session, THEN expire the old ──
   //
@@ -344,6 +354,99 @@ export async function isKnownOrder(orderId: string): Promise<boolean> {
 }
 
 /**
+ * The organisation's fee policy as it applies RIGHT NOW, or null for zero: no
+ * connected account (the platform-key path — the first tenant's — carries no
+ * fee and stays byte-identical to before), no policy stored, or a policy that
+ * does not parse. Unreadable is logged at error, because it is an operator
+ * mistake that silently costs the platform its fee; it is never the buyer's
+ * problem, so it is never thrown.
+ */
+export function activeFeePolicy(org: {
+  name: string;
+  settings: unknown;
+  stripeAccountId: string | null;
+}): FeePolicy | null {
+  if (!org.stripeAccountId) return null;
+  const stored = readFeePolicy(org.settings);
+  if (stored.kind === "ok") return stored.policy;
+  if (stored.kind === "unreadable") {
+    void log.error("fee policy unreadable; charging no fee", { org: org.name, reason: stored.reason });
+  }
+  return null;
+}
+
+type FeeableLineItem = {
+  id: string;
+  description: string;
+  amountCents: number;
+  quantity: number;
+  isDonation: boolean;
+  membershipPlanId: string | null;
+  feeKind: FeeLineKind | null;
+};
+
+/**
+ * Make the order's fee lines match its goods lines and the organisation's
+ * policy, and return the fee-inclusive total Checkout will charge.
+ *
+ * Called from openCheckoutSession and NOWHERE ELSE (verify-checkout §14 pins
+ * it): the fee exists only on a Stripe Checkout, so cash, Zelle, check, COMP,
+ * $0 and the mint script never carry one. Idempotent: the lines are
+ * recomputed from the goods every time, so a resume after a policy change
+ * reprices rather than stacking, and a stale fee line on an organisation
+ * that has since disconnected is removed rather than charged.
+ *
+ * The write is one transaction (delete, then create) and is skipped when the
+ * stored lines already match — the common case on a resume, and the ONLY
+ * case on the platform-key path, where nothing is ever written.
+ */
+export async function ensureFeeLines(order: {
+  id: string;
+  orgId: string;
+  coverProcessingFee: boolean;
+  lineItems: FeeableLineItem[];
+  org: { name: string; settings: unknown; stripeAccountId: string | null };
+}): Promise<OrderFees> {
+  const fees = computeOrderFees(order.lineItems, activeFeePolicy(order.org), {
+    coverProcessing: order.coverProcessingFee,
+    orgName: order.org.name,
+  });
+
+  const existing = order.lineItems.filter((li) => li.feeKind !== null);
+  const same =
+    existing.length === fees.lines.length &&
+    fees.lines.every((want) =>
+      existing.some(
+        (have) =>
+          have.feeKind === want.feeKind &&
+          have.amountCents === want.amountCents &&
+          have.quantity === want.quantity &&
+          have.description === want.description,
+      ),
+    );
+  if (!same) {
+    await db.$transaction([
+      db.lineItem.deleteMany({ where: { orderId: order.id, feeKind: { not: null } } }),
+      ...(fees.lines.length > 0
+        ? [
+            db.lineItem.createMany({
+              data: fees.lines.map((l) => ({
+                orgId: order.orgId,
+                orderId: order.id,
+                feeKind: l.feeKind,
+                description: l.description,
+                amountCents: l.amountCents,
+                quantity: l.quantity,
+              })),
+            }),
+          ]
+        : []),
+    ]);
+  }
+  return fees;
+}
+
+/**
  * The buyer's GA client id, read from their first-party `_ga` cookie, or null.
  *
  * ── WHY THE try/catch IS NOT DEFENSIVE CLUTTER ──
@@ -375,18 +478,20 @@ async function openCheckoutSession(
     orgId: string;
     eventId: string;
     registrantEmail: string;
-    lineItems: { description: string; amountCents: number; quantity: number }[];
-    /** The organisation: return URLs (orgBaseUrl) and the Stripe account the session is created on. */
+    coverProcessingFee: boolean;
+    lineItems: FeeableLineItem[];
+    /** The organisation: return URLs (orgBaseUrl), the Stripe account the session is created on, and the fee policy. */
     org: {
+      name: string;
       slug: string;
+      settings: unknown;
       domains: { hostname: string; isPrimary: boolean }[];
       stripeAccountId: string | null;
       stripeChargesEnabled: boolean;
     };
   },
-  totalCents: number,
   routes?: CheckoutRoutes,
-): Promise<{ id: string; url: string }> {
+): Promise<{ id: string; url: string; totalCents: number }> {
   if (!stripe) {
     throw new Error("Stripe is not configured (STRIPE_SECRET_KEY missing).");
   }
@@ -398,6 +503,14 @@ async function openCheckoutSession(
       "Online payments are not enabled yet for this organisation. Please try again later, or contact the organisers.",
     );
   }
+
+  // ── The fee lines, HERE and only here ──
+  // Every online payment and every resume funnels through this function, so
+  // this is the one place the organisation's policy becomes money on an order.
+  // `fees.lines` is what was just written (or confirmed already present);
+  // `goods` is the order as the buyer built it.
+  const fees = await ensureFeeLines(order);
+  const goods = order.lineItems.filter((li) => !li.feeKind);
 
   const { successUrl, cancelUrl, expiresAt } = buildCheckoutReturn(
     order,
@@ -420,7 +533,7 @@ async function openCheckoutSession(
     // Comped ($0) lines are omitted — Stripe's hosted page is the payment
     // receipt, and our own /confirm page shows the full breakdown including
     // comps. Sending them would also risk a zero-amount line-item rejection.
-    line_items: order.lineItems
+    line_items: [...goods, ...fees.lines]
       .filter((li) => li.amountCents > 0)
       .map((li) => ({
         quantity: li.quantity,
@@ -430,6 +543,13 @@ async function openCheckoutSession(
           product_data: { name: li.description },
         },
       })),
+    // The platform's fee, moved by Stripe at charge time (direct charge on
+    // the connected account). ONLY when there is one: the key is refused on a
+    // platform-key session, so sending a zero fee unconditionally would 500
+    // the first tenant's every checkout.
+    ...(fees.platformFeeCents > 0
+      ? { payment_intent_data: { application_fee_amount: fees.platformFeeCents } }
+      : {}),
   }, stripeRequestOptions(order.org));
 
   await db.payment.create({
@@ -438,9 +558,10 @@ async function openCheckoutSession(
       orderId: order.id,
       method: "STRIPE",
       status: "PENDING",
-      amountCents: totalCents,
+      amountCents: fees.totalCents,
       stripeCheckoutId: session.id,
       stripeAccountId: order.org.stripeAccountId,
+      applicationFeeCents: fees.platformFeeCents > 0 ? fees.platformFeeCents : null,
     },
   });
 
@@ -469,7 +590,7 @@ async function openCheckoutSession(
   }
 
   if (!session.url) throw new Error("Stripe did not return a checkout URL.");
-  return { id: session.id, url: session.url };
+  return { id: session.id, url: session.url, totalCents: fees.totalCents };
 }
 
 /**
@@ -876,6 +997,23 @@ export async function confirmOrderPaid(
       },
     });
 
+    // The platform's fee, booked OUT of the organisation's receipts: Stripe
+    // moved it at charge time, so the CREDIT above overstates what the
+    // organisation keeps by exactly this. Only ever present on a Checkout
+    // opened on a connected account — see ensureFeeLines.
+    if ((payment.applicationFeeCents ?? 0) > 0) {
+      await tx.ledgerEntry.create({
+        data: {
+          orgId: order.orgId,
+          paymentId: payment.id,
+          direction: "DEBIT",
+          method: input.method,
+          amountCents: payment.applicationFeeCents ?? 0,
+          memo: "Platform service fee",
+        },
+      });
+    }
+
     return { alreadyConfirmed: false, campIds };
   }, {
     /**
@@ -996,7 +1134,10 @@ export async function confirmOrderPaid(
         // be joined to the sale it produced.
         eventSlug: eventSlug(order.event),
         paymentMethod: input.method,
-        lineItems: order.lineItems.map((li) => ({
+        // The ORGANISATION's receipts: the platform's fee is not its revenue
+        // and must not inflate its purchase value in analytics. The cover
+        // stays — that is the organisation's money.
+        lineItems: receiptLines(order.lineItems).map((li) => ({
           name: li.serviceType?.name ?? li.description,
           key: li.serviceType?.key ?? null,
           amountCents: li.amountCents,

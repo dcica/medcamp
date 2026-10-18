@@ -337,6 +337,14 @@ async function main(): Promise<void> {
   check("startCardSale leaves the order PENDING for the webhook",
     /method: "STRIPE"/.test(cardBodies));
 
+  // The QR the guest scans is a Stripe Checkout, so it carries whatever fee
+  // the organisation's policy puts on an online payment. The screen must show
+  // the total Checkout will CHARGE, which only createCheckoutForOrder knows —
+  // the goods total from sellAtGate is wrong by the fee the moment one exists.
+  check("startCardSale shows the total Checkout will charge, not the goods total",
+    /const \{ url, totalCents \} = await createCheckoutForOrder\(orderId\)/.test(cardBodies)
+      && !/totalCents \} = await sellAtGate/.test(cardBodies));
+
   const declared = [...actionsSrc.matchAll(/export async function (\w+)\(/g)].map((m) => m[1]);
   eq("no unclassified gate action", declared.filter((n) => ![...CASH_ACTIONS, ...OPEN_ACTIONS].includes(n)), []);
   // And the role list itself, so a silently widened gate shows up here.

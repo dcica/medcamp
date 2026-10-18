@@ -517,6 +517,57 @@ async function main() {
     series.some((d) => d.units > 0 || d.cents > 0));
 
 
+
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§10 the platform service fee is broken out of the organisation's revenue");
+  // A buyer-paid fee line and a fee-cover line are PAID lines on a confirmed
+  // order, so a naive sum folds the platform's money into service revenue and
+  // a naive unit count sells two phantom tickets. Each gets a bucket of its
+  // own; "collected" stays what the card was charged, because that is what a
+  // coordinator reconciles against Stripe.
+  await db.event.update({ where: { id: event.id }, data: { status: "OPEN" } });
+  const before = await getEventRegistrations(org.id, event.id);
+  const seriesBefore = await dash.getDailySales(org.id, 7);
+  const unitsOf = (s: { units: number }[]) => s.reduce((n, d) => n + d.units, 0);
+  await db.order.create({
+    data: {
+      orgId: org.id,
+      eventId: event.id,
+      status: "CONFIRMED",
+      method: "STRIPE",
+      registrantName: "Fee Payer",
+      registrantEmail: "verify-regs-fee@example.org",
+      registrantPhone: "5550001111",
+      coverProcessingFee: true,
+      attendees: { create: [{ orgId: org.id, eventId: event.id, campId: `${CODE}-0004` }] },
+      lineItems: {
+        create: [
+          { orgId: org.id, serviceTypeId: admit.id, description: "Verify Admission", amountCents: 2500, quantity: 1, status: "PAID" },
+          { orgId: org.id, description: "Service fee", amountCents: 87, quantity: 1, feeKind: "PLATFORM_FEE", status: "PAID" },
+          { orgId: org.id, description: "$1.09 to cover the payment-processing cost for Verify", amountCents: 109, quantity: 1, feeKind: "FEE_COVER", status: "PAID" },
+        ],
+      },
+      // 2500 + 87 + 109
+      payments: { create: [{ orgId: org.id, method: "STRIPE", status: "SUCCEEDED", amountCents: 2696, applicationFeeCents: 87 }] },
+    },
+  });
+  const after = await getEventRegistrations(org.id, event.id);
+  const seriesAfter = await dash.getDailySales(org.id, 7);
+  const admitAfter = after.offerings.find((o) => o.name === "Verify Admission");
+  check("the platform fee is reported in its own bucket", after.platformFeeCents === 87, `${after.platformFeeCents}`);
+  check("the fee cover is reported in its own bucket", after.feeCoverCents === 109, `${after.feeCoverCents}`);
+  check("neither is folded into service revenue: admission rose by exactly one $25 seat",
+    (admitAfter?.revenueCents ?? 0) === (admitRow?.revenueCents ?? 0) + 2500, `${admitAfter?.revenueCents}`);
+  check("collected rose by the whole charge, fee included — it is what the card was charged",
+    after.collectedCents === before.collectedCents + 2696, `${after.collectedCents}`);
+  check("service + donation + membership + fee + cover reconciles to collected",
+    after.offerings.reduce((n, o) => n + o.revenueCents, 0)
+      + after.donationCents + after.membershipCents
+      + after.platformFeeCents + after.feeCoverCents === after.collectedCents);
+  check("fee lines are not units on the chart: one seat, not three",
+    unitsOf(seriesAfter) === unitsOf(seriesBefore) + 1,
+    `${unitsOf(seriesAfter) - unitsOf(seriesBefore)}`);
+
   await cleanup(org.id);
 }
 

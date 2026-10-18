@@ -37,7 +37,7 @@
  *   §10 delete `if (!input.clientId) return null`          → cash-walk-in rows fail
  */
 import * as dotenv from "dotenv";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { PrismaClient } from "@prisma/client";
 
@@ -61,6 +61,14 @@ let failures = 0;
 function check(label: string, ok: boolean, detail = "") {
   console.log(`  ${ok ? "ok  " : "FAIL"}  ${label}${detail ? ` — ${detail}` : ""}`);
   if (!ok) failures++;
+}
+
+/** Every .ts/.tsx under a directory, for the sweeps in §14. */
+function walk(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const p = join(dir, name);
+    return statSync(p).isDirectory() ? walk(p) : /\.(ts|tsx)$/.test(p) ? [p] : [];
+  });
 }
 
 /** Minimal sessionStorage so the draft module can be exercised outside a browser. */
@@ -915,6 +923,74 @@ async function main() {
       /<StripeCard/.test(readFileSync("src/app/admin/settings/page.tsx", "utf8")));
   check("the dead OAuth client id is gone from the env template",
     !/STRIPE_CONNECT_CLIENT_ID/.test(readFileSync(".env.example", "utf8")));
+
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // §14 The platform service fee rides on the Checkout session and nowhere
+  // else. Read AS TEXT, because the property is WHERE things happen:
+  // ensureFeeLines is awaited at the top of openCheckoutSession — the one
+  // funnel every online payment and every resume passes through — so cash,
+  // Zelle, check, COMP, $0 and the mint script never carry a fee; the
+  // application fee is only sent to Stripe when there is one (a bare
+  // `application_fee_amount: 0` on a platform-key session is refused by
+  // Stripe and would 500 the first tenant's checkout); and the DEBIT that
+  // books the fee out of the organisation's receipts is written by
+  // confirmOrderPaid under the same guard. The checkout copy is held to the
+  // transparent-checkout rules: the cover is a checkbox the buyer clears in
+  // one tap, it is never a recurring charge, and nothing is called a tip.
+  console.log("\n§14 the platform fee rides on the Checkout session, never on cash");
+  const feeSrc = readFileSync(join(process.cwd(), "src/server/payments.ts"), "utf8");
+  const openStart = feeSrc.indexOf("async function openCheckoutSession");
+  const openBody = openStart > -1 ? feeSrc.slice(openStart, feeSrc.indexOf("\n}\n", openStart) + 3) : "";
+  check("openCheckoutSession exists where expected", openStart > -1);
+  check("ensureFeeLines is awaited inside openCheckoutSession",
+    /await ensureFeeLines\(/.test(openBody));
+  const feeCallSites = (feeSrc.match(/ensureFeeLines\(/g) ?? []).length;
+  check("...and that is its ONLY call site in payments.ts (the definition plus one call)",
+    feeCallSites === 2, `${feeCallSites} occurrences`);
+  const otherCallers = walk("src").filter(
+    (f) => !f.endsWith("payments.ts") && /ensureFeeLines\(/.test(readFileSync(f, "utf8")),
+  );
+  check("...and no other module calls it", otherCallers.length === 0, otherCallers.join(", "));
+  check("the Stripe lines are the goods plus the computed fee lines",
+    /line_items:\s*\[\.\.\.goods, \.\.\.fees\.lines\]/.test(openBody));
+  check("application_fee_amount is sent inside a conditional spread, only when there is a fee",
+    /\.\.\.\(fees\.platformFeeCents > 0\s*\?\s*\{\s*payment_intent_data:\s*\{\s*application_fee_amount:\s*fees\.platformFeeCents,?\s*\},?\s*\}\s*:\s*\{\}\)/.test(openBody));
+  check("...and nowhere else", (feeSrc.match(/application_fee_amount/g) ?? []).length === 1);
+  check("the Payment row records the application fee it was opened with",
+    /applicationFeeCents:\s*fees\.platformFeeCents/.test(openBody));
+  check("...and its amount is the fee-inclusive total",
+    /amountCents:\s*fees\.totalCents/.test(openBody));
+  const confirmStart = feeSrc.indexOf("export async function confirmOrderPaid");
+  const confirmEnd = feeSrc.indexOf("\nexport ", confirmStart + 1);
+  const confirmSrc = feeSrc.slice(confirmStart, confirmEnd > -1 ? confirmEnd : feeSrc.length);
+  check("confirmOrderPaid books the platform fee as a DEBIT against the organisation's receipts",
+    /direction: "DEBIT"[\s\S]{0,200}memo: "Platform service fee"/.test(confirmSrc));
+  check("...only when the payment carried one",
+    /if \(\(payment\.applicationFeeCents \?\? 0\) > 0\)/.test(confirmSrc));
+  check("the GA purchase items go through receiptLines",
+    /lineItems: receiptLines\(order\.lineItems\)\.map/.test(confirmSrc));
+
+  // Transparent checkout. Comments stripped first so a sentence explaining
+  // the rule cannot trip the rule.
+  const stripComments = (s: string) =>
+    s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  const checkoutFiles = [...walk("src/app/register"), "src/lib/fees.ts"];
+  for (const f of checkoutFiles) {
+    let code = "";
+    try { code = stripComments(readFileSync(f, "utf8")); } catch { /* missing file fails below */ }
+    check(`${f}: exists and nothing in it is called a tip`, code.length > 0 && !/\btips?\b/i.test(code));
+    check(`${f}: nothing in it is a subscription`, !/mode:\s*"subscription"/.test(code));
+  }
+  const formSrc = readFileSync("src/app/register/RegisterForm.tsx", "utf8");
+  check("the cover is a checkbox bound to the buyer's choice",
+    /type="checkbox"[\s\S]{0,200}checked=\{coverFee\}/.test(formSrc)
+      || /checked=\{coverFee\}[\s\S]{0,200}type="checkbox"/.test(formSrc));
+  check("...one tap clears it", /onChange=\{\(e\) => setCoverFee\(e\.target\.checked\)\}/.test(formSrc));
+  check("...its label is the shared one that names the amount and the recipient", /coverLabel\(/.test(formSrc));
+  check("...and its default is the organisation's setting, not a constant", /feeCoverDefaultChecked/.test(formSrc));
+  check("the buyer's choice is sent with the registration", /coverProcessingFee:\s*coverFee/.test(formSrc));
+  check("the service fee is shown as its own line before payment", /PLATFORM_FEE_LABEL/.test(formSrc));
 
   await cleanup(org.id);
 }

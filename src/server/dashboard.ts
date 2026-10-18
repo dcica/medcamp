@@ -276,7 +276,8 @@ export async function getDailySales(
     countedOrders.add(order.id);
     for (const li of order.lineItems) {
       if (li.status !== "PAID") continue;
-      if (li.isDonation) continue;
+      // Neither a gift nor a fee line is a unit sold.
+      if (li.isDonation || li.feeKind) continue;
       bucket.units += li.quantity;
     }
   }
