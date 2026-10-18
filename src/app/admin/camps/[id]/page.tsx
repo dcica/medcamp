@@ -150,7 +150,16 @@ export default async function CampDetailPage({
           // here: no stated limit. Do not substitute a 0.
           venueCapacity: camp.venueCapacity?.toString() ?? "",
           internalNotes: camp.internalNotes ?? "",
+          description: camp.description ?? "",
+          displayOrder: camp.displayOrder?.toString() ?? "",
+          externallyHosted: camp.externallyHosted,
+          hostedByName: camp.hostedByName ?? "",
+          externalUrl: camp.externalUrl ?? "",
+          type: camp.type,
         }}
+        // The kind locks once the event opens or anyone has paid — the same
+        // paid-only count the "registered" link above is built from.
+        canChangeType={camp.status === "DRAFT" && camp._count.attendees === 0}
       />
 
       <PageHelp

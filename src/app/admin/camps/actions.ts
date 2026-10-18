@@ -5,7 +5,14 @@ import type { EventStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { NEXT_STATUS } from "@/lib/eventLifecycle";
 import { venueInputToInstant } from "@/lib/eventTime";
-import { parseInternalNotes, parseVenueCapacity } from "@/lib/eventSetup";
+import {
+  parseDescription,
+  parseDisplayOrder,
+  parseEventCode,
+  parseExternalUrl,
+  parseInternalNotes,
+  parseVenueCapacity,
+} from "@/lib/eventSetup";
 import { getActiveOrg } from "@/lib/tenant";
 import { requireAdmin, requireCoordinator } from "@/server/admin";
 import {
@@ -23,22 +30,41 @@ export type ActionResult =
 // drift. See src/lib/eventLifecycle.ts.
 const NEXT = NEXT_STATUS;
 
+/** The two kinds an organiser creates here. A membership drive is seeded, not set up in the UI. */
+export type CreatableEventType = "CAMP" | "GENERAL";
+
+function parseCreatableType(raw: unknown): CreatableEventType | null {
+  return raw === "CAMP" || raw === "GENERAL" ? raw : null;
+}
+
+/**
+ * Create an event in DRAFT. A GENERAL event (a tournament, a dinner, a dance
+ * night) sells by quantity and collects no per-person details; a CAMP collects
+ * attendee details because every patient gets a badge. The flag can be changed
+ * on the detail page while the event is still DRAFT and nobody has paid.
+ */
 export async function createCamp(input: {
   name: string;
   code: string;
+  type: CreatableEventType;
   startsAt: string;
   endsAt: string;
+  location?: string;
+  description?: string;
 }): Promise<ActionResult> {
   await requireAdmin();
   const org = await getActiveOrg();
   if (!org) return { ok: false, error: "No active org." };
 
   const name = input.name.trim();
-  const code = input.code.trim().toUpperCase();
   if (!name) return { ok: false, error: "Name is required." };
-  if (!/^[A-Z]{2,4}-\d{4}[SW]$/.test(code)) {
-    return { ok: false, error: "Code must look like MC-2026W." };
-  }
+  // The field checks this too; this is the authority (the action is a POST
+  // anything can call). One rule, shared — see src/lib/eventSetup.ts.
+  const parsedCode = parseEventCode(input.code);
+  if (!parsedCode.ok) return { ok: false, error: parsedCode.error };
+  const code = parsedCode.value;
+  const type = parseCreatableType(input.type);
+  if (!type) return { ok: false, error: "Pick the kind of event." };
   // Venue wall clock in, UTC instant out. NOT `new Date(input.startsAt)` — that
   // parses the input's bare wall-clock string in the server's zone (UTC on
   // Vercel) and shifted every camp created here five hours earlier. See
@@ -51,6 +77,9 @@ export async function createCamp(input: {
   if (endsAt < startsAt) {
     return { ok: false, error: "End must be after the start." };
   }
+  const location = (input.location ?? "").trim();
+  const description = parseDescription(input.description ?? "");
+  if (!description.ok) return { ok: false, error: description.error };
 
   const dupe = await db.event.findUnique({
     where: { orgId_code: { orgId: org.id, code } },
@@ -60,15 +89,24 @@ export async function createCamp(input: {
   const event = await db.event.create({
     data: {
       orgId: org.id,
-      type: "CAMP",
+      type,
       status: "DRAFT",
       name,
       code,
       startsAt,
       endsAt,
+      location: location || null,
+      description: description.value,
+      // Quantity mode for anything that is not a camp: a dinner seat or a
+      // tournament entry has a count, not a mailing address.
+      collectsAttendeeDetails: type === "CAMP",
     },
   });
   revalidatePath("/admin/camps");
+  // A DRAFT is not on the public rail, but the rail's candidate pool is read
+  // from the same query; revalidating now is what keeps the first OPEN
+  // transition from showing a stale list.
+  revalidatePath("/");
   return { ok: true, id: event.id };
 }
 
@@ -105,6 +143,25 @@ export async function updateCamp(
      * meant to erase it. See the schema comment on `Event.internalNotes`.
      */
     internalNotes: string;
+    /** Public blurb under the title on /e/<slug>. Blank clears it. */
+    description: string;
+    /** Position on the public rail AS TYPED; blank = sort by date. See `parseDisplayOrder`. */
+    displayOrder: string;
+    /**
+     * An event this organisation attends rather than runs (a community booth at
+     * somebody else's festival): the public page names the host and links out.
+     */
+    externallyHosted: boolean;
+    hostedByName: string;
+    /** https only, never fetched. See `parseExternalUrl`. */
+    externalUrl: string;
+    /**
+     * Changing the kind is allowed only while DRAFT with nobody paid: the kind
+     * decides whether the register form collects per-person details, and an
+     * order already minted under one shape cannot be re-read under the other.
+     * Omit (or send the current value) to leave it alone.
+     */
+    type?: CreatableEventType;
   },
 ): Promise<ActionResult> {
   await requireAdmin();
@@ -130,6 +187,36 @@ export async function updateCamp(
   if (!capacity.ok) return { ok: false, error: capacity.error };
   const internalNotes = parseInternalNotes(patch.internalNotes);
   if (!internalNotes.ok) return { ok: false, error: internalNotes.error };
+  const description = parseDescription(patch.description);
+  if (!description.ok) return { ok: false, error: description.error };
+  const displayOrder = parseDisplayOrder(patch.displayOrder);
+  if (!displayOrder.ok) return { ok: false, error: displayOrder.error };
+  const externalUrl = parseExternalUrl(patch.externalUrl);
+  if (!externalUrl.ok) return { ok: false, error: externalUrl.error };
+  const hostedByName = patch.hostedByName.trim();
+
+  const current = await db.event.findFirst({
+    where: { id, orgId: org.id },
+    select: { type: true, status: true },
+  });
+  if (!current) return { ok: false, error: "Event not found." };
+
+  // ── The kind, guarded ──
+  let nextType = current.type;
+  if (patch.type !== undefined && patch.type !== current.type) {
+    const wanted = parseCreatableType(patch.type);
+    if (!wanted) return { ok: false, error: "Pick the kind of event." };
+    if (current.status !== "DRAFT") {
+      return { ok: false, error: "The kind can only be changed while the event is a DRAFT." };
+    }
+    const paid = await db.attendee.count({
+      where: { eventId: id, campId: { not: null } },
+    });
+    if (paid > 0) {
+      return { ok: false, error: "The kind cannot change once anyone has paid." };
+    }
+    nextType = wanted;
+  }
 
   const res = await db.event.updateMany({
     where: { id, orgId: org.id },
@@ -142,10 +229,21 @@ export async function updateCamp(
       location: location || null,
       venueCapacity: capacity.value,
       internalNotes: internalNotes.value,
+      description: description.value,
+      displayOrder: displayOrder.value,
+      externallyHosted: patch.externallyHosted,
+      hostedByName: patch.externallyHosted && hostedByName ? hostedByName : null,
+      externalUrl: externalUrl.value,
+      type: nextType,
+      // The kind sets the register form's mode; a change of kind resets it
+      // (the detail page's flags row can still override it afterwards).
+      ...(nextType !== current.type ? { collectsAttendeeDetails: nextType === "CAMP" } : {}),
     },
   });
-  if (res.count === 0) return { ok: false, error: "Camp not found." };
+  if (res.count === 0) return { ok: false, error: "Event not found." };
   revalidatePath(`/admin/camps/${id}`);
+  // The rail reads description, display order, the host and the link.
+  revalidatePath("/");
   return { ok: true };
 }
 
