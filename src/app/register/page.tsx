@@ -1,4 +1,6 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { getActiveOrg } from "@/lib/tenant";
+import { findDefaultPublicEvent, findPublicEvent } from "@/server/public";
 import { db } from "@/lib/db";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { RegisterForm } from "./RegisterForm";
@@ -51,6 +53,8 @@ export default async function RegisterPage({
   // class of bug isRegistrationOpen exists to prevent, so don't call new Date()
   // again further down.
   const now = new Date();
+  const org = await getActiveOrg();
+  if (!org) notFound();
 
   // Fetch first, then apply isRegistrationOpen — the same predicate the submit
   // action uses. Filtering on status in the query is what let the two disagree:
@@ -58,7 +62,7 @@ export default async function RegisterPage({
   // branch is therefore deliberately UNfiltered — a direct link must reach the
   // predicate and be judged by it.
   const candidate = eventId
-    ? await db.event.findFirst({ where: { id: eventId } })
+    ? await findPublicEvent(org.id, eventId)
     : // Narrows the CANDIDATE POOL to exactly the states isRegistrationOpen
       // accepts. It restates the predicate's rule, and that duplication is safe
       // in one direction only: this query merely SELECTS a candidate, and
@@ -75,15 +79,7 @@ export default async function RegisterPage({
       // pool and the earliest one won, so the page refused while an open event
       // was on sale. `endsAt` asc picks the soonest-ending — the next thing
       // happening.
-      await db.event.findFirst({
-        where: {
-          OR: [
-            { status: "OPEN", endsAt: { gte: now } },
-            { status: "ACTIVE", walkInOpensAt: { not: null } },
-          ],
-        },
-        orderBy: { endsAt: "asc" },
-      });
+      await findDefaultPublicEvent(org.id, now);
   const event = candidate && isRegistrationOpen(candidate, now) ? candidate : null;
 
   if (!event) {
@@ -218,7 +214,7 @@ export default async function RegisterPage({
   // total and not a number the browser has been carrying around. Gated on the
   // signed cookie: a bare ?cancelled= triggers no lookup at all.
   const resumable = cancelled
-    ? await getResumableCheckout(cancelled, await readResumeCookie())
+    ? await getResumableCheckout(org.id, cancelled, await readResumeCookie())
     : null;
 
   return (

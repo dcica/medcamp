@@ -222,11 +222,11 @@ async function main() {
   const campId = paid.attendees[0]!.campId!;
   check("receipt code assigned on confirmation", Boolean(campId), campId);
 
-  const view = await getEntryByCode(campId);
+  const view = await getEntryByCode(org.id, campId);
   check("paid entry resolves by code", view !== null);
   check("resolved entry is the right group", view?.groupName === "Shakti Steps", view?.groupName);
-  check("bogus code returns null", (await getEntryByCode("RON-2026-ZZZZZZZZ")) === null);
-  check("empty code returns null", (await getEntryByCode("")) === null);
+  check("bogus code returns null", (await getEntryByCode(org.id, "RON-2026-ZZZZZZZZ")) === null);
+  check("empty code returns null", (await getEntryByCode(org.id, "")) === null);
 
   // The invariant that matters: an UNPAID entry must be indistinguishable from
   // a bad code. Build a second entry and leave it PENDING.
@@ -240,7 +240,7 @@ async function main() {
     data: { campId: `${CODE}-UNPAID01` },
   });
   check("UNPAID entry with a valid code still returns null",
-    (await getEntryByCode(`${CODE}-UNPAID01`)) === null);
+    (await getEntryByCode(org.id, `${CODE}-UNPAID01`)) === null);
 
   console.log("\n§6 song upload round trip");
   const storage = getStorage();
@@ -249,9 +249,9 @@ async function main() {
   } else {
     console.log(`  ..  adapter: ${storage.name}`);
     await rejectsWith("completing with no file uploaded fails",
-      () => completeSongUpload(campId), "didn't receive the file");
+      () => completeSongUpload(org.id, campId), "didn't receive the file");
 
-    const ticket = await beginSongUpload(campId);
+    const ticket = await beginSongUpload(org.id, campId);
     check("upload ticket issued", Boolean(ticket.url));
     check("ticket declares the MP3 content type", ticket.contentType === "audio/mpeg", ticket.contentType);
     check("ticket declares the 10 MiB cap", ticket.maxBytes === 10 * 1024 * 1024, `${ticket.maxBytes}`);
@@ -269,7 +269,7 @@ async function main() {
       await writeFile(full, Buffer.alloc(4096, 3));
 
       // THE path-agreement check: complete() must find what begin() described.
-      await completeSongUpload(campId);
+      await completeSongUpload(org.id, campId);
       const afterUpload = await db.performanceEntry.findUniqueOrThrow({ where: { id: created.entryId } });
       check("songObjectPath recorded", afterUpload.songObjectPath === ticket.path, String(afterUpload.songObjectPath));
       check("delivery is UPLOAD", afterUpload.songDelivery === "UPLOAD", afterUpload.songDelivery);
@@ -277,13 +277,13 @@ async function main() {
 
       // Oversize: rejected AND removed, not left occupying the bucket.
       await writeFile(full, Buffer.alloc(10 * 1024 * 1024 + 1, 3));
-      await rejectsWith("oversize upload rejected", () => completeSongUpload(campId), "larger than 10 MB");
+      await rejectsWith("oversize upload rejected", () => completeSongUpload(org.id, campId), "larger than 10 MB");
       check("oversize object deleted", (await storage.statObject("songs", ticket.path)) === null);
 
       console.log("\n§7 offline escape hatch clears the object");
       await writeFile(full, Buffer.alloc(2048, 3));
-      await completeSongUpload(campId);
-      await chooseOfflineDelivery(campId);
+      await completeSongUpload(org.id, campId);
+      await chooseOfflineDelivery(org.id, campId);
       const offline = await db.performanceEntry.findUniqueOrThrow({ where: { id: created.entryId } });
       check("delivery switched to OFFLINE", offline.songDelivery === "OFFLINE", offline.songDelivery);
       check("songObjectPath cleared", offline.songObjectPath === null);
@@ -295,10 +295,10 @@ async function main() {
       check("roster row carries the receipt code", roster[0]?.campId === campId, roster[0]?.campId);
 
       // Re-upload so purge has something to remove.
-      await beginSongUpload(campId);
+      await beginSongUpload(org.id, campId);
       await mkdir(dirname(full), { recursive: true });
       await writeFile(full, Buffer.alloc(1024, 3));
-      await completeSongUpload(campId);
+      await completeSongUpload(org.id, campId);
       const purged = await purgeEventSongs(event.id);
       check("purge removed one object", purged === 1, `${purged}`);
       check("entry row survives the purge",

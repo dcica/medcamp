@@ -1,4 +1,6 @@
 import QRCode from "qrcode";
+import { notFound } from "next/navigation";
+import { getActiveOrg } from "@/lib/tenant";
 import Link from "next/link";
 import { getVolunteerConfirmation } from "@/server/volunteers";
 import { VENUE_TIME_ZONE } from "@/lib/eventTime";
@@ -22,7 +24,9 @@ export default async function VolunteerConfirmPage({
   params: Promise<{ signupId: string }>;
 }) {
   const { signupId } = await params;
-  const c = await getVolunteerConfirmation(signupId);
+  const org = await getActiveOrg();
+  if (!org) notFound();
+  const c = await getVolunteerConfirmation(org.id, signupId);
 
   if (!c) {
     return (

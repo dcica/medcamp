@@ -176,7 +176,7 @@ export async function createRegistration(
    * createPerformanceEntry — which writes the details in the same breath — is
    * allowed through.
    */
-  opts?: { allowFeeServices?: boolean; channel?: PriceChannel },
+  opts?: { allowFeeServices?: boolean; channel?: PriceChannel; orgId?: string },
 ): Promise<CreatedOrder> {
   const data = registrationSchema.parse(input);
 
@@ -193,6 +193,12 @@ export async function createRegistration(
     include: { org: true },
   });
   if (!event) {
+    throw new Error("That event could not be found.");
+  }
+  // The organisation the REQUEST resolved to must own the event. Same sentence
+  // as "missing": a different one would tell a probe which ids are real.
+  // Scripts (offline minting) pass no orgId and are trusted.
+  if (opts?.orgId && event.orgId !== opts.orgId) {
     throw new Error("That event could not be found.");
   }
   if (!isRegistrationOpen(event)) {

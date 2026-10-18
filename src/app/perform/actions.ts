@@ -4,6 +4,7 @@ import { ZodError } from "zod";
 import { createCheckoutForOrder, confirmOrderPaid } from "@/server/payments";
 import { setResumeCookie } from "@/server/resumeCookie";
 import { guard } from "@/server/requestGuard";
+import { getActiveOrg } from "@/lib/tenant";
 import {
   beginSongUpload,
   chooseOfflineDelivery,
@@ -55,12 +56,23 @@ function toEntrantMessage(err: unknown): string {
  * The webhook — not this action — is what confirms the entry (decision #2), so
  * nothing downstream sees the group until the fee lands.
  */
+/**
+ * The organisation this request resolved to. Every entry lookup and every
+ * entry creation is scoped to it; a request that resolves to none (the bare
+ * platform host) gets the same words as a missing event.
+ */
+async function requireOrgId(): Promise<string> {
+  const org = await getActiveOrg();
+  if (!org) throw new Error("That event could not be found.");
+  return org.id;
+}
+
 export async function submitPerformanceEntry(
   input: PerformanceEntryInput,
 ): Promise<EntryResult> {
   try {
     await guard("entry", 10, 600);
-    const { orderId, totalCents } = await createPerformanceEntry(input);
+    const { orderId, totalCents } = await createPerformanceEntry(input, { orgId: await requireOrgId() });
 
     // A $0 entry is possible if a coordinator prices the fee at zero (a free
     // showcase). Confirm directly — createCheckoutForOrder rejects $0 totals.
@@ -97,7 +109,7 @@ export async function submitPerformanceEntry(
 export async function requestSongUpload(code: string): Promise<UploadResult> {
   try {
     await guard("upload-begin", 20, 600);
-    const ticket = await beginSongUpload(code);
+    const ticket = await beginSongUpload(await requireOrgId(), code);
     return { ok: true, ticket };
   } catch (err) {
     return { ok: false, error: toEntrantMessage(err) };
@@ -112,7 +124,7 @@ export async function requestSongUpload(code: string): Promise<UploadResult> {
 export async function finishSongUpload(code: string): Promise<SimpleResult> {
   try {
     await guard("upload-finish", 20, 600);
-    await completeSongUpload(code);
+    await completeSongUpload(await requireOrgId(), code);
     return { ok: true };
   } catch (err) {
     return { ok: false, error: toEntrantMessage(err) };
@@ -125,7 +137,7 @@ export async function switchToOfflineDelivery(
 ): Promise<SimpleResult> {
   try {
     await guard("offline", 20, 600);
-    await chooseOfflineDelivery(code);
+    await chooseOfflineDelivery(await requireOrgId(), code);
     return { ok: true };
   } catch (err) {
     return { ok: false, error: toEntrantMessage(err) };

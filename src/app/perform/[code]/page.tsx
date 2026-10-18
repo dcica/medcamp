@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
+import { getActiveOrg } from "@/lib/tenant";
 import { headers } from "next/headers";
 import { rateLimit } from "@/lib/rateLimit";
 import { getEntryByCode } from "@/server/performance";
@@ -46,7 +48,9 @@ export default async function PerformEntryPage({
   const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const limited = !rateLimit(`perform-lookup:${ip}`, 30, 600).ok;
 
-  const entry = limited ? null : await getEntryByCode(code);
+  const org = await getActiveOrg();
+  if (!org) notFound();
+  const entry = limited ? null : await getEntryByCode(org.id, code);
 
   if (limited) {
     return (

@@ -125,6 +125,8 @@ export async function resumeCheckoutForOrder(
   orderId: string,
   proof: string | null | undefined,
   routes?: CheckoutRoutes,
+  /** The organisation the request resolved to; a foreign order reads as not-authorised. */
+  opts?: { orgId?: string },
 ): Promise<ResumeOutcome> {
   // Authorisation BEFORE any database read. This ordering is the whole defence
   // against ?cancelled= becoming a PII oracle: an unauthorised caller must not
@@ -134,8 +136,8 @@ export async function resumeCheckoutForOrder(
     return { ok: false, reason: "not-authorised" };
   }
 
-  const order = await db.order.findUnique({
-    where: { id: orderId },
+  const order = await db.order.findFirst({
+    where: { id: orderId, ...(opts?.orgId ? { orgId: opts.orgId } : {}) },
     include: { lineItems: true, event: true, org: { include: { domains: true } } },
   });
   // A valid MAC for an id that no longer exists is still nothing this caller
@@ -207,14 +209,15 @@ export async function resumeCheckoutForOrder(
  * stale one would misprice a payment button.
  */
 export async function getResumableCheckout(
+  orgId: string,
   orderId: string | undefined,
   proof: string | null | undefined,
 ): Promise<{ orderId: string; amountCents: number } | null> {
   if (!orderId) return null;
   if (!verifyResumeProof(orderId, proof)) return null;
 
-  const order = await db.order.findUnique({
-    where: { id: orderId },
+  const order = await db.order.findFirst({
+    where: { id: orderId, orgId },
     select: {
       id: true,
       status: true,

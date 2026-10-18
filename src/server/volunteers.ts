@@ -616,17 +616,20 @@ export type ConfirmationView = {
   checkedOutAt: Date | null;
 };
 
-async function loadSignup(signupId: string) {
-  return db.volunteerSignup.findUnique({
-    where: { id: signupId },
+async function loadSignup(orgId: string, signupId: string) {
+  // Scoped through the event: a signup id is a capability, and one tenant's
+  // must not resolve on another tenant's host.
+  return db.volunteerSignup.findFirst({
+    where: { id: signupId, event: { orgId } },
     include: { volunteer: true, role: true, event: { include: { org: true } } },
   });
 }
 
 export async function getVolunteerConfirmation(
+  orgId: string,
   signupId: string,
 ): Promise<ConfirmationView | null> {
-  const s = await loadSignup(signupId);
+  const s = await loadSignup(orgId, signupId);
   if (!s || !s.code) return null;
   return {
     signupId: s.id,
@@ -648,8 +651,8 @@ export async function getVolunteerConfirmation(
 }
 
 /** Volunteer cancels their slot; the oldest waitlister for the role is promoted. */
-export async function cancelSignup(signupId: string): Promise<void> {
-  const s = await loadSignup(signupId);
+export async function cancelSignup(orgId: string, signupId: string): Promise<void> {
+  const s = await loadSignup(orgId, signupId);
   if (!s) throw new Error("Signup not found.");
   if (s.status === "CANCELLED") return;
 

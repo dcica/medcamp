@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
+import { getActiveOrg } from "@/lib/tenant";
+import { findPublicOrder } from "@/server/public";
 import QRCode from "qrcode";
-import { db } from "@/lib/db";
 import { stripe } from "@/lib/stripe";
 import { log } from "@/lib/logger";
 import {
@@ -44,11 +46,10 @@ export default async function ConfirmPage({
 }) {
   const { orderId } = await params;
   const { session_id } = await searchParams;
+  const org = await getActiveOrg();
+  if (!org) notFound();
 
-  let order = await db.order.findUnique({
-    where: { id: orderId },
-    include: orderInclude,
-  });
+  let order = await findPublicOrder(org.id, orderId, { include: orderInclude });
 
   // ── Race fix ──────────────────────────────────────────────────────────────
   // Stripe redirects the browser to this page the instant Checkout succeeds,
@@ -77,10 +78,7 @@ export default async function ConfirmPage({
               : undefined,
           idempotencyKey: `checkout-${session.id}`,
         });
-        order = await db.order.findUnique({
-          where: { id: orderId },
-          include: orderInclude,
-        });
+        order = await findPublicOrder(org.id, orderId, { include: orderInclude });
       }
     } catch (err) {
       // A genuinely-full cap stays quiet by design: the buyer paid, staff

@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { db } from "@/lib/db";
+import { notFound } from "next/navigation";
+import { getActiveOrg } from "@/lib/tenant";
+import { findPublicEvent } from "@/server/public";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { CONTACT_EMAIL } from "@/lib/contact";
 import type { Metadata } from "next";
@@ -39,12 +41,9 @@ export default async function VendorsPage({
   searchParams: Promise<{ event?: string }>;
 }) {
   const { event: eventId } = await searchParams;
-  const event = eventId
-    ? await db.event.findUnique({
-        where: { id: eventId },
-        select: { name: true },
-      })
-    : null;
+  const org = await getActiveOrg();
+  if (!org) notFound();
+  const event = eventId ? await findPublicEvent(org.id, eventId) : null;
 
   const subject = encodeURIComponent(
     event ? `Vendor interest — ${event.name}` : "Vendor interest — DCICA events",

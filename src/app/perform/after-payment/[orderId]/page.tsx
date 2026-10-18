@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
+import { getActiveOrg } from "@/lib/tenant";
+import { findPublicOrder } from "@/server/public";
 import { redirect } from "next/navigation";
-import { db } from "@/lib/db";
 import { confirmFromCheckoutSession } from "@/server/payments";
 import { CONTACT_EMAIL } from "@/lib/contact";
 import { PRIVATE_PAGE_METADATA } from "@/lib/seo";
@@ -38,10 +40,15 @@ export default async function AfterPaymentPage({
   // Same race Stripe creates for /confirm — the webhook usually loses it, so
   // confirm synchronously here. Idempotent and atomically claimed, so whichever
   // of the two paths wins, the other is a no-op.
+  const org = await getActiveOrg();
+  if (!org) notFound();
+  // Scoped read FIRST: an order that is not this organisation's is a 404 here,
+  // and is never confirmed from this page.
+  if (!(await findPublicOrder(org.id, orderId, { select: { id: true } }))) notFound();
+
   const confirmed = await confirmFromCheckoutSession(orderId, session_id);
 
-  const order = await db.order.findUnique({
-    where: { id: orderId },
+  const order = await findPublicOrder(org.id, orderId, {
     select: {
       status: true,
       attendees: { select: { campId: true }, take: 1 },

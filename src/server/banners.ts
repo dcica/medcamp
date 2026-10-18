@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { log } from "@/lib/logger";
+import { getActiveOrg } from "@/lib/tenant";
 import {
   BANNER_CONTENT_TYPES,
   BANNER_MAX_BYTES,
@@ -62,10 +63,13 @@ export async function beginBannerUpload(
     throw new Error("Banners must be a JPEG, PNG or WebP image.");
   }
 
-  const event = await db.event.findUnique({
-    where: { id: eventId },
-    select: { id: true, imageUrl: true },
-  });
+  const org = await getActiveOrg();
+  const event = org
+    ? await db.event.findFirst({
+        where: { id: eventId, orgId: org.id },
+        select: { id: true, imageUrl: true },
+      })
+    : null;
   if (!event) throw new Error("That event could not be found.");
 
   // Replacing: drop the old object first. The extension is part of the path, so
@@ -124,11 +128,12 @@ export async function completeBannerUpload(
 
 /** Clear an event's banner and delete the object behind it. */
 export async function clearBanner(eventId: string): Promise<void> {
-  const event = await db.event.findUnique({
-    where: { id: eventId },
-    select: { imageUrl: true },
-  });
-  await removeStoredBanner(event?.imageUrl ?? null);
+  const org = await getActiveOrg();
+  const event = org
+    ? await db.event.findFirst({ where: { id: eventId, orgId: org.id }, select: { imageUrl: true } })
+    : null;
+  if (!event) throw new Error("That event could not be found.");
+  await removeStoredBanner(event.imageUrl ?? null);
   await db.event.update({ where: { id: eventId }, data: { imageUrl: null } });
 }
 

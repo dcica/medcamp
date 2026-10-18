@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
+import { getActiveOrg } from "@/lib/tenant";
+import { findDefaultPerformEvent, findPerformEvent } from "@/server/public";
 import { db } from "@/lib/db";
 import { resolvePrice } from "@/lib/pricing";
 import { isRegistrationOpen } from "@/server/registration";
@@ -56,6 +59,8 @@ export default async function PerformPage({
   // as /register: a single request must not hold two opinions about whether the
   // event is sellable.
   const now = new Date();
+  const org = await getActiveOrg();
+  if (!org) notFound();
 
   // A fee-kind offering is what makes an event enterable: neither admission nor
   // merch. Without this filter the fallback could land on a dandiya night that
@@ -70,19 +75,8 @@ export default async function PerformPage({
   // deliberately unfiltered on status so a direct link reaches the predicate and
   // is judged by it.
   const candidate = eventId
-    ? await db.event.findFirst({
-        where: { id: eventId, caps: { some: feeOffering } },
-      })
-    : await db.event.findFirst({
-        where: {
-          caps: { some: feeOffering },
-          OR: [
-            { status: "OPEN", endsAt: { gte: now } },
-            { status: "ACTIVE", walkInOpensAt: { not: null } },
-          ],
-        },
-        orderBy: { endsAt: "asc" },
-      });
+    ? await findPerformEvent(org.id, eventId)
+    : await findDefaultPerformEvent(org.id, now);
 
   const event =
     candidate && isRegistrationOpen(candidate, now) ? candidate : null;
@@ -136,7 +130,7 @@ export default async function PerformPage({
   // total and not a number the browser has been carrying around. Gated on the
   // signed cookie: a bare ?cancelled= triggers no lookup at all.
   const resumable = cancelled
-    ? await getResumableCheckout(cancelled, await readResumeCookie())
+    ? await getResumableCheckout(org.id, cancelled, await readResumeCookie())
     : null;
 
   return (

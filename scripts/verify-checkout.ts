@@ -392,14 +392,14 @@ async function main() {
 
   console.log("\n§7 what the return page may read, and how hard resume is to grind");
 
-  const visible = await getResumableCheckout(pending, signResumeProof(pending));
+  const visible = await getResumableCheckout(org.id, pending, signResumeProof(pending));
   check("a proven PENDING order exposes its total", visible?.amountCents === 2500, JSON.stringify(visible));
   check("…and no more than the total and the id", visible !== null && Object.keys(visible).sort().join(",") === "amountCents,orderId");
-  check("an unproven order exposes nothing", (await getResumableCheckout(pending, null)) === null);
-  check("a forged proof exposes nothing", (await getResumableCheckout(pending, `${pending}.xxxx`)) === null);
-  check("a CONFIRMED order is not offered for resume", (await getResumableCheckout(paid, signResumeProof(paid))) === null);
-  check("a CANCELLED order is not offered for resume", (await getResumableCheckout(abandoned, signResumeProof(abandoned))) === null);
-  check("no ?cancelled= at all reads nothing", (await getResumableCheckout(undefined, signResumeProof(pending))) === null);
+  check("an unproven order exposes nothing", (await getResumableCheckout(org.id, pending, null)) === null);
+  check("a forged proof exposes nothing", (await getResumableCheckout(org.id, pending, `${pending}.xxxx`)) === null);
+  check("a CONFIRMED order is not offered for resume", (await getResumableCheckout(org.id, paid, signResumeProof(paid))) === null);
+  check("a CANCELLED order is not offered for resume", (await getResumableCheckout(org.id, abandoned, signResumeProof(abandoned))) === null);
+  check("no ?cancelled= at all reads nothing", (await getResumableCheckout(org.id, undefined, signResumeProof(pending))) === null);
 
   // Functional half: a bucket really does stop at its limit.
   resetRateLimits();

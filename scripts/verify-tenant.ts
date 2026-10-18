@@ -205,7 +205,7 @@ async function section2(): Promise<void> {
   );
 }
 
-async function section3(): Promise<void> {
+async function section3() {
   const { tenantLookup, resolveTenant, getActiveOrg } = await import("../src/lib/tenant");
 
   console.log("\n§3 Prisma-backed lookups and the script-scope fallback");
@@ -258,7 +258,116 @@ async function section3(): Promise<void> {
   check("B (no domain) is listed under its /o/<slug> origin", smB.some((e) => e.url === `${originB}/e/${eventSlug(eventB)}`), true);
   check("no organisation → an empty sitemap", await buildSitemap(null, "https://platform.test", now), []);
 
-  await cleanup();
+  return { a, b, eventA, eventB };
+}
+
+type Fixtures = Awaited<ReturnType<typeof section3>>;
+
+const ADMIT_KEY = "vt-admit";
+const FEE_KEY = "vt-entry";
+const VOL_EMAIL = "volunteer@verify-tenant.invalid";
+
+/**
+ * §7 — the boundary. Everything a visitor can reach without a session is
+ * looked up WITH the organisation the request resolved to, so B's order,
+ * ticket, entry and signup are invisible on A's host. Refusals carry the same
+ * message as "does not exist": a different message would be an oracle that
+ * tells a probe which ids are real.
+ */
+async function section7(f: Fixtures): Promise<void> {
+  const { a, b, eventB } = f;
+  const { findPublicEvent, findPublicOrder, findTicket } = await import("../src/server/public");
+  const { createRegistration } = await import("../src/server/registration");
+  const { createPerformanceEntry, getEntryByCode } = await import("../src/server/performance");
+  const { confirmOrderPaid, getResumableCheckout, resumeCheckoutForOrder } = await import("../src/server/payments");
+  const { signResumeProof } = await import("../src/lib/checkoutResume");
+  const { getVolunteerConfirmation, cancelSignup } = await import("../src/server/volunteers");
+
+  console.log("\n§7 public lookups stop at the organisation boundary");
+
+  // B sells one admission and one competition entry.
+  const admit = await db.serviceType.create({
+    data: { orgId: b.id, key: ADMIT_KEY, name: "VT Admission", priceCents: 2500, kind: "ADMISSION" },
+  });
+  await db.serviceCap.create({ data: { eventId: eventB.id, serviceTypeId: admit.id, priceCents: 2500, capacity: 50 } });
+  const fee = await db.serviceType.create({
+    data: { orgId: b.id, key: FEE_KEY, name: "VT Entry", priceCents: 3000, kind: "FEE" },
+  });
+  await db.serviceCap.create({
+    data: {
+      eventId: eventB.id, serviceTypeId: fee.id, priceCents: 3000, capacity: 10,
+      minParticipants: 1, maxParticipants: 10, minDurationSeconds: 60, maxDurationSeconds: 600,
+    },
+  });
+
+  const registrant = { name: "Verify Tenant", email: "buyer@verify-tenant.invalid", phone: "5551234567" };
+  const entryInput = {
+    registrant, marketingConsent: false, eventId: eventB.id, serviceKey: FEE_KEY,
+    groupName: "VT Steps", choreographerName: "V T", ageRange: "17+ years", participantCount: 3,
+    durationSeconds: 300, songTitle: "Dholida", songDelivery: "UPLOAD" as const,
+  };
+
+  // A paid entry in B: its order, its attendee (ticket code) and its entry code.
+  const entry = await createPerformanceEntry(entryInput, { orgId: b.id });
+  await confirmOrderPaid(entry.orderId, { method: "CASH", idempotencyKey: `vt-${entry.orderId}`, historical: true });
+  const ticket = await db.attendee.findFirstOrThrow({ where: { orderId: entry.orderId }, select: { campId: true } });
+  const codeB = ticket.campId!;
+
+  check("findPublicEvent: B's event is invisible to A", await findPublicEvent(a.id, eventB.id), null);
+  check("findPublicEvent: B's event is visible to B", (await findPublicEvent(b.id, eventB.id))?.id, eventB.id);
+  check("findPublicOrder: B's order is invisible to A", await findPublicOrder(a.id, entry.orderId, { include: { lineItems: true } }), null);
+  check("findPublicOrder: B's order is visible to B", (await findPublicOrder(b.id, entry.orderId, { include: { lineItems: true } }))?.id, entry.orderId);
+  check("findTicket: B's ticket is invisible to A", await findTicket(a.id, codeB, { include: { event: true } }), null);
+  check("findTicket: B's ticket is visible to B", (await findTicket(b.id, codeB, { include: { event: true } }))?.campId, codeB);
+  check("getEntryByCode: B's entry is invisible to A", await getEntryByCode(a.id, codeB), null);
+  check("getEntryByCode: B's entry is visible to B", (await getEntryByCode(b.id, codeB))?.entryId, entry.entryId);
+
+  // createRegistration / createPerformanceEntry refuse a foreign event with the
+  // SAME words as a missing one.
+  const regInput = { eventId: eventB.id, registrant, marketingConsent: false, quantities: [{ serviceKey: ADMIT_KEY, quantity: 1 }] };
+  const missing = await createRegistration({ ...regInput, eventId: "clxxxxxxxxxxxxxxxxxxxxxxx" }, { orgId: b.id }).then(() => "created", (e: Error) => e.message);
+  const foreign = await createRegistration(regInput, { orgId: a.id }).then(() => "created", (e: Error) => e.message);
+  check("createRegistration: a foreign event is refused with the missing-event message (no oracle)", foreign, missing);
+  check("createRegistration: a foreign event is not created", foreign === "created", false);
+  const own = await createRegistration(regInput, { orgId: b.id });
+  check("createRegistration: the owning organisation creates the order", typeof own.orderId, "string");
+  const foreignEntry = await createPerformanceEntry(entryInput, { orgId: a.id }).then(() => "created", (e: Error) => e.message);
+  check("createPerformanceEntry: a foreign event is refused with the missing-event message", foreignEntry, missing);
+
+  // The pending admission order in B is resumable by B and nobody else.
+  const proof = signResumeProof(own.orderId);
+  check("getResumableCheckout: B's pending order is invisible to A", await getResumableCheckout(a.id, own.orderId, proof), null);
+  check("getResumableCheckout: B's pending order is visible to B", (await getResumableCheckout(b.id, own.orderId, proof))?.orderId, own.orderId);
+  const resumedForeign = await resumeCheckoutForOrder(entry.orderId, signResumeProof(entry.orderId), undefined, { orgId: a.id });
+  check("resumeCheckoutForOrder: a foreign order reads as not-authorised", resumedForeign, { ok: false, reason: "not-authorised" });
+  const resumedOwn = await resumeCheckoutForOrder(entry.orderId, signResumeProof(entry.orderId), undefined, { orgId: b.id });
+  check("resumeCheckoutForOrder: the owning organisation sees the confirmed order", resumedOwn.ok === true && resumedOwn.alreadyConfirmed === true, true);
+
+  // A volunteer signup in B.
+  const volunteer = await db.volunteer.create({ data: { orgId: b.id, name: "VT Volunteer", email: VOL_EMAIL } });
+  const role = await db.volunteerRole.create({ data: { orgId: b.id, eventId: eventB.id, key: "vt-door", name: "Door", capacity: 2 } });
+  // A confirmation view needs the signup code the normal signup path mints.
+  const signup = await db.volunteerSignup.create({ data: { volunteerId: volunteer.id, eventId: eventB.id, roleId: role.id, code: "VTB0001" } });
+  check("getVolunteerConfirmation: B's signup is invisible to A", await getVolunteerConfirmation(a.id, signup.id), null);
+  check("getVolunteerConfirmation: B's signup is visible to B", (await getVolunteerConfirmation(b.id, signup.id)) !== null, true);
+  const cancelled = await cancelSignup(a.id, signup.id).then(() => "cancelled", (e: Error) => e.message);
+  check("cancelSignup: A cannot cancel B's signup", cancelled, "Signup not found.");
+  check("cancelSignup: B's signup is untouched", (await db.volunteerSignup.findUniqueOrThrow({ where: { id: signup.id } })).status, "SIGNED_UP");
+
+  console.log("\n§8 public pages look nothing up by id alone");
+  const src = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
+  for (const p of [
+    "src/app/register/page.tsx",
+    "src/app/vendors/page.tsx",
+    "src/app/t/[campId]/page.tsx",
+    "src/app/confirm/[orderId]/page.tsx",
+    "src/app/perform/page.tsx",
+    "src/app/perform/after-payment/[orderId]/page.tsx",
+  ]) {
+    check(`${p} has no direct event/order/attendee lookup (goes through @/server/public)`, /db\.(event|order|attendee)\.find/.test(src(p)), false);
+  }
+  check("register/actions.ts passes the resolved organisation into createRegistration", /createRegistration\(input, \{[^}]*orgId/.test(src("src/app/register/actions.ts")), true);
+  check("perform/actions.ts passes the resolved organisation into createPerformanceEntry", /createPerformanceEntry\([^)]*\{[^}]*orgId/.test(src("src/app/perform/actions.ts")), true);
 }
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -381,18 +490,33 @@ async function section4(): Promise<void> {
 }
 
 async function cleanup(): Promise<void> {
-  // Events first (their children cascade from them); OrgDomain rows cascade
-  // from the organisation.
-  await db.event.deleteMany({ where: { org: { slug: { in: [SLUG_A, SLUG_B] } } } });
-  await db.organization.deleteMany({ where: { slug: { in: [SLUG_A, SLUG_B] } } });
+  // Every key this script creates is removed here, most-dependent first, so a
+  // run that died halfway leaves nothing behind for the next manual test to
+  // trip over. OrgDomain rows cascade from the organisation.
+  const org = { slug: { in: [SLUG_A, SLUG_B] } };
+  await db.performanceEntry.deleteMany({ where: { org } });
+  await db.ledgerEntry.deleteMany({ where: { org } });
+  await db.payment.deleteMany({ where: { org } });
+  await db.lineItem.deleteMany({ where: { org } });
+  await db.attendee.deleteMany({ where: { org } });
+  await db.order.deleteMany({ where: { org } });
+  await db.volunteerSignup.deleteMany({ where: { event: { org } } });
+  await db.volunteerRole.deleteMany({ where: { event: { org } } });
+  await db.volunteer.deleteMany({ where: { org } });
+  await db.serviceCap.deleteMany({ where: { event: { org } } });
+  await db.serviceType.deleteMany({ where: { org } });
+  await db.event.deleteMany({ where: { org } });
+  await db.organization.deleteMany({ where: org });
 }
 
 async function main(): Promise<void> {
   await section1();
   await section2();
-  await section3();
+  const fixtures = await section3();
   await section4();
   await section6();
+  await section7(fixtures);
+  await cleanup();
 }
 
 main()
