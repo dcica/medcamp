@@ -274,7 +274,7 @@ a list of things to hand over. The booth is the same `/scan` screen.
 4. **Scan them again** → amber **"Already collected"** with the time. Nothing
    more is handed over
 5. Walk-up: sell **4 × Unlimited Rides** for cash. The button reads **"Take
-   cash $32.00 & hand over"** — the 4+ price, not $40, and not "admit 0" — and
+   cash $32 & hand over"** — the 4+ price, not $40, and not "admit 0" — and
    the verdict is **"Sold and handed over"**, not "Admitted"
 6. Card walk-up of the same basket → once the guest has paid, **"Paid — handed
    over"**, not "Already in"
