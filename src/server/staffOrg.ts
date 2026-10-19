@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { env } from "@/lib/env";
 import { normalizeHost } from "@/lib/tenantResolve";
 import { tenantLookup } from "@/lib/tenant";
 
@@ -93,4 +94,40 @@ export async function acceptPendingInvites(userId: string, email: string): Promi
     if (!existing) accepted += 1;
   }
   return accepted;
+}
+
+/**
+ * Everything a sign-in may grant, in order, idempotently:
+ *   1. every pending invite for the address, in EVERY organisation — first,
+ *      whatever organisation the request resolved to, because an existing
+ *      member invited to a second organisation signs in with the first one's
+ *      staff cookie and would otherwise never receive the second;
+ *   2. on the resolved organisation only, a BOOTSTRAP_ADMIN_EMAILS address
+ *      with no membership yet becomes its COORDINATOR.
+ * Returns how many memberships were created. The auth sign-in event calls
+ * this and nothing else; the suite calls it directly, resolved or not.
+ */
+export async function grantOnSignIn(
+  userId: string,
+  email: string,
+  org: { id: string } | null,
+): Promise<number> {
+  const address = email.toLowerCase();
+  let created = await acceptPendingInvites(userId, address);
+  if (!org) return created;
+  const existing = await db.membership.findUnique({
+    where: { orgId_userId: { orgId: org.id, userId } },
+  });
+  if (existing) return created;
+  const admins = (env.BOOTSTRAP_ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  if (admins.includes(address)) {
+    await db.membership.create({
+      data: { orgId: org.id, userId, role: "COORDINATOR", canHoldTill: true },
+    });
+    created += 1;
+  }
+  return created;
 }

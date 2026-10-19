@@ -88,7 +88,7 @@ export async function handleStripeEvent(event: Stripe.Event, scope: WebhookScope
     // this deployment to act on and no retry can change that. Answering 5xx is
     // what left four events on a permanent retry schedule and got the endpoint
     // flagged by Stripe for disablement (commit 411c01c).
-    if (!(await resolveOwnedOrder(orderId, account, scope))) {
+    if (!(await resolveOwnedOrder(orderId, account, scope, session.id))) {
       log.info("stripe webhook: event for another deployment's or organisation's order", {
         orderId,
         eventId: event.id,

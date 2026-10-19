@@ -93,10 +93,9 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
       - run: npm run db:seed
-        env:
-          SEED_ENV: test
         if: steps.check.outputs.configured == 'true'
         env:
+          SEED_ENV: test
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
       # Real public event lineup FIRST (it replaces all events for the org)...
@@ -144,10 +143,9 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
       - run: npm run db:seed
-        env:
-          SEED_ENV: test
         if: steps.check.outputs.configured == 'true'
         env:
+          SEED_ENV: test
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
       - run: npm run db:seed:events
@@ -197,10 +195,9 @@ jobs:
       # Prod gets the dcica org + service menu, then the real public event
       # lineup. NEVER db:seed:test in prod — no fixtures, no fake orders.
       - run: npm run db:seed
-        env:
-          SEED_ENV: production
         if: steps.check.outputs.configured == 'true'
         env:
+          SEED_ENV: production
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
       - run: npm run db:seed:events

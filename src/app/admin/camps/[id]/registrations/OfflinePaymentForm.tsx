@@ -21,11 +21,14 @@ export function OfflinePaymentForm({
   eventId,
   offerings,
   emailConfigured,
+  canRecordCash,
 }: {
   eventId: string;
   offerings: OfferingOption[];
   /** Whether a mail provider is configured; without one the ticket is logged, not sent. */
   emailConfigured: boolean;
+  /** Till holders only, as at the door; the server refuses it regardless. */
+  canRecordCash: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -105,7 +108,7 @@ export function OfflinePaymentForm({
           <select className={inputCls} value={method} onChange={(e) => setMethod(e.target.value as OfflineMethod)}>
             <option value="ZELLE">Zelle</option>
             <option value="CHECK">Cheque</option>
-            <option value="CASH">Cash</option>
+            {canRecordCash && <option value="CASH">Cash</option>}
           </select>
         </label>
         <label className="block text-sm text-gray-600">

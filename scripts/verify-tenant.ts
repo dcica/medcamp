@@ -551,7 +551,25 @@ async function section9(): Promise<void> {
   check("seed-events.ts no longer upserts the organisation (it looks dcica up)", /organization\.upsert\(/.test(src("prisma/seed-events.ts")), false);
   check("seed-test.ts no longer upserts the organisation", /organization\.upsert\(/.test(src("prisma/seed-test.ts")), false);
   check("seed.ts seeds every module unless SEED_ORGS narrows it", /SEED_ORGS/.test(src("prisma/seed.ts")) && /ORG_SEEDS/.test(src("prisma/seed.ts")), true);
-  check("deploy.yml names SEED_ENV on the test and production seed steps", (src(".github/workflows/deploy.yml").match(/SEED_ENV: (test|production)/g) ?? []).length >= 2, true);
+  // PARSED, not grepped. A duplicated key is a workflow-syntax error on
+  // GitHub: no migration, no seed, no deploy — and a grep for the SEED_ENV
+  // line passes on exactly that file. The seed step must name SEED_ENV AND
+  // its database in ONE env block.
+  // @ts-expect-error -- js-yaml ships no types; the loader is all that is used
+  const yaml = (await import("js-yaml")) as { load: (s: string) => unknown };
+  type Workflow = { jobs?: Record<string, { steps?: { run?: string; env?: Record<string, string> }[] }> };
+  let workflow: Workflow | null = null;
+  let parseError = "";
+  try {
+    workflow = yaml.load(src(".github/workflows/deploy.yml")) as Workflow;
+  } catch (err) {
+    parseError = err instanceof Error ? err.message.split("\n")[0] : String(err);
+  }
+  check("deploy.yml parses as YAML (a duplicated key is a workflow-syntax error: no deploy, no migration, no seed)", parseError, "");
+  const seedSteps = Object.entries(workflow?.jobs ?? {}).flatMap(([job, j]) =>
+    (j.steps ?? []).filter((s) => s.run === "npm run db:seed").map((s) => `${job}:${s.env?.SEED_ENV ?? "-"}:${s.env?.DATABASE_URL ? "db" : "-"}`),
+  );
+  check("every db:seed step names SEED_ENV and its database in the same env block", seedSteps, ["test:test:db", "staging:test:db", "production:production:db"]);
   check("health counts service types, not events (a fresh tenant has none)", /serviceType\.count\(\)/.test(src("src/app/api/health/route.ts")), true);
 }
 
@@ -602,13 +620,24 @@ async function section10(f: Fixtures): Promise<void> {
   check("…and marks the invites accepted", (await db.invite.count({ where: { email: INVITEE_EMAIL, acceptedAt: null } })), 0);
   check("acceptPendingInvites is idempotent", await acceptPendingInvites(invitee.id, INVITEE_EMAIL), 0);
 
+  // An EXISTING member invited to a second organisation: the invite must be
+  // honoured on a sign-in that resolves the organisation they already belong
+  // to — the 30-day staff cookie makes that the common case — or /staff/org
+  // never lists the new one and /staff/from 403s until they clear cookies.
+  const { grantOnSignIn } = await import("../src/server/staffOrg");
+  await db.invite.create({ data: { orgId: a.id, email: STAFF_EMAIL, role: "DOCTOR" } });
+  await grantOnSignIn(staff.id, STAFF_EMAIL, { id: b.id });
+  check("a sign-in that resolves an organisation they already belong to still accepts their pending invite elsewhere",
+    (await listMemberships(staff.id)).map((m) => m.org.slug).sort(), [SLUG_A, SLUG_B].sort());
+  check("...and is idempotent on the next sign-in", (await grantOnSignIn(staff.id, STAFF_EMAIL, { id: b.id }), (await listMemberships(staff.id)).length), 2);
+
   console.log("\n§10 the routes and the switcher exist and are wired");
   const src = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
   check("GET /api/org/select exists and validates `then`", /safeThenPath\(/.test(src("src/app/api/org/select/route.ts")) && /selectOrgForUser\(/.test(src("src/app/api/org/select/route.ts")), true);
   check("GET /staff/from exists and resolves the host", /orgForHost\(/.test(src("src/app/staff/from/route.ts")), true);
   check("/staff/org lists memberships", /listMemberships\(/.test(src("src/app/staff/org/page.tsx")), true);
   check("requireMember sends a signed-in user with no organisation to /staff/org", /redirect\("\/staff\/org"\)/.test(src("src/server/session.ts")), true);
-  check("the sign-in event accepts pending invites across organisations", /acceptPendingInvites\(/.test(src("src/lib/auth.ts")), true);
+  check("the sign-in event grants through ONE function, which accepts pending invites across organisations first", /grantOnSignIn\(/.test(src("src/lib/auth.ts")) && !/acceptPendingInvites\(/.test(src("src/lib/auth.ts")), true);
   check("test-login takes an orgSlug and sets the staff cookie", /orgSlug/.test(src("src/app/api/test-login/route.ts")) && /ORG_COOKIE/.test(src("src/app/api/test-login/route.ts")), true);
   check("dev login takes an orgSlug", /orgSlug/.test(src("src/app/api/dev/login/route.ts")), true);
   check("the staff menu offers 'Switch organisation' only when there is more than one", /canSwitch/.test(src("src/app/_components/StaffMenu.tsx")) && /canSwitch/.test(src("src/app/_components/SiteHeader.tsx")), true);

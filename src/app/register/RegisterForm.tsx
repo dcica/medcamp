@@ -101,6 +101,7 @@ export function RegisterForm({
   eventKind,
   feePolicy,
   orgName,
+  achOnlyAboveCents = null,
 }: {
   eventId: string;
   services: Service[];
@@ -135,6 +136,8 @@ export function RegisterForm({
   feePolicy: FeePolicy | null;
   /** Named in the cover label: the money goes to them, not to the platform. */
   orgName: string;
+  /** The organisation's bank-only threshold on the goods total; null = none. */
+  achOnlyAboveCents?: number | null;
 }) {
   const [registrant, setRegistrant] = useState({ name: "", email: "", phone: "" });
   const [iAmAttending, setIAmAttending] = useState(false);
@@ -266,12 +269,18 @@ export function RegisterForm({
       : []),
     ...(donationCents > 0 ? [{ amountCents: donationCents, quantity: 1, isDonation: true }] : []),
   ];
-  // A bank-only item in the cart makes the whole order a bank debit, and the
+  // A bank-only item in the cart — in either mode — or a goods total over the
+  // organisation's threshold makes the whole order a bank debit, and the
   // cover is then grossed up at the bank rate (0.8% capped at $5), not the
-  // card rate — the same rule the server applies in openCheckoutSession.
-  const bankOnlyInCart = services.some(
-    (s) => s.onlineMethods === "ACH_ONLY" && (quantities[s.key] ?? 0) > 0,
-  );
+  // card rate — the SAME rule the server applies in openCheckoutSession, so
+  // the label's amount and the Stripe line agree to the cent.
+  const pickedKeys = collectsAttendeeDetails
+    ? attendees.flatMap((a) => a.serviceKeys)
+    : services.filter((s) => (quantities[s.key] ?? 0) > 0).map((s) => s.key);
+  const goodsForRule = cartLines.reduce((s, l) => s + l.amountCents * l.quantity, 0);
+  const bankOnlyInCart =
+    pickedKeys.some((k) => services.find((s) => s.key === k)?.onlineMethods === "ACH_ONLY") ||
+    (achOnlyAboveCents !== null && achOnlyAboveCents !== undefined && goodsForRule > achOnlyAboveCents);
   const feeOpts = bankOnlyInCart ? { processing: ACH_PROCESSING } : {};
   const fees = computeOrderFees(cartLines, feePolicy, { coverProcessing: coverFee, orgName, ...feeOpts });
   // What ticking the box would add, shown on the label whether or not it is ticked.

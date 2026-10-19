@@ -7,6 +7,7 @@ import { formatCents } from "@/lib/money";
 import { VENUE_TIME_ZONE } from "@/lib/eventTime";
 import { getEventRegistrations } from "@/server/registrations";
 import { emailConfig } from "@/lib/email";
+import { canRecordCash } from "@/server/session";
 import { Breadcrumbs, campTrail } from "@/app/_components/Breadcrumbs";
 import { OfflinePaymentForm } from "./OfflinePaymentForm";
 import { ResendTicketButton } from "./ResendTicketButton";
@@ -32,7 +33,7 @@ export default async function EventRegistrationsPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireAdmin();
+  const member = await requireAdmin();
   const { id } = await params;
   const org = await getActiveOrg();
   if (!org) notFound();
@@ -208,6 +209,7 @@ export default async function EventRegistrationsPage({
               eventId={event.id}
               offerings={offlineOfferings}
               emailConfigured={emailConfig().configured}
+              canRecordCash={canRecordCash(member)}
             />
           </div>
         )}

@@ -173,10 +173,10 @@ and are safe. The forbidding comment at `src/server/payments.ts:242-260` stays.
 ### Verification
 
 - `npx tsc --noEmit` after every task, then `npm run verify`. Baseline as of 2026-10-18,
-  re-counted from the runner rather than carried forward: **18 suites, 2207 assertions,
+  re-counted from the runner rather than carried forward: **18 suites, 2221 assertions,
   all green** — schema 56, pricing 90, validation 107, storage 31, branding 323,
-  performance 152, gate 238, scan 174, logging 62, readiness 91, checkout 200, csv 37,
-  testlogin 35, home 76, seo 100, registrations 119, analytics 126, tenant 190. (`pricing` and
+  performance 152, gate 238, scan 174, logging 62, readiness 91, checkout 203, csv 37,
+  testlogin 35, home 76, seo 100, registrations 127, analytics 126, tenant 193. (`pricing` and
   `validation` print `PASS`; the rest print `ok` — count both when reporting totals. Four
   suites also print a third status, `..`, for a row a Central-time box or a local-disk
   adapter cannot distinguish: storage, performance, gate and home have one each. A `..`

@@ -106,19 +106,25 @@ export async function recordOfflinePayment(
     };
   }
 
+  // SCOPED to the organisation: Order.idempotencyKey is unique across the whole
+  // database, and cheque 1001 or a short Zelle confirmation exists in every
+  // organisation. A bare reference would refuse the second tenant's cheque as
+  // "already recorded" — and tell it so, which is an oracle on another
+  // tenant's payments.
+  const scopedRef = `${orgId}:${ref}`;
   const prior = await db.order.findUnique({
-    where: { idempotencyKey: ref },
-    select: { id: true, status: true, orgId: true, eventId: true },
+    where: { idempotencyKey: scopedRef },
+    select: { id: true, status: true, eventId: true },
   });
 
   let orderId: string;
   if (prior) {
-    if (prior.orgId !== orgId || prior.eventId !== event.id || prior.status === "CONFIRMED") {
+    if (prior.eventId !== event.id || prior.status === "CONFIRMED") {
       return {
         ok: false,
         reason: "duplicate-ref",
-        message: `Reference ${ref} was already recorded${prior.orgId === orgId ? ` (order ${prior.id})` : ""}.`,
-        orderId: prior.orgId === orgId ? prior.id : undefined,
+        message: `Reference ${ref} was already recorded (order ${prior.id}).`,
+        orderId: prior.id,
       };
     }
     // A reference whose confirmation failed midway: finish it, mint nothing new.
@@ -152,7 +158,7 @@ export async function recordOfflinePayment(
         message: `The basket costs ${formatCents(created.totalCents)} but ${formatCents(amountCents)} was received — left unconfirmed as order ${orderId}. Fix the items or the amount and record it again.`,
       };
     }
-    await db.order.update({ where: { id: orderId }, data: { idempotencyKey: ref } });
+    await db.order.update({ where: { id: orderId }, data: { idempotencyKey: scopedRef } });
   }
 
   // `historical` suppresses the automatic ticket email and the analytics
@@ -161,7 +167,7 @@ export async function recordOfflinePayment(
   // not a web purchase for analytics to count either way.
   const { alreadyConfirmed, campIds } = await confirmOrderPaid(orderId, {
     method: input.method,
-    idempotencyKey: `offline-${ref}`,
+    idempotencyKey: `offline-${scopedRef}`,
     historical: true,
   });
   const { delivered } = await sendTicketEmailFor(orderId);

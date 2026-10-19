@@ -92,6 +92,9 @@ export default async function DonationsPage({
                     {r.email} · {r.date} · {r.event}
                     {r.honoree ? ` · in honour of ${r.honoree}` : ""}
                   </span>
+                  {r.note && (
+                    <span className="block text-xs italic text-gray-600">&ldquo;{r.note}&rdquo;</span>
+                  )}
                 </span>
                 <span className="shrink-0 font-semibold">${r.amount_usd}</span>
               </li>

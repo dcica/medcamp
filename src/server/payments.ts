@@ -340,13 +340,17 @@ export async function markPaymentProcessing(
         include: { lineItems: { include: { serviceType: true } } },
       });
       if (!order || order.status !== "PENDING") return false;
-      await tx.payment.updateMany({
+      const marked = await tx.payment.updateMany({
         where: { orderId, stripeCheckoutId: session.id, status: { in: ["PENDING", "PROCESSING"] } },
         data: {
           status: "PROCESSING",
           ...(session.payment_intent ? { stripePaymentIntentId: session.payment_intent } : {}),
         },
       });
+      // Stripe does not order events: a FAILURE that landed before this
+      // completion already marked the payment FAILED, and a late completion
+      // must then hold nothing — there would be no path to release it.
+      if (marked.count === 0) return false;
       if (order.capsReservedAt) return false;
       await claimCapacity(tx, order);
       await tx.order.update({ where: { id: order.id }, data: { capsReservedAt: new Date() } });
@@ -356,18 +360,19 @@ export async function markPaymentProcessing(
   );
 
   if (reserved) {
-    // Outside the transaction, like every email on the money path.
+    // Outside the transaction, like every email on the money path. A gift
+    // has no event: the organisation's name stands where the event's would.
     const order = await db.order.findUnique({
       where: { id: orderId },
       include: { event: true, org: true },
     });
-    if (order?.event) {
+    if (order) {
       const profile = resolveOrgProfile(order.org.settings);
       await sendPaymentProcessingEmail(
         {
           to: order.registrantEmail,
           registrantName: order.registrantName,
-          eventName: order.event.name,
+          eventName: order.event?.name ?? `your gift to ${order.org.name}`,
           orgName: order.org.name,
         },
         { from: senderFor(profile, env.EMAIL_FROM), replyTo: profile.contactEmail },
@@ -394,11 +399,20 @@ export async function releaseProcessingPayment(
       include: { lineItems: true },
     });
     if (!order) return false;
+    // PENDING too, not only PROCESSING: a failure that arrives before the
+    // completion (Stripe does not order events) must still retire that
+    // session's payment, so the late completion finds nothing to mark and
+    // holds nothing.
     await tx.payment.updateMany({
-      where: { orderId, stripeCheckoutId: sessionId, status: "PROCESSING" },
+      where: { orderId, stripeCheckoutId: sessionId, status: { in: ["PENDING", "PROCESSING"] } },
       data: { status: "FAILED" },
     });
-    if (!order.capsReservedAt || order.status !== "PENDING" || !order.eventId) return false;
+    if (!order.capsReservedAt || order.status !== "PENDING") return false;
+    if (!order.eventId) {
+      // A gift held nothing; only the stamp is cleared.
+      await tx.order.update({ where: { id: order.id }, data: { capsReservedAt: null } });
+      return true;
+    }
     const counts = new Map<string, number>();
     for (const li of order.lineItems) {
       if (li.serviceTypeId) {
@@ -420,13 +434,13 @@ export async function releaseProcessingPayment(
       where: { id: orderId },
       include: { event: true, org: true },
     });
-    if (order?.event) {
+    if (order) {
       const profile = resolveOrgProfile(order.org.settings);
       await sendPaymentFailedEmail(
         {
           to: order.registrantEmail,
           registrantName: order.registrantName,
-          eventName: order.event.name,
+          eventName: order.event?.name ?? `your gift to ${order.org.name}`,
           orgName: order.org.name,
         },
         { from: senderFor(profile, env.EMAIL_FROM), replyTo: profile.contactEmail },
@@ -466,13 +480,28 @@ export async function resolveOwnedOrder(
   orderId: string,
   eventAccount: string | undefined,
   scope: "platform" | "connect",
+  /** The Checkout session the event is about, when it has one. */
+  sessionId?: string,
 ): Promise<{ id: string } | null> {
   const order = await db.order.findUnique({
     where: { id: orderId },
     select: { id: true, org: { select: { stripeAccountId: true } } },
   });
   if (!order) return null;
-  const owned = order.org.stripeAccountId;
+  // The PAYMENT's account when the event names a session, not the
+  // organisation's current one: a session opened on the platform key before
+  // the organisation connected Stripe — a bank debit in flight for four
+  // days, say — reports to the platform endpoint after it did, and a captured
+  // charge must never be answered "not mine". Payment.stripeAccountId was
+  // denormalised at session creation for exactly this.
+  const payment = sessionId
+    ? await db.payment.findUnique({
+        where: { stripeCheckoutId: sessionId },
+        select: { orderId: true, stripeAccountId: true },
+      })
+    : null;
+  const owned =
+    payment && payment.orderId === order.id ? payment.stripeAccountId : order.org.stripeAccountId;
   if (scope === "platform") return !owned && !eventAccount ? { id: order.id } : null;
   return owned && eventAccount === owned ? { id: order.id } : null;
 }

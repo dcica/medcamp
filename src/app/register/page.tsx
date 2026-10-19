@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { RegisterForm } from "./RegisterForm";
 import { activeFeePolicy, getResumableCheckout } from "@/server/payments";
+import { resolveOrgPayments } from "@/lib/orgSettings";
 import { readResumeCookie } from "@/server/resumeCookie";
 import { resolvePrice } from "@/lib/pricing";
 import { isRegistrationOpen } from "@/server/registration";
@@ -248,6 +249,7 @@ export default async function RegisterPage({
         resumable={resumable}
         feePolicy={activeFeePolicy(org)}
         orgName={org.name}
+        achOnlyAboveCents={resolveOrgPayments(org.settings).ach.achOnlyAboveCents}
       />
     </main>
   );

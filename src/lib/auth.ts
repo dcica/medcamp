@@ -7,7 +7,7 @@ import AzureADProvider from "next-auth/providers/azure-ad";
 import { db } from "@/lib/db";
 import { env, enabledOidcProviders } from "@/lib/env";
 import { getActiveOrg } from "@/lib/tenant";
-import { acceptPendingInvites } from "@/server/staffOrg";
+import { grantOnSignIn } from "@/server/staffOrg";
 
 /**
  * OIDC-first auth (CLAUDE.md). Only configured providers are offered — the env
@@ -78,61 +78,10 @@ export const authOptions: NextAuthOptions = {
      */
     async signIn({ user }) {
       if (!user.email) return;
-      const email = user.email.toLowerCase();
-      const org = await getActiveOrg();
-      if (!org) {
-        // Signed in on the platform host, where no organisation resolves.
-        // Accept every pending invite for this address, in every
-        // organisation, so an invited coordinator's first sign-in lands them
-        // on /staff/org with something to pick.
-        await acceptPendingInvites(user.id, email);
-        return;
-      }
-
-      // Already a member — nothing to grant.
-      const existing = await db.membership.findUnique({
-        where: { orgId_userId: { orgId: org.id, userId: user.id } },
-      });
-      if (existing) return;
-
-      // 1. Bootstrap admins.
-      const admins = (env.BOOTSTRAP_ADMIN_EMAILS ?? "")
-        .split(",")
-        .map((s) => s.trim().toLowerCase())
-        .filter(Boolean);
-      if (admins.includes(email)) {
-        await db.membership.create({
-          data: {
-            orgId: org.id,
-            userId: user.id,
-            role: "COORDINATOR",
-            canHoldTill: true,
-          },
-        });
-        return;
-      }
-
-      // 2. Pending invite.
-      const invite = await db.invite.findUnique({
-        where: { orgId_email: { orgId: org.id, email } },
-      });
-      if (invite && !invite.acceptedAt) {
-        await db.$transaction([
-          db.membership.create({
-            data: {
-              orgId: org.id,
-              userId: user.id,
-              role: invite.role,
-              canHoldTill: invite.canHoldTill,
-              canOverrideWaiver: invite.canOverrideWaiver,
-            },
-          }),
-          db.invite.update({
-            where: { id: invite.id },
-            data: { acceptedAt: new Date() },
-          }),
-        ]);
-      }
+      // ONE function, in staffOrg.ts, so the suite can call it with an
+      // organisation resolved or not: pending invites everywhere first, then
+      // the bootstrap admin on the resolved organisation.
+      await grantOnSignIn(user.id, user.email.toLowerCase(), await getActiveOrg());
     },
   },
 };

@@ -95,6 +95,7 @@ export const DONORS_REPORT_HEADER = [
   "amount_usd",
   "event",
   "honoree",
+  "note",
   "order",
 ] as const;
 
@@ -132,6 +133,7 @@ export async function getDonorRows(orgId: string, opts: { year: number }): Promi
           registrantName: true,
           registrantEmail: true,
           honoreeName: true,
+          donorNote: true,
           event: { select: { code: true } },
           payments: {
             where: { status: "SUCCEEDED" },
@@ -157,6 +159,9 @@ export async function getDonorRows(orgId: string, opts: { year: number }): Promi
       amount_usd: ((li.amountCents * li.quantity) / 100).toFixed(2),
       event: li.order.event?.code ?? "general",
       honoree: li.order.honoreeName ?? "",
+      // The donor's words to the organisers — a note that reached nobody
+      // would be a broken promise on the form.
+      note: li.order.donorNote ?? "",
       order: li.order.id,
     });
   }

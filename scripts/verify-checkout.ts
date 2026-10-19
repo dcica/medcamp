@@ -865,6 +865,15 @@ async function main() {
   check("platform scope: a connected org's order is NOT mine",
     (await resolveOwnedOrder(cOrder.id, undefined, "platform")) === null);
   check("an unknown order is nobody's", (await resolveOwnedOrder("cmt0000notours0000000000", undefined, "platform")) === null);
+  // A session opened on the platform key BEFORE the organisation connected
+  // Stripe reports to the platform endpoint AFTER it did — a bank debit in
+  // flight for four days, say. Ownership follows the PAYMENT's account, not
+  // the organisation's current one, or a captured charge is "not mine" forever.
+  const cOrderOrgId = (await db.order.findUniqueOrThrow({ where: { id: cOrder.id }, select: { orgId: true } })).orgId;
+  await db.payment.create({ data: { orgId: cOrderOrgId, orderId: cOrder.id, method: "STRIPE", status: "PENDING", amountCents: 1, stripeCheckoutId: "cs_verify_preconnect", stripeAccountId: null } });
+  check("platform scope: a connected org's order whose SESSION was opened on the platform key is mine",
+    (await resolveOwnedOrder(cOrder.id, undefined, "platform", "cs_verify_preconnect")) !== null);
+  check("...and the webhook hands the guard the session id", /resolveOwnedOrder\(orderId, account, scope, session\.id\)/.test(hookSrc));
   const connectSrc = readFileSync("src/app/api/stripe/connect/route.ts", "utf8");
   const platformSrc = readFileSync("src/app/api/stripe/webhook/route.ts", "utf8");
   check("the Connect route verifies with STRIPE_CONNECT_WEBHOOK_SECRET and never the platform secret",
@@ -991,6 +1000,7 @@ async function main() {
   check("...and its default is the organisation's setting, not a constant", /feeCoverDefaultChecked/.test(formSrc));
   check("the buyer's choice is sent with the registration", /coverProcessingFee:\s*coverFee/.test(formSrc));
   check("the service fee is shown as its own line before payment", /PLATFORM_FEE_LABEL/.test(formSrc));
+  check("the form's bank-only rule includes the organisation's threshold, so its cover matches the server's", /achOnlyAboveCents/.test(formSrc));
 
   // ───────────────────────────────────────────────────────────────────────────
   // §15 Bank debits are a DELAYED-NOTIFICATION method: the session completes

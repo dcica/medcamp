@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
 import { requireAdmin } from "@/server/admin";
+import { canRecordCash } from "@/server/session";
 import {
   recordOfflinePayment,
   type OfflineMethod,
@@ -26,9 +27,19 @@ export async function recordOfflinePaymentAction(input: {
   ref: string;
   channel: "online" | "door";
 }): Promise<OfflinePaymentOutcome> {
-  await requireAdmin();
+  const member = await requireAdmin();
   const org = await getActiveOrg();
   if (!org) return { ok: false, reason: "refused", message: "No active org." };
+  // CASH is a till holder's to record, exactly as at the door (CLAUDE.md's
+  // role table: committee/admin cash = No). Zelle and cheques leave a trail
+  // of their own and are fine for any admin.
+  if (input.method === "CASH" && !canRecordCash(member)) {
+    return {
+      ok: false,
+      reason: "refused",
+      message: "Only a till holder may record cash. Zelle and cheque payments can be recorded here.",
+    };
+  }
   const dollars = input.amountDollars.trim();
   if (!/^\d+(\.\d{1,2})?$/.test(dollars)) {
     return { ok: false, reason: "refused", message: "Enter the amount received in dollars (e.g. 50 or 27.50)." };

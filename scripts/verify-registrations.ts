@@ -699,7 +699,9 @@ async function main() {
   check("...and the donation made on the paid ticket order, under its event code",
     donors.some((r) => r.order === paidOrder.id && r.event === CODE && r.amount_usd === "10.00"));
   check("...and not the unpaid gift", !donors.some((r) => r.order === unpaidGift.orderId));
-  check("...with the header exactly these columns", DONORS_REPORT_HEADER.join(",") === "date,donor,email,amount_usd,event,honoree,order");
+  check("...with the header exactly these columns — the donor's note included, or it reaches nobody", DONORS_REPORT_HEADER.join(",") === "date,donor,email,amount_usd,event,honoree,note,order", DONORS_REPORT_HEADER.join(","));
+  check("...and the note is on the row", donors.find((r) => r.order === gift.orderId)?.note === "In memory");
+  check("...and on the admin page", /r\.note/.test(readFileSync(join(process.cwd(), "src/app/admin/donations/page.tsx"), "utf8")));
   check("...and nothing from another year", (await getDonorRows(org.id, { year: 1999 })).length === 0);
   // THE YEAR IS THE VENUE'S. 11:30pm on New Year's Eve in Flower Mound is
   // 05:30 UTC on 1 January: a UTC year would move that gift into the new
@@ -745,7 +747,7 @@ async function main() {
     const zo = await db.order.findUniqueOrThrow({ where: { id: zelle.orderId }, include: { payments: true, lineItems: true } });
     check("...settled as ZELLE with one SUCCEEDED payment for the amount received",
       zo.status === "CONFIRMED" && zo.method === "ZELLE" && zo.payments.length === 1 && zo.payments[0]?.status === "SUCCEEDED" && zo.payments[0]?.amountCents === 5000);
-    check("...keyed on the payment reference", zo.idempotencyKey === "ZL-VERIFY-1");
+    check("...keyed on the payment reference SCOPED to the organisation (cheque 1001 exists in every organisation)", zo.idempotencyKey === `${org.id}:ZL-VERIFY-1`, String(zo.idempotencyKey));
     check("...with no phone invented: the sentinel stands in", zo.registrantPhone === "000-000-0000");
   }
   const again = await recordOfflinePayment(org.id, {
@@ -796,6 +798,10 @@ async function main() {
   const actSrc = readFileSync(join(process.cwd(), "src/app/admin/camps/[id]/registrations/actions.ts"), "utf8");
   check("the admin actions require an admin and re-scope the event to the organisation",
     /requireAdmin\(\)/.test(actSrc) && /recordOfflinePayment\(/.test(actSrc) && /sendTicketEmailFor\(/.test(actSrc));
+  // CASH is a till holder's to record (CLAUDE.md's role table: committee/admin
+  // cash = No), exactly as at the door; Zelle and cheques are fine for an admin.
+  check("recording CASH needs a till holder, like the door", /canRecordCash\(/.test(actSrc) && /"CASH"/.test(actSrc));
+  check("...and the form hides the option from members who cannot", /canRecordCash/.test(readFileSync(join(process.cwd(), "src/app/admin/camps/[id]/registrations/OfflinePaymentForm.tsx"), "utf8")));
 
   // ───────────────────────────────────────────────────────────────────────────
   console.log("\n§14 a bank debit in flight holds the seat once, and gives it back on failure");
@@ -844,6 +850,38 @@ async function main() {
   await releaseProcessingPayment(failing.orderId, "cs_verify_ach_2");
   check("...and releasing twice gives nothing back twice",
     (await db.serviceCap.findUniqueOrThrow({ where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: admit.id } } })).sold === soldHeld2 - 1);
+
+  // ── A gift paid by bank debit, and events arriving out of order ──
+  const giftDebit = await createDonationOrder(org.id, { donor, amountCents: 3000, coverFee: false, marketingConsent: false },
+    { enabled: true, suggestedAmountsCents: [2500], allowFeeCover: true, minCents: 100 });
+  await db.payment.create({ data: { orgId: org.id, orderId: giftDebit.orderId, method: "STRIPE", status: "PENDING", amountCents: 3000, stripeCheckoutId: "cs_verify_gift_ach" } });
+  const giftHold = await markPaymentProcessing(giftDebit.orderId, { id: "cs_verify_gift_ach", payment_intent: "pi_verify_gift_ach" });
+  check("a gift paid by bank debit is marked processing like a ticket (nothing to hold, nothing to scan)",
+    giftHold.reserved === true && (await db.payment.findFirstOrThrow({ where: { orderId: giftDebit.orderId } })).status === "PROCESSING");
+  const pay3 = readFileSync(join(process.cwd(), "src/server/payments.ts"), "utf8");
+  check("...and the donor is told on both outcomes, with the organisation's name where an event's would go",
+    !/if \(order\?\.event\) \{[\s\S]{0,200}sendPaymentProcessingEmail/.test(pay3) && !/if \(order\?\.event\) \{[\s\S]{0,200}sendPaymentFailedEmail/.test(pay3)
+      && /sendPaymentProcessingEmail\(/.test(pay3) && /sendPaymentFailedEmail\(/.test(pay3));
+  check("the donate thanks page can show a debit in flight",
+    /payments: \{ select: \{ status: true \} \}/.test(readFileSync(join(process.cwd(), "src/app/donate/thanks/[orderId]/page.tsx"), "utf8")));
+
+  // Stripe does not order events, and a completion that 500'd is retried for
+  // days: a FAILURE that lands before the completion must leave nothing for
+  // the late completion to hold, or the seats are held with no path to
+  // release them.
+  const late = await createRegistration({
+    eventId: event.id, registrant: { name: "Late Payer", email: "verify-regs-ach@example.org", phone: "5550003333" },
+    marketingConsent: false, quantities: [{ serviceKey: ADMIT_KEY, quantity: 1 }],
+  });
+  await db.payment.create({ data: { orgId: org.id, orderId: late.orderId, method: "STRIPE", status: "PENDING", amountCents: late.totalCents, stripeCheckoutId: "cs_verify_ach_3" } });
+  const soldBeforeLate = (await db.serviceCap.findUniqueOrThrow({ where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: admit.id } } })).sold;
+  await releaseProcessingPayment(late.orderId, "cs_verify_ach_3");
+  await markPaymentProcessing(late.orderId, { id: "cs_verify_ach_3", payment_intent: "pi_verify_ach_3" });
+  const lateOrder = await db.order.findUniqueOrThrow({ where: { id: late.orderId }, include: { payments: true } });
+  check("a failure that arrives BEFORE the completion marks that payment FAILED, and the late completion holds nothing",
+    (await db.serviceCap.findUniqueOrThrow({ where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: admit.id } } })).sold === soldBeforeLate
+      && lateOrder.payments[0]?.status === "FAILED" && lateOrder.capsReservedAt === null,
+    `payment ${lateOrder.payments[0]?.status}, stamp ${lateOrder.capsReservedAt}`);
 
   await cleanup(org.id);
 }
