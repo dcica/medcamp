@@ -71,9 +71,45 @@ custom Next.js build. Budget at **standard rates — 2.9% + $0.30 online.**
 - [x] 501(c)(3) status — confirmed
 - [x] Stripe non-profit rate — **investigated and closed 2026-08-20: ineligible.**
       Requires >80% tax-deductible donation volume; dcica is <10%. Do not reopen.
-- [ ] Decide on an optional "cover the processing fee" checkbox at checkout —
-      the actual cost lever (~$290/camp vs. ~$53/camp for the rate)
+- [x] "Cover the processing cost" checkbox at checkout — built 2026-10-18 as the
+      organisation's own gross-up (never a tip, never a surcharge); see
+      *Platform fee, Connect and the cover* below.
 - [x] Create Stripe account and obtain API keys (publishable + secret) — keys in hand
+
+---
+
+## Platform fee, Connect and the cover (2026-10-18)
+
+The platform runs ONE shared instance for every organisation, and money never
+touches the platform:
+
+- **Stripe Connect, Standard accounts, direct charges.** Each organisation
+  connects its own Stripe account from Admin → Settings; the charge is created
+  on that account and the money lands there. At charge time Stripe moves the
+  platform's service fee (`application_fee_amount`) to the platform balance,
+  so the spread settles itself — no invoicing, no remittance. The organisation
+  pays Stripe's processing at its own rate and owns refunds and disputes. An
+  organisation with no connected account (the first tenant) stays on the
+  platform key with no fee, byte for byte as before.
+- **The service fee** is per UNIT: 1.5% + 49¢, capped at $5, on tickets,
+  merchandise and memberships; 0% on donations; nothing on a $0 line. It is
+  buyer-pays by default, shown as its own "Service fee" line before payment,
+  and an organisation may absorb it instead. No stored policy means no fee; an
+  operator switches it on with `scripts/set-fee-policy.ts`. The fee is NEVER a
+  card surcharge — it applies to every online order whatever the method — and
+  it is excluded from the organisation's receipts, analytics and revenue
+  break-outs (`src/lib/fees.ts`).
+- **"Cover the processing cost"** is one checkbox, cleared in one tap, whose
+  label states the exact amount and the recipient. The amount is grossed up so
+  the organisation nets its subtotal after Stripe's percentage on the whole
+  charge; it is the organisation's money (a FEE_COVER line), never the
+  platform's. **There are no tips, anywhere.** Regulators scrutinise platforms
+  whose "tips" look mandatory; this platform has none to scrutinise.
+- **Worked example, a $40 ticket:** the buyer pays $41.09; Stripe takes $1.49
+  from the organisation's balance; Stripe moves $1.09 to the platform; the
+  organisation nets $38.51 — or $40.00 if the buyer ticked the cover ($1.54).
+- **Offline money** (Zelle, cheque, cash) is recorded from the registrations
+  page and carries no fee. **Refunds** stay staff-initiated.
 
 ---
 
@@ -201,14 +237,15 @@ Post-camp, the coordinator dashboard exports a payment reconciliation report:
 
 | Column | Source |
 |---|---|
-| Record ID | System |
-| Patient / customer name | Registration record |
-| Services / items | Registration or POS record |
-| Amount | Transaction record |
-| Payment method | Stripe / cash / Zelle / check |
-| Payment time | System timestamp |
-| Add-ons | Station visit records |
-| Volunteer who processed | Staff ID (cash transactions) |
+| `payment_id`, `order_id`, `registrant_email`, `stripe_payment_intent` | Payment and order records |
+| `created_at`, `method`, `status` | Payment record (STRIPE / CASH / ZELLE / CHECK; SUCCEEDED is money, PENDING is a session) |
+| `amount_usd` | The gross the card or the till took |
+| `platform_fee_usd` | What Stripe moved to the platform at charge time (0 on the platform key and on cash) |
+| `net_before_stripe_processing_usd` | Gross less the platform fee; Stripe's own processing comes off this on the organisation's statement |
+| `donation_usd`, `fee_cover_usd` | Of the gross: the gift, and the buyer's processing-cost cover (the organisation's money) |
+| `stripe_account` | The connected account the charge lives on |
+
+The arithmetic is one pure function, `src/lib/reconciliation.ts`, pinned by `verify:csv`.
 
 Cash transactions are totalled separately so the volunteer can reconcile the physical cash at end of day. Stripe transactions reconcile automatically via the Stripe dashboard.
 
@@ -220,6 +257,6 @@ Before going live, confirm the following on the Stripe account:
 
 - [x] Publishable key (`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`) and secret key (`STRIPE_SECRET_KEY`) obtained — test keys in hand
 - [x] Stripe non-profit rate — ineligible (<10% donation volume vs. >80% required). Closed 2026-08-20; budget standard rates.
-- [ ] Tap to Pay on phone enabled on the Stripe account (for in-person walk-in and add-on payments)
-- [ ] Webhook endpoint configured in the Stripe Dashboard (for payment confirmation callbacks)
+- [x] ~~Tap to Pay on phone~~ — not built: decision #7 chose hosted Checkout, and card at the door is a QR the guest scans on their own phone (parked as backlog D004)
+- [x] Webhook endpoints — one per environment, plus the Connect endpoint for connected accounts (docs/Deployment.md §5)
 - [ ] Swap test keys for live keys in Vercel environment variables at deploy time

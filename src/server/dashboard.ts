@@ -3,6 +3,7 @@ import { getActiveOrg } from "@/lib/tenant";
 import { getCurrentEvent } from "@/server/events";
 import type { EventStatus } from "@prisma/client";
 import { venueDayKey } from "@/lib/eventTime";
+import { toReconRow, type ReconRow } from "@/lib/reconciliation";
 
 /**
  * Coordinator dashboard data (Module 4). One read of the active camp's checked-in
@@ -297,32 +298,16 @@ export async function getReconciliationRows() {
 
   const payments = await db.payment.findMany({
     where: { order: { eventId: camp.id } },
-    include: { order: true },
+    // The lines are what break the gross into gift, cover and goods — see
+    // src/lib/reconciliation.ts for the row's arithmetic.
+    include: { order: { include: { lineItems: true } } },
     orderBy: { createdAt: "asc" },
   });
 
   return {
     campCode: camp.code,
-    rows: payments.map((p) => ({
-      paymentId: p.id,
-      createdAt: p.createdAt.toISOString(),
-      method: p.method,
-      status: p.status,
-      amountCents: p.amountCents,
-      orderId: p.orderId ?? "",
-      registrantEmail: p.order?.registrantEmail ?? "",
-      stripePaymentIntentId: p.stripePaymentIntentId ?? "",
-    })),
+    rows: payments.map(toReconRow),
   };
 }
 
-export type ReconRow = {
-  paymentId: string;
-  createdAt: string;
-  method: string;
-  status: string;
-  amountCents: number;
-  orderId: string;
-  registrantEmail: string;
-  stripePaymentIntentId: string;
-};
+export type { ReconRow } from "@/lib/reconciliation";
