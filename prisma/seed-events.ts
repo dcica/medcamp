@@ -425,13 +425,6 @@ const EVENTS: Seed[] = [
     offersRegistration: true,
     offersVendors: true,
     offersVolunteers: true,
-    // QUANTITY MODE, for the carnival below: a parent buys "2 rides, 1 laser
-    // tag" with steppers and no names per child. The competition entry is
-    // unaffected — a fee-only order routes to the quantity path whatever this
-    // flag says (src/server/registration.ts). `eventFields` reasserts this
-    // under SEED_FORCE_UPDATE=1; on an existing environment the coordinator
-    // unticks "Collect attendee details" in the admin UI.
-    collectsAttendeeDetails: false,
     services: [
       {
         // Same org catalogue key as RON-2026 above, deliberately. One
@@ -454,14 +447,51 @@ const EVENTS: Seed[] = [
         // nobody told the entrants were invalid.
         capacity: 25,
       },
-      // ── Kids Carnival (2026-10-18, six days out). MERCH, deliberately:
-      // entry is free, so there is no door to admit through. A wristband or a
-      // token is "a physical good handed over at the gate" — the booth scans
-      // one code, reads the list, hands everything over — and nothing here
-      // admits anyone. Keys equal slugify(name), so a fresh environment
-      // matches what the coordinator created by hand on prod through
-      // /admin/services. Uncapped: the vendors run continuously. 4+ of the
-      // SAME ticket is 20% off, per line (ServiceCap.bulkMinQty).
+    ],
+    volunteerRoles: COMMUNITY_VOL_ROLES,
+  },
+  {
+    code: "CARNIVAL-2026",
+    type: "GENERAL",
+    name: "Diwali Kids Carnival",
+    // ITS OWN EVENT, deliberately — the RON/Dandiya split again. The festival
+    // above is free entry with a competition fee; the carnival is per-item
+    // tickets handed over at a booth. One event could not carry both a "Free
+    // entry" card and the carnival's prices, the carnival gets its own card,
+    // URL and QR, and its money reconciles on its own.
+    //
+    // Banner: 4:30–8:45 PM CDT (UTC-5) on Oct 24 → 21:30Z to 01:45Z.
+    startsAt: "2026-10-24T21:30:00Z",
+    endsAt: "2026-10-25T01:45:00Z",
+    // NO POSTER yet, deliberately (as Dandiya): the coordinator uploads the
+    // final artwork through the event's banner control.
+    imageUrl: null,
+    location: "Gerault Park, Flower Mound, TX",
+    description:
+      "Kids Carnival at the DCICA Festival of Lights. Unlimited rides $10 (bounce houses, bubble party and lawn games), laser tag $10, rock wall $5, or the All-Access Pass for $20. Buy 4 or more of the same ticket and get 20% off. Buy online or at the carnival booth.",
+    offersRegistration: true,
+    offersVendors: false,
+    offersVolunteers: false,
+    status: "OPEN",
+    // QUANTITY MODE: a parent buys "2 rides, 1 laser tag" with steppers and
+    // no names per child.
+    collectsAttendeeDetails: false,
+    honorsMembership: false,
+    acceptsDonations: false,
+    allowsRefunds: false,
+    // THE STATION ON THE NIGHT: getCurrentEvent (src/server/events.ts) picks
+    // the ACTIVE event with the EARLIEST start, so only THIS event is put
+    // through "Start day-of" on Oct 24. DIW-2026 (4:00 PM) stays OPEN — it
+    // has nothing to scan — or every carnival code reads "Wrong event".
+    //
+    // MERCH, deliberately: entry is free, so there is no door to admit
+    // through. A wristband or a token is "a physical good handed over at the
+    // gate" — the booth scans one code, reads the list, hands everything over
+    // — and nothing here admits anyone. Keys equal slugify(name), so a fresh
+    // environment matches what /admin/services or scripts/setup-diw-carnival.ts
+    // creates. Uncapped: the vendors run continuously. 4+ of the SAME ticket
+    // is 20% off, per line (ServiceCap.bulkMinQty).
+    services: [
       {
         key: "unlimited-rides",
         name: "Unlimited Rides",
@@ -508,7 +538,6 @@ const EVENTS: Seed[] = [
         bulkPriceCents: 1600,
       },
     ],
-    volunteerRoles: COMMUNITY_VOL_ROLES,
   },
 ];
 

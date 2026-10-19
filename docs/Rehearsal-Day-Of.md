@@ -265,6 +265,12 @@ Diwali's kids carnival sells wristbands and tokens as merchandise on a
 free-entry festival, so a carnival order has **nothing to admit**: one code, and
 a list of things to hand over. The booth is the same `/scan` screen.
 
+The carnival is **its own event, CARNIVAL-2026** (4:30 PM start). On the day,
+press **"Start day-of"** and **"Open walk-in registration"** on the **carnival
+event only**. DIW-2026 (4:00 PM start) stays OPEN: it has nothing to scan, and
+if both are ACTIVE the station picks the earlier start, so every carnival code
+would read **"Wrong event"**.
+
 1. Scan a carnival code (or find the buyer by name)
 2. The verdict is **amber "Hand over"** and names the items — e.g.
    *Unlimited Rides ×2 · Laser Tag*. It is **not** red "Not a ticket", and the
