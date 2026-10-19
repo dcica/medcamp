@@ -85,7 +85,14 @@ type Seed = {
     kind: ServiceKind;
     /** Heads admitted per purchased unit. Gate bundles only (family of 4 = 4). */
     admitsCount?: number;
-    capacity: number;
+    /** Null = uncapped (a vendor that runs continuously). Never 0. */
+    capacity: number | null;
+    /**
+     * Quantity break: from `bulkMinQty` units of this service on one line,
+     * each unit costs `bulkPriceCents`. Both or neither — see ServiceCap.
+     */
+    bulkMinQty?: number;
+    bulkPriceCents?: number;
     /**
      * Competition entry rules, enforced server-side at submit (see
      * src/server/performance.ts). Only meaningful on a fee-kind service.
@@ -443,6 +450,95 @@ const EVENTS: Seed[] = [
     ],
     volunteerRoles: COMMUNITY_VOL_ROLES,
   },
+  {
+    code: "CARNIVAL-2026",
+    type: "GENERAL",
+    name: "Diwali Kids Carnival",
+    // ITS OWN EVENT, deliberately — the RON/Dandiya split again. The festival
+    // above is free entry with a competition fee; the carnival is per-item
+    // tickets handed over at a booth. One event could not carry both a "Free
+    // entry" card and the carnival's prices, the carnival gets its own card,
+    // URL and QR, and its money reconciles on its own.
+    //
+    // Banner: 4:30–8:45 PM CDT (UTC-5) on Oct 24 → 21:30Z to 01:45Z.
+    startsAt: "2026-10-24T21:30:00Z",
+    endsAt: "2026-10-25T01:45:00Z",
+    // NO POSTER yet, deliberately (as Dandiya): the coordinator uploads the
+    // final artwork through the event's banner control.
+    imageUrl: null,
+    location: "Gerault Park, Flower Mound, TX",
+    description:
+      "Kids Carnival at the DCICA Festival of Lights. Unlimited rides $10 (bounce houses, bubble party and lawn games), laser tag $10, rock wall $5, or the All-Access Pass for $20. Buy 4 or more of the same ticket and get 20% off. Buy online or at the carnival booth.",
+    offersRegistration: true,
+    offersVendors: false,
+    offersVolunteers: false,
+    status: "OPEN",
+    // QUANTITY MODE: a parent buys "2 rides, 1 laser tag" with steppers and
+    // no names per child.
+    collectsAttendeeDetails: false,
+    honorsMembership: false,
+    acceptsDonations: false,
+    allowsRefunds: false,
+    // THE STATION ON THE NIGHT: getCurrentEvent (src/server/events.ts) picks
+    // the ACTIVE event with the EARLIEST start, so only THIS event is put
+    // through "Start day-of" on Oct 24. DIW-2026 (4:00 PM) stays OPEN — it
+    // has nothing to scan — or every carnival code reads "Wrong event".
+    //
+    // MERCH, deliberately: entry is free, so there is no door to admit
+    // through. A wristband or a token is "a physical good handed over at the
+    // gate" — the booth scans one code, reads the list, hands everything over
+    // — and nothing here admits anyone. Keys equal slugify(name), so a fresh
+    // environment matches what /admin/services or scripts/setup-diw-carnival.ts
+    // creates. Uncapped: the vendors run continuously. 4+ of the SAME ticket
+    // is 20% off, per line (ServiceCap.bulkMinQty).
+    services: [
+      {
+        key: "unlimited-rides",
+        name: "Unlimited Rides",
+        colorHex: "#f97316",
+        // Bounce houses, bubble party, lawn games. Excludes laser tag and the
+        // rock wall, which the banner prices separately.
+        priceCents: 1000,
+        kind: "MERCH",
+        capacity: null,
+        bulkMinQty: 4,
+        bulkPriceCents: 800,
+      },
+      {
+        key: "laser-tag",
+        name: "Laser Tag",
+        colorHex: "#8b5cf6",
+        priceCents: 1000,
+        kind: "MERCH",
+        capacity: null,
+        bulkMinQty: 4,
+        bulkPriceCents: 800,
+      },
+      {
+        key: "rock-wall",
+        name: "Rock Wall",
+        colorHex: "#10b981",
+        priceCents: 500,
+        kind: "MERCH",
+        capacity: null,
+        bulkMinQty: 4,
+        bulkPriceCents: 400,
+      },
+      {
+        // All three for $20 against $25 face. Its own service, as every
+        // bundle here is (Dandiya's family-of-4 above); the booth hands over
+        // all three on this one line.
+        key: "all-access-pass",
+        name: "All-Access Pass",
+        colorHex: "#eab308",
+        priceCents: 2000,
+        kind: "MERCH",
+        capacity: null,
+        bulkMinQty: 4,
+        bulkPriceCents: 1600,
+      },
+    ],
+  },
 ];
 
 async function main() {
@@ -638,7 +734,12 @@ async function main() {
       const existingCap = await db.serviceCap.findUnique({
         where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: svc.id } },
       });
-      const capacity = existingCap ? Math.max(s.capacity, existingCap.sold) : s.capacity;
+      const capacity =
+        s.capacity === null
+          ? null
+          : existingCap
+            ? Math.max(s.capacity, existingCap.sold)
+            : s.capacity;
 
       await db.serviceCap.upsert({
         where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: svc.id } },
@@ -648,6 +749,8 @@ async function main() {
               onsitePriceCents: s.onsitePriceCents ?? null,
               earlyBirdPriceCents: s.earlyBirdPriceCents ?? null,
               earlyBirdUntil: s.earlyBirdUntil ? new Date(s.earlyBirdUntil) : null,
+              bulkMinQty: s.bulkMinQty ?? null,
+              bulkPriceCents: s.bulkPriceCents ?? null,
               capacity,
               minParticipants: s.minParticipants ?? null,
               maxParticipants: s.maxParticipants ?? null,
@@ -662,6 +765,8 @@ async function main() {
           onsitePriceCents: s.onsitePriceCents ?? null,
           earlyBirdPriceCents: s.earlyBirdPriceCents ?? null,
           earlyBirdUntil: s.earlyBirdUntil ? new Date(s.earlyBirdUntil) : null,
+          bulkMinQty: s.bulkMinQty ?? null,
+          bulkPriceCents: s.bulkPriceCents ?? null,
           capacity,
           minParticipants: s.minParticipants ?? null,
           maxParticipants: s.maxParticipants ?? null,

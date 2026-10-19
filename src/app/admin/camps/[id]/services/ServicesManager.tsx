@@ -20,6 +20,9 @@ export type Offering = {
   earlyBirdPriceDollars: number | null;
   /** "YYYY-MM-DDTHH:mm" for the datetime-local input, or null. */
   earlyBirdUntil: string | null;
+  /** Quantity break: from this many of the item on one line, each costs this. Both or neither. */
+  bulkMinQty: number | null;
+  bulkPriceDollars: number | null;
   /** Null = uncapped. Never 0 — the DB refuses it. */
   capacity: number | null;
   sold: number;
@@ -205,7 +208,12 @@ function OfferingCard({
         <span className="min-w-0 flex-1">
           <span className="block truncate font-semibold text-gray-900">{row.name}</span>
           <span className="block truncate text-xs text-gray-500">
-            {money(row.priceDollars)} · {capacityLabel}
+            {money(row.priceDollars)}
+            {row.bulkMinQty !== null && row.bulkPriceDollars !== null
+              ? ` · ${row.bulkMinQty}+ at ${money(row.bulkPriceDollars)}`
+              : ""}
+            {" · "}
+            {capacityLabel}
           </span>
         </span>
         <span
@@ -248,6 +256,12 @@ function OfferingEditor({
     row.earlyBirdPriceDollars === null ? "" : String(row.earlyBirdPriceDollars),
   );
   const [earlyBirdUntil, setEarlyBirdUntil] = useState(row.earlyBirdUntil ?? "");
+  const [bulkMinQty, setBulkMinQty] = useState(
+    row.bulkMinQty === null ? "" : String(row.bulkMinQty),
+  );
+  const [bulkPrice, setBulkPrice] = useState(
+    row.bulkPriceDollars === null ? "" : String(row.bulkPriceDollars),
+  );
   const [minParticipants, setMinParticipants] = useState(
     row.minParticipants === null ? "" : String(row.minParticipants),
   );
@@ -266,6 +280,8 @@ function OfferingEditor({
     earlyBirdPrice !==
       (row.earlyBirdPriceDollars === null ? "" : String(row.earlyBirdPriceDollars)) ||
     earlyBirdUntil !== (row.earlyBirdUntil ?? "") ||
+    bulkMinQty !== (row.bulkMinQty === null ? "" : String(row.bulkMinQty)) ||
+    bulkPrice !== (row.bulkPriceDollars === null ? "" : String(row.bulkPriceDollars)) ||
     minParticipants !== (row.minParticipants === null ? "" : String(row.minParticipants)) ||
     maxParticipants !== (row.maxParticipants === null ? "" : String(row.maxParticipants)) ||
     minDuration !== (row.minDuration ?? "") ||
@@ -379,6 +395,40 @@ function OfferingEditor({
         />
       </label>
 
+      {/* A quantity break on THIS item: "4 or more of the same ticket, each
+          $8". Per line, never across the basket; both fields or neither —
+          the server refuses half a rule, because half a rule would resolve
+          as no rule while the coordinator believed a discount was live. */}
+      <fieldset className="space-y-3 rounded-lg bg-gray-50 p-3">
+        <legend className="text-sm font-medium text-gray-700">Quantity discount</legend>
+        <label className="block text-sm text-gray-600">
+          From how many of this item
+          <input
+            type="number"
+            min="2"
+            step="1"
+            inputMode="numeric"
+            placeholder="no quantity discount"
+            className={inputCls}
+            value={bulkMinQty}
+            onChange={(e) => setBulkMinQty(e.target.value)}
+          />
+        </label>
+        <label className="block text-sm text-gray-600">
+          Each then costs ($)
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            inputMode="decimal"
+            placeholder="below the regular price"
+            className={inputCls}
+            value={bulkPrice}
+            onChange={(e) => setBulkPrice(e.target.value)}
+          />
+        </label>
+      </fieldset>
+
       {/* Only a fee buys a slot in a competition, so the rules that govern that
           slot are meaningless on an admission or on merchandise. */}
       {row.kind === "FEE" && (
@@ -473,6 +523,8 @@ function OfferingEditor({
                 onsitePriceDollars: blankToNull(onsitePrice),
                 earlyBirdPriceDollars: blankToNull(earlyBirdPrice),
                 earlyBirdUntil: earlyBirdUntil.trim() === "" ? null : earlyBirdUntil,
+                bulkMinQty: blankToNull(bulkMinQty),
+                bulkPriceDollars: blankToNull(bulkPrice),
                 // "Unlimited" submits null. 0 is never sent — the DB rejects it.
                 capacity: capped ? blankToNull(capacity) : null,
                 minParticipants: blankToNull(minParticipants),

@@ -496,7 +496,9 @@ async function main() {
     // the money disagree, and one of the two is wrong — refuse rather than guess.
     const channel = e.channel ?? "online";
     const priced = e.items.map((it) => {
-      const unit = resolvePrice(byKey.get(it.serviceKey)!, channel, new Date()).amountCents;
+      // With the line's quantity, so a 4+ break the buyer was charged is
+      // what the manifest is checked against.
+      const unit = resolvePrice(byKey.get(it.serviceKey)!, channel, new Date(), it.quantity).amountCents;
       return { ...it, unit, lineCents: unit * it.quantity };
     });
     const expected = priced.reduce((s, p) => s + p.lineCents, 0);

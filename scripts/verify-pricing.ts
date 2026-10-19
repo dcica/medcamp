@@ -17,6 +17,8 @@
  * There is no test framework in this repo (a deliberate call — see the Oct 10
  * deadline). This script is the money-path safety net until one lands.
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import * as dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 
@@ -49,7 +51,7 @@ async function checkoutTotal(orderId: string): Promise<number> {
 async function main(): Promise<void> {
   const { createRegistration, isRegistrationOpen } = await import("../src/server/registration");
   const { confirmOrderPaid } = await import("../src/server/payments");
-  const { resolvePrice } = await import("../src/lib/pricing");
+  const { resolvePrice, unitCentsFor, validateBulkRule } = await import("../src/lib/pricing");
 
   const org = await db.organization.findFirstOrThrow();
   await cleanup(org.id);
@@ -119,6 +121,25 @@ async function main(): Promise<void> {
       earlyBirdUntil: new Date("2030-01-01T00:00:00Z"),
       capacity: 1000,
     },
+  });
+
+  // Two MERCH items with a quantity break, for section 7b. Two of them so
+  // the "per line, never cart-wide" row has a second line to be NOT counted.
+  const bulk = await db.serviceType.upsert({
+    where: { orgId_key: { orgId: org.id, key: "verify-bulk" } },
+    update: { kind: "MERCH", priceCents: 1000 },
+    create: { orgId: org.id, key: "verify-bulk", name: "Unlimited Rides", priceCents: 1000, kind: "MERCH" },
+  });
+  const bulk2 = await db.serviceType.upsert({
+    where: { orgId_key: { orgId: org.id, key: "verify-bulk2" } },
+    update: { kind: "MERCH", priceCents: 500 },
+    create: { orgId: org.id, key: "verify-bulk2", name: "Rock Wall", priceCents: 500, kind: "MERCH" },
+  });
+  await db.serviceCap.createMany({
+    data: [
+      { eventId: event.id, serviceTypeId: bulk.id, priceCents: 1000, bulkMinQty: 4, bulkPriceCents: 800 },
+      { eventId: event.id, serviceTypeId: bulk2.id, priceCents: 500, bulkMinQty: 4, bulkPriceCents: 400 },
+    ],
   });
 
   const plan = await db.membershipPlan.upsert({
@@ -373,6 +394,87 @@ async function main(): Promise<void> {
   check("price set but no deadline: resolves as if there were no early bird", halfConfiguredOnline.amountCents, 1500);
   check("price set but no deadline: phase is online, not early-bird", halfConfiguredOnline.phase, "online");
 
+  // ── 6b. Quantity break: 4+ of the SAME item, each unit cheaper ──
+  // Diwali's kids carnival: "4 or more of the same ticket, 20% off". Per
+  // line, never cart-wide, on both channels, and only when the break
+  // undercuts the phase price -- a cheaper early bird must survive it.
+  console.log("\n6b. Quantity break (resolvePrice with a quantity, pinned time)");
+  const bulkCap = {
+    priceCents: 1000,
+    onsitePriceCents: null,
+    earlyBirdPriceCents: null,
+    earlyBirdUntil: null,
+    bulkMinQty: 4,
+    bulkPriceCents: 800,
+  };
+  const three = resolvePrice(bulkCap, "online", afterDeadline, 3);
+  check("three units: the regular price", three.amountCents, 1000);
+  check("three units: the break is advertised but not applied", three.bulkApplied, false);
+  check("three units: the rule is carried for the display feed", three.bulk, { minQty: 4, unitCents: 800 });
+  const four = resolvePrice(bulkCap, "online", afterDeadline, 4);
+  check("four units: every unit at the break price", four.amountCents, 800);
+  check("four units: bulkApplied is true", four.bulkApplied, true);
+  check("nine units: still the break price (4+, not exactly 4)",
+    resolvePrice(bulkCap, "online", afterDeadline, 9).amountCents, 800);
+  check("the door honours the break too",
+    resolvePrice(bulkCap, "door", afterDeadline, 4).amountCents, 800);
+  check("no quantity given means one unit",
+    resolvePrice(bulkCap, "online", afterDeadline).amountCents, 1000);
+  const halfBulk = { ...bulkCap, bulkMinQty: null };
+  check("a break price with no threshold resolves as if there were no break",
+    resolvePrice(halfBulk, "online", afterDeadline, 4).amountCents, 1000);
+  check("...and carries no rule", resolvePrice(halfBulk, "online", afterDeadline, 4).bulk, null);
+  // The early bird is 700 and the break is 800: the buyer keeps the 700.
+  const earlyAndBulk = {
+    ...bulkCap,
+    earlyBirdPriceCents: 700,
+    earlyBirdUntil: new Date("2026-01-01T00:00:00Z"),
+  };
+  check("a cheaper early bird is never overridden by the break",
+    resolvePrice(earlyAndBulk, "online", beforeDeadline, 4).amountCents, 700);
+  check("...and the break is not advertised against it",
+    resolvePrice(earlyAndBulk, "online", beforeDeadline, 4).bulk, null);
+  check("...but applies once the early bird has ended",
+    resolvePrice(earlyAndBulk, "online", afterDeadline, 4).amountCents, 800);
+  const dearBulk = { ...bulkCap, bulkPriceCents: 1200 };
+  check("a break that is not cheaper is no break",
+    resolvePrice(dearBulk, "online", afterDeadline, 4).amountCents, 1000);
+  check("...and carries no rule either", resolvePrice(dearBulk, "online", afterDeadline, 4).bulk, null);
+  // The one line rule the client mirrors, exported so the two cannot drift.
+  check("unitCentsFor below the threshold", unitCentsFor(1000, { minQty: 4, unitCents: 800 }, 3), 1000);
+  check("unitCentsFor at the threshold", unitCentsFor(1000, { minQty: 4, unitCents: 800 }, 4), 800);
+  check("unitCentsFor with no rule", unitCentsFor(1000, null, 40), 1000);
+  // Admin validation, pure: both-or-neither, a threshold of at least 2, and
+  // a break price below the regular one.
+  check("validateBulkRule: both blank is fine", validateBulkRule(null, null, 1000), null);
+  check("validateBulkRule: a valid rule is fine", validateBulkRule(4, 800, 1000), null);
+  check("validateBulkRule: threshold without price is refused", validateBulkRule(4, null, 1000) !== null, true);
+  check("validateBulkRule: price without threshold is refused", validateBulkRule(null, 800, 1000) !== null, true);
+  check("validateBulkRule: a threshold of 1 is refused", validateBulkRule(1, 800, 1000) !== null, true);
+  check("validateBulkRule: a break at or above the regular price is refused", validateBulkRule(4, 1000, 1000) !== null, true);
+
+  // The admin screen writes the pair through that same validator and feeds
+  // both halves back to the editor, and the seed declares Diwali's carnival
+  // with the break, so a fresh environment matches what the coordinator set
+  // by hand on prod. Source-text rows, because a server action behind
+  // requireAdmin has no seam a tsx script can call.
+  const offeringActions = readFileSync(
+    join(process.cwd(), "src/app/admin/camps/[id]/services/actions.ts"), "utf8");
+  check("saveOffering validates the pair with validateBulkRule", /validateBulkRule\(/.test(offeringActions), true);
+  check("...and writes both columns", /bulkMinQty,\s*bulkPriceCents,/.test(offeringActions), true);
+  const offeringEditor = readFileSync(
+    join(process.cwd(), "src/app/admin/camps/[id]/services/ServicesManager.tsx"), "utf8");
+  check("the offering editor submits both halves of the rule",
+    /bulkMinQty: blankToNull\(bulkMinQty\)/.test(offeringEditor) &&
+      /bulkPriceDollars: blankToNull\(bulkPrice\)/.test(offeringEditor), true);
+  const seedSrc = readFileSync(join(process.cwd(), "prisma/seed-events.ts"), "utf8");
+  check("the seed copies both bulk columns on create AND on force-update",
+    (seedSrc.match(/bulkMinQty: s\.bulkMinQty \?\? null/g) ?? []).length, 2);
+  for (const key of ["unlimited-rides", "laser-tag", "rock-wall", "all-access-pass"]) {
+    check(`the seed declares Diwali's ${key}`, seedSrc.includes(`key: "${key}"`), true);
+  }
+  check("...each with the 4+ break", (seedSrc.match(/bulkMinQty: 4,/g) ?? []).length >= 4, true);
+
   // ── 7. Early bird end to end, through createRegistration ──
   // Proves the AUTHORITATIVE server path (not just the resolver in isolation)
   // charges the early-bird price during an open window. Uses the earlyBird cap
@@ -391,6 +493,45 @@ async function main(): Promise<void> {
     where: { orderId: earlyBirdOrder.orderId, serviceTypeId: earlyBird.id },
   });
   check("the frozen line item itself carries the early-bird price", earlyBirdLine.amountCents, 1000);
+
+  // ── 7b. The quantity break end to end, through createRegistration ──
+  // The AUTHORITATIVE path, not just the resolver: four of the same MERCH
+  // item on one line are charged at the break, the frozen line carries the
+  // break price, and the description says why. Per LINE: three of one item
+  // plus one of another is four tickets and no break at all.
+  console.log("\n7b. Quantity break charged end to end through createRegistration");
+  const fourBulk = await createRegistration({
+    eventId: event.id,
+    registrant: { ...registrant, email: "verify-bulk@example.test" },
+    marketingConsent: false,
+    quantities: [{ serviceKey: "verify-bulk", quantity: 4 }],
+  });
+  check("four of the same item: the order total is 4 × the break price", fourBulk.totalCents, 3200);
+  check("...and the Stripe-side total agrees", await checkoutTotal(fourBulk.orderId), 3200);
+  const bulkLine = await db.lineItem.findFirstOrThrow({
+    where: { orderId: fourBulk.orderId, serviceTypeId: bulk.id },
+  });
+  check("the frozen line carries the break price per unit", bulkLine.amountCents, 800);
+  check("...for all four units on one line", bulkLine.quantity, 4);
+  check("...and the description says why", bulkLine.description.includes("(4+ price)"), true);
+  const threeBulk = await createRegistration({
+    eventId: event.id,
+    registrant: { ...registrant, email: "verify-bulk@example.test" },
+    marketingConsent: false,
+    quantities: [{ serviceKey: "verify-bulk", quantity: 3 }],
+  });
+  check("three of the same item: the regular price", threeBulk.totalCents, 3000);
+  const mixedBulk = await createRegistration({
+    eventId: event.id,
+    registrant: { ...registrant, email: "verify-bulk@example.test" },
+    marketingConsent: false,
+    quantities: [
+      { serviceKey: "verify-bulk", quantity: 3 },
+      { serviceKey: "verify-bulk2", quantity: 1 },
+    ],
+  });
+  check("three of one and one of another: four tickets and no break — per line, not cart-wide",
+    mixedBulk.totalCents, 3500);
 
   // ── 8. A finished event stops selling (pure predicate, no rows needed) ──
   // `isRegistrationOpen` gates BOTH the public form and createRegistration, so
@@ -551,7 +692,7 @@ async function cleanup(orgId: string): Promise<void> {
   await db.serviceType.deleteMany({
     where: {
       orgId,
-      key: { in: ["verify-entry", "verify-sticks", "verify-fee", "verify-earlybird"] },
+      key: { in: ["verify-entry", "verify-sticks", "verify-fee", "verify-earlybird", "verify-bulk", "verify-bulk2"] },
     },
   });
 }

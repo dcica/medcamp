@@ -119,6 +119,8 @@ export default async function EventServicesPage({
             c.earlyBirdPriceCents === null ? null : c.earlyBirdPriceCents / 100,
           earlyBirdUntil:
             c.earlyBirdUntil === null ? null : toDatetimeLocal(c.earlyBirdUntil),
+          bulkMinQty: c.bulkMinQty,
+          bulkPriceDollars: c.bulkPriceCents === null ? null : c.bulkPriceCents / 100,
           capacity: c.capacity,
           sold: c.sold,
           minParticipants: c.minParticipants,

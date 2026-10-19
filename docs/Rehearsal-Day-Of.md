@@ -259,6 +259,37 @@ a sold-out item.
 
 ---
 
+## Round 5b — Carnival booth (10 min)
+
+Diwali's kids carnival sells wristbands and tokens as merchandise on a
+free-entry festival, so a carnival order has **nothing to admit**: one code, and
+a list of things to hand over. The booth is the same `/scan` screen.
+
+The carnival is **its own event, CARNIVAL-2026** (4:30 PM start). On the day,
+press **"Start day-of"** and **"Open walk-in registration"** on the **carnival
+event only**. DIW-2026 (4:00 PM start) stays OPEN: it has nothing to scan, and
+if both are ACTIVE the station picks the earlier start, so every carnival code
+would read **"Wrong event"**.
+
+1. Scan a carnival code (or find the buyer by name)
+2. The verdict is **amber "Hand over"** and names the items — e.g.
+   *Unlimited Rides ×2 · Laser Tag*. It is **not** red "Not a ticket", and the
+   dock does **not** offer "Admit & wristband"
+3. The items are already ticked. Tap **"Hand over selected"**, hand over the
+   wristbands and tokens → green **"Handed over"**
+4. **Scan them again** → amber **"Already collected"** with the time. Nothing
+   more is handed over
+5. Walk-up: sell **4 × Unlimited Rides** for cash. The button reads **"Take
+   cash $32 & hand over"** — the 4+ price, not $40, and not "admit 0" — and
+   the verdict is **"Sold and handed over"**, not "Admitted"
+6. Card walk-up of the same basket → once the guest has paid, **"Paid — handed
+   over"**, not "Already in"
+
+**Pass:** no carnival order ever reads "Not a ticket", "Admitted" or "Already
+in"; four of the same item cost the 4+ price at the booth exactly as online.
+
+---
+
 ## Round 6 — Volunteers (15 min)
 
 Volunteer desk (`volcoord`) opens **`/volunteer/checkin`**.

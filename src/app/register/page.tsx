@@ -134,14 +134,19 @@ export default async function RegisterPage({
   // channel) — this is a display feed, not a second source of truth. If this
   // diverged from registration.ts, the buyer would see one number and be
   // charged another. Priced against the same `now` the gating above used.
-  const services = offerings.map((o) => ({
-    key: o.serviceType.key,
-    name: o.serviceType.name,
-    priceCents: resolvePrice(o, "online", now).amountCents,
-    colorHex: o.serviceType.colorHex,
-    /** Non-fulfillable services are admission (scannable); merch is fulfillable. */
-    kind: o.serviceType.kind,
-  }));
+  const services = offerings.map((o) => {
+    const resolved = resolvePrice(o, "online", now);
+    return {
+      key: o.serviceType.key,
+      name: o.serviceType.name,
+      priceCents: resolved.amountCents,
+      /** The quantity break, if any, so the form mirrors unitCentsFor exactly. */
+      bulk: resolved.bulk,
+      colorHex: o.serviceType.colorHex,
+      /** Non-fulfillable services are admission (scannable); merch is fulfillable. */
+      kind: o.serviceType.kind,
+    };
+  });
 
   // Active family membership plans (shown as an add-on / compare on the form).
   const plans = await db.membershipPlan.findMany({

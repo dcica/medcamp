@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { formatCents } from "@/lib/money";
+import { unitCentsFor, type BulkRule } from "@/lib/pricing";
 import { formatVenueTime } from "@/lib/eventTime";
 import { expandTicketCode, MIN_TOKEN_PREFIX } from "@/lib/ticketCode";
 import { GATE_MAX_QTY_PER_LINE, type GateSaleItem } from "@/lib/ticketMinting";
@@ -38,7 +39,13 @@ import {
   searchGuests,
 } from "@/app/gate/actions";
 
-type CatalogItem = { id: string; name: string; priceCents: number };
+type CatalogItem = {
+  id: string;
+  name: string;
+  priceCents: number;
+  /** The quantity break the server sent with the item, or null. */
+  bulk?: BulkRule | null;
+};
 
 /** id -> quantity. A Set could not hold a duplicate, which is exactly why
     the gate could never sell two of anything. */
@@ -67,7 +74,12 @@ function basketItems(b: Basket): GateSaleItem[] {
 }
 
 function basketTotal(items: CatalogItem[], b: Basket): number {
-  return items.reduce((s, it) => s + it.priceCents * (b.get(it.id) ?? 0), 0);
+  // THE SAME line rule the server charges by (src/lib/pricing.ts), so the
+  // number on the cash button is the number sellAtGate records.
+  return items.reduce((s, it) => {
+    const qty = b.get(it.id) ?? 0;
+    return s + unitCentsFor(it.priceCents, it.bulk ?? null, qty) * qty;
+  }, 0);
 }
 
 /**
@@ -1528,6 +1540,7 @@ function ItemPicker({
                 />
               )}
               {it.name} · {formatCents(it.priceCents)}
+              {it.bulk ? ` · ${formatCents(it.bulk.unitCents)} ea ${it.bulk.minQty}+` : ""}
               {soldOut && <span className="ml-1 text-xs">· sold out</span>}
             </button>
           );
@@ -1558,7 +1571,7 @@ function ItemPicker({
               +
             </button>
             <span className="px-1">
-              {it.name} · {formatCents(it.priceCents * qty)}
+              {it.name} · {formatCents(unitCentsFor(it.priceCents, it.bulk ?? null, qty) * qty)}
             </span>
           </div>
         );

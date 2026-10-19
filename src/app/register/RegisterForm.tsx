@@ -4,6 +4,7 @@ import type { ServiceKind } from "@prisma/client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { formatCents } from "@/lib/money";
+import { unitCentsFor, type BulkRule } from "@/lib/pricing";
 import { trackBeginCheckout } from "@/lib/analyticsEvents";
 import {
   clearDraft,
@@ -27,6 +28,8 @@ type Service = {
   key: string;
   name: string;
   priceCents: number;
+  /** The quantity break the server resolved, or null. Applied with unitCentsFor. */
+  bulk: BulkRule | null;
   colorHex: string;
   kind: ServiceKind;
 };
@@ -223,13 +226,16 @@ export function RegisterForm({
           ),
         0,
       )
-    : services.reduce(
-        (s, svc) =>
-          s +
-          (admissionComped && svc.kind === "ADMISSION" ? 0 : priceOf(svc.key)) *
-            (quantities[svc.key] ?? 0),
-        0,
-      );
+    : services.reduce((s, svc) => {
+        const qty = quantities[svc.key] ?? 0;
+        // THE SAME line rule the server charges by (src/lib/pricing.ts), so a
+        // "4+ price" shown here is the number Stripe will show.
+        const unit =
+          admissionComped && svc.kind === "ADMISSION"
+            ? 0
+            : unitCentsFor(svc.priceCents, svc.bulk, qty);
+        return s + unit * qty;
+      }, 0);
 
   const total = servicesCost + (selectedPlan?.priceCents ?? 0) + donationCents;
 
@@ -512,8 +518,19 @@ export function RegisterForm({
                         ? "Included with membership"
                         : s.priceCents === 0
                           ? "Free"
-                          : formatCents(s.priceCents)}
+                          : s.bulk && qty >= s.bulk.minQty
+                            ? `${formatCents(s.bulk.unitCents)} each`
+                            : formatCents(s.priceCents)}
                     </span>
+                    {/* The break, said before it applies and again once it
+                        does, so nobody stops at three to save money. */}
+                    {s.bulk && !comped && s.priceCents > 0 && (
+                      <span className="block text-xs text-gray-500">
+                        {qty >= s.bulk.minQty
+                          ? `${s.bulk.minQty}+ price — you save ${formatCents((s.priceCents - s.bulk.unitCents) * qty)}`
+                          : `${formatCents(s.bulk.unitCents)} each when you buy ${s.bulk.minQty}+`}
+                      </span>
+                    )}
                   </span>
                 </span>
                 <span className="flex items-center gap-2">
