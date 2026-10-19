@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
 import { stripe, stripeRequestOptions } from "@/lib/stripe";
 import { env } from "@/lib/env";
 import { orgBaseUrl } from "@/lib/orgUrl";
@@ -7,7 +8,12 @@ import {
   type CheckoutRoutes,
 } from "@/lib/checkoutReturn";
 import { signResumeProof, verifyResumeProof } from "@/lib/checkoutResume";
-import { sendConfirmationEmail, sendDonationReceiptEmail } from "@/lib/email";
+import {
+  sendConfirmationEmail,
+  sendDonationReceiptEmail,
+  sendPaymentFailedEmail,
+  sendPaymentProcessingEmail,
+} from "@/lib/email";
 import { newCampId } from "@/lib/campId";
 import { log } from "@/lib/logger";
 import { eventSlug } from "@/lib/seo";
@@ -15,6 +21,8 @@ import { parseGaCookie, sendPurchaseEvent } from "@/lib/ga";
 import { resolveOrgProfile, resolveOrgSite, senderFor } from "@/lib/orgSettings";
 import { emailThemeOf } from "@/lib/branding";
 import {
+  ACH_PROCESSING,
+  allowedMethodsFor,
   computeOrderFees,
   readFeePolicy,
   receiptLines,
@@ -22,6 +30,7 @@ import {
   type FeePolicy,
   type OrderFees,
 } from "@/lib/fees";
+import { resolveOrgPayments } from "@/lib/orgSettings";
 import { contributionOf } from "@/lib/contribution";
 
 /**
@@ -176,6 +185,12 @@ export async function resumeCheckoutForOrder(
     return { ok: false, reason: "not-resumable" };
   }
 
+  // A bank debit in flight: the order is spoken for until Stripe reports the
+  // outcome. Opening a second session now would be the double-pay window
+  // confirmOrderPaid cannot close.
+  const inFlight = await db.payment.count({ where: { orderId: order.id, status: "PROCESSING" } });
+  if (inFlight > 0) return { ok: false, reason: "not-resumable" };
+
   const goodsCents = orderTotalCents(order.lineItems.filter((li) => !li.feeKind));
   if (goodsCents === 0) return { ok: false, reason: "not-resumable" };
   if (!stripe) return { ok: false, reason: "not-resumable" };
@@ -279,8 +294,9 @@ export async function reapExpiredCheckout(
     });
 
     // 2. Anything else still payable on this order? A resumed order has one.
+    // A bank debit in flight (PROCESSING) is as live as an open session.
     const live = await tx.payment.count({
-      where: { orderId, status: "PENDING" },
+      where: { orderId, status: { in: ["PENDING", "PROCESSING"] } },
     });
     if (live > 0) return false;
 
@@ -303,6 +319,121 @@ export async function reapExpiredCheckout(
     }
     return cancelled.count > 0;
   });
+}
+
+/**
+ * A Checkout session completed UNPAID: a bank debit is in flight. Hold the
+ * order's capacity now (the same atomic claim confirmation makes, stamped on
+ * the order so confirmation does not make it twice), mark the payment
+ * PROCESSING with its intent, and tell the buyer. NO ticket: codes are minted
+ * only at confirmation, so nothing scans until the money is real. Idempotent:
+ * a retried event finds the stamp and holds nothing more.
+ */
+export async function markPaymentProcessing(
+  orderId: string,
+  session: { id: string; payment_intent: string | null },
+): Promise<{ reserved: boolean }> {
+  const reserved = await db.$transaction(
+    async (tx) => {
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        include: { lineItems: { include: { serviceType: true } } },
+      });
+      if (!order || order.status !== "PENDING") return false;
+      await tx.payment.updateMany({
+        where: { orderId, stripeCheckoutId: session.id, status: { in: ["PENDING", "PROCESSING"] } },
+        data: {
+          status: "PROCESSING",
+          ...(session.payment_intent ? { stripePaymentIntentId: session.payment_intent } : {}),
+        },
+      });
+      if (order.capsReservedAt) return false;
+      await claimCapacity(tx, order);
+      await tx.order.update({ where: { id: order.id }, data: { capsReservedAt: new Date() } });
+      return true;
+    },
+    { timeout: 20_000, maxWait: 10_000 },
+  );
+
+  if (reserved) {
+    // Outside the transaction, like every email on the money path.
+    const order = await db.order.findUnique({
+      where: { id: orderId },
+      include: { event: true, org: true },
+    });
+    if (order?.event) {
+      const profile = resolveOrgProfile(order.org.settings);
+      await sendPaymentProcessingEmail(
+        {
+          to: order.registrantEmail,
+          registrantName: order.registrantName,
+          eventName: order.event.name,
+          orgName: order.org.name,
+        },
+        { from: senderFor(profile, env.EMAIL_FROM), replyTo: profile.contactEmail },
+      );
+    }
+  }
+  return { reserved };
+}
+
+/**
+ * The bank declined the debit, days after the session completed. Give back
+ * exactly what the reservation held (guarded, so `sold` can never go below
+ * zero), mark the payment FAILED, leave the order PENDING — payable again by
+ * card — and tell the buyer. Idempotent: the stamp is cleared, so a second
+ * release gives nothing back twice.
+ */
+export async function releaseProcessingPayment(
+  orderId: string,
+  sessionId: string,
+): Promise<{ released: boolean }> {
+  const released = await db.$transaction(async (tx) => {
+    const order = await tx.order.findUnique({
+      where: { id: orderId },
+      include: { lineItems: true },
+    });
+    if (!order) return false;
+    await tx.payment.updateMany({
+      where: { orderId, stripeCheckoutId: sessionId, status: "PROCESSING" },
+      data: { status: "FAILED" },
+    });
+    if (!order.capsReservedAt || order.status !== "PENDING" || !order.eventId) return false;
+    const counts = new Map<string, number>();
+    for (const li of order.lineItems) {
+      if (li.serviceTypeId) {
+        counts.set(li.serviceTypeId, (counts.get(li.serviceTypeId) ?? 0) + li.quantity);
+      }
+    }
+    for (const [serviceTypeId, qty] of counts) {
+      await tx.serviceCap.updateMany({
+        where: { eventId: order.eventId, serviceTypeId, sold: { gte: qty } },
+        data: { sold: { decrement: qty } },
+      });
+    }
+    await tx.order.update({ where: { id: order.id }, data: { capsReservedAt: null } });
+    return true;
+  });
+
+  if (released) {
+    const order = await db.order.findUnique({
+      where: { id: orderId },
+      include: { event: true, org: true },
+    });
+    if (order?.event) {
+      const profile = resolveOrgProfile(order.org.settings);
+      await sendPaymentFailedEmail(
+        {
+          to: order.registrantEmail,
+          registrantName: order.registrantName,
+          eventName: order.event.name,
+          orgName: order.org.name,
+        },
+        { from: senderFor(profile, env.EMAIL_FROM), replyTo: profile.contactEmail },
+      );
+    }
+  }
+  return { released };
 }
 
 /**
@@ -383,6 +514,7 @@ type FeeableLineItem = {
   quantity: number;
   isDonation: boolean;
   membershipPlanId: string | null;
+  serviceTypeId: string | null;
   feeKind: FeeLineKind | null;
 };
 
@@ -407,10 +539,12 @@ export async function ensureFeeLines(order: {
   coverProcessingFee: boolean;
   lineItems: FeeableLineItem[];
   org: { name: string; settings: unknown; stripeAccountId: string | null };
-}): Promise<OrderFees> {
+}, processing?: { percentBps: number; fixedCents: number; capCents?: number | null }): Promise<OrderFees> {
   const fees = computeOrderFees(order.lineItems, activeFeePolicy(order.org), {
     coverProcessing: order.coverProcessingFee,
     orgName: order.org.name,
+    // The bank rate when the order can only be paid by bank debit.
+    processing,
   });
 
   const existing = order.lineItems.filter((li) => li.feeKind !== null);
@@ -557,10 +691,12 @@ async function openCheckoutSession(
     orgId: string;
     /** Null for a general-fund donation; buildCheckoutReturn already handles it. */
     eventId: string | null;
+    /** For the bank-debit cutoff; null for a gift. */
+    event: { startsAt: Date } | null;
     registrantEmail: string;
     coverProcessingFee: boolean;
     lineItems: FeeableLineItem[];
-    /** The organisation: return URLs (orgBaseUrl), the Stripe account the session is created on, and the fee policy. */
+    /** The organisation: return URLs (orgBaseUrl), the Stripe account the session is created on, the fee and bank-debit policies. */
     org: {
       name: string;
       slug: string;
@@ -568,6 +704,7 @@ async function openCheckoutSession(
       domains: { hostname: string; isPrimary: boolean }[];
       stripeAccountId: string | null;
       stripeChargesEnabled: boolean;
+      stripeAchEnabled: boolean;
     };
   },
   routes?: CheckoutRoutes,
@@ -584,13 +721,46 @@ async function openCheckoutSession(
     );
   }
 
+  const goods = order.lineItems.filter((li) => !li.feeKind);
+
+  // ── Which methods Checkout may offer ──
+  // Every line's rule (an offering may be card-only or bank-only), the
+  // organisation's bank-debit policy and cutoff, and the connected account's
+  // capability, intersected — src/lib/fees.ts allowedMethodsFor. An empty
+  // intersection is a sentence to the buyer, BEFORE any Stripe call.
+  const serviceIds = goods.map((li) => li.serviceTypeId).filter((id): id is string => Boolean(id));
+  const caps =
+    order.eventId && serviceIds.length > 0
+      ? await db.serviceCap.findMany({
+          where: { eventId: order.eventId, serviceTypeId: { in: serviceIds } },
+          select: { serviceTypeId: true, onlineMethods: true },
+        })
+      : [];
+  const methodOf = new Map(caps.map((c) => [c.serviceTypeId, c.onlineMethods]));
+  const allowed = allowedMethodsFor({
+    lines: goods.map((li) => ({
+      onlineMethods: (li.serviceTypeId ? methodOf.get(li.serviceTypeId) : undefined) ?? "ANY",
+    })),
+    totalCents: orderTotalCents(goods),
+    eventStartsAt: order.event?.startsAt ?? null,
+    now: new Date(),
+    policy: resolveOrgPayments(order.org.settings).ach,
+    // On the platform key the policy alone decides; a connected account must
+    // also have the capability Stripe reported.
+    orgAchCapable: order.org.stripeAccountId ? order.org.stripeAchEnabled : true,
+  });
+  if (allowed.methods.length === 0) {
+    throw new Error(allowed.refusal ?? "This order cannot be paid online. Contact the organizer.");
+  }
+  const bankOnly = allowed.methods.length === 1 && allowed.methods[0] === "us_bank_account";
+
   // ── The fee lines, HERE and only here ──
   // Every online payment and every resume funnels through this function, so
   // this is the one place the organisation's policy becomes money on an order.
   // `fees.lines` is what was just written (or confirmed already present);
-  // `goods` is the order as the buyer built it.
-  const fees = await ensureFeeLines(order);
-  const goods = order.lineItems.filter((li) => !li.feeKind);
+  // `goods` is the order as the buyer built it. A bank-only order's cover is
+  // grossed up at the bank rate.
+  const fees = await ensureFeeLines(order, bankOnly ? ACH_PROCESSING : undefined);
 
   const { successUrl, cancelUrl, expiresAt } = buildCheckoutReturn(
     order,
@@ -610,6 +780,13 @@ async function openCheckoutSession(
     customer_email: order.registrantEmail,
     // Webhook reads this to confirm the right order (decision #2).
     metadata: { orderId: order.id, orgId: order.orgId },
+    // Which methods, from the shared rule — never a hardcoded list — and
+    // instant bank verification: microdeposits add one to two days the
+    // cutoff cannot absorb.
+    payment_method_types: allowed.methods,
+    ...(allowed.methods.includes("us_bank_account")
+      ? { payment_method_options: { us_bank_account: { verification_method: "instant" as const } } }
+      : {}),
     // Comped ($0) lines are omitted — Stripe's hosted page is the payment
     // receipt, and our own /confirm page shows the full breakdown including
     // comps. Sending them would also risk a zero-amount line-item rejection.
@@ -786,6 +963,96 @@ export async function confirmFromCheckoutSession(
   }
 }
 
+/**
+ * The atomic capacity claim, shared by confirmation and by a bank debit's
+ * reservation (markPaymentProcessing) so the two cannot drift. Runs inside
+ * the caller's transaction; throws OverCapacityError or MissingCapError, which
+ * the caller maps to the webhook's answers.
+ */
+async function claimCapacity(
+  tx: Prisma.TransactionClient,
+  order: {
+    id: string;
+    eventId: string | null;
+    lineItems: { serviceTypeId: string | null; quantity: number; serviceType: { key: string } | null }[];
+  },
+): Promise<void> {
+  // ── Atomic capacity decrement (DB-enforced, not app-layer) ──
+  const counts = new Map<string, number>(); // serviceTypeId -> qty
+  for (const li of order.lineItems) {
+    if (li.serviceTypeId) {
+      // quantity-aware: a qty-3 admission line consumes 3 cap units.
+      counts.set(li.serviceTypeId, (counts.get(li.serviceTypeId) ?? 0) + li.quantity);
+    }
+  }
+  for (const [serviceTypeId, qty] of counts) {
+    // A service line on an order with no event cannot exist (the donate
+    // page writes one donation line and nothing else), so this is a type
+    // narrowing with a loud failure, never a branch anyone takes.
+    const eventId = order.eventId;
+    if (!eventId) throw new Error(`Order ${order.id} has a service line but no event`);
+    const serviceKey =
+      order.lineItems.find((li) => li.serviceTypeId === serviceTypeId)
+        ?.serviceType?.key ?? serviceTypeId;
+
+    // NEVER express this as $executeRaw / $queryRaw. An unqualified table name
+    // in raw SQL resolves through the session's `search_path`, and Supabase's
+    // transaction pooler does NOT reliably apply the connection string's
+    // `?schema=` to every pooled backend: measured on the deployed test DB,
+    // 5 of 24 pooled sessions reported `search_path = pg_catalog, public,
+    // extensions` with no `test` in it. A raw `UPDATE service_caps` then hit
+    // `public.service_caps`, matched nothing, and threw OverCapacityError on a
+    // cap that was 23/40 — rolling back the whole confirmation, so a PAID
+    // order silently reverted to PENDING (~1 in 5 confirmations). `prod` is a
+    // named schema too, so the same coin flip applied to real money. Prisma
+    // model operations always emit the schema explicitly
+    // (UPDATE "test"."service_caps"), so the schema comes from the datasource
+    // and cannot be lost. That is the entire point of this block.
+    const cap = await tx.serviceCap.findUnique({
+      where: { eventId_serviceTypeId: { eventId, serviceTypeId } },
+      select: { capacity: true },
+    });
+    // No row at all ⇒ misconfigured event, not a sold-out service.
+    if (!cap) throw new MissingCapError(serviceKey);
+
+    // GUARANTEED: two concurrent confirmations cannot oversell. updateMany
+    // compiles to ONE conditional UPDATE, so under READ COMMITTED Postgres
+    // re-evaluates `sold <= capacity - qty` against the committed row version
+    // after any concurrent writer commits, and two claims on the last seat
+    // cannot both match. That is the property the old raw statement had, and
+    // it is preserved.
+    //
+    // NOT guaranteed: `capacity` is read one statement earlier (Prisma cannot
+    // compare column-to-column with arithmetic), so a coordinator LOWERING the
+    // cap inside that window lets one already in-flight order commit against
+    // the pre-edit limit — measured sold=33 against capacity=25. Accepted
+    // deliberately: the same end state is already reachable through the admin
+    // action's own unlocked read-then-write of `sold`
+    // (src/app/admin/camps/[id]/services/actions.ts), nothing enforces
+    // sold <= capacity at the DB, and one extra paid seat beats rejecting a
+    // paid order. The durable fix is a CHECK ("sold" <= "capacity") constraint
+    // plus catching the violation; that needs a migration, so it is a later
+    // task — and it is NOT a licence to go back to $executeRaw (see above).
+    const claimed = await tx.serviceCap.updateMany({
+      where: {
+        eventId,
+        serviceTypeId,
+        // capacity null = UNCAPPED, so there is no ceiling to test and every
+        // claim succeeds. This is the reason capacity became nullable: it used
+        // to be a plain Int where 0 meant "cannot sell", and an offered
+        // service left at 0 charged the buyer and then failed right here
+        // (`sold <= 0 - 1` matches nothing). A DB CHECK now refuses 0, so the
+        // only two states left are "uncapped" and "a real ceiling".
+        ...(cap.capacity === null ? {} : { sold: { lte: cap.capacity - qty } }),
+      },
+      data: { sold: { increment: qty } },
+    });
+    // With the schema no longer in play, count === 0 has exactly one honest
+    // meaning left: the cap is genuinely full.
+    if (claimed.count === 0) throw new OverCapacityError(serviceKey);
+  }
+}
+
 type ConfirmInput = {
   method: "STRIPE" | "CASH" | "ZELLE" | "CHECK";
   stripePaymentIntentId?: string;
@@ -856,79 +1123,10 @@ export async function confirmOrderPaid(
     }
 
     // ── Atomic capacity decrement (DB-enforced, not app-layer) ──
-    const counts = new Map<string, number>(); // serviceTypeId -> qty
-    for (const li of order.lineItems) {
-      if (li.serviceTypeId) {
-        // quantity-aware: a qty-3 admission line consumes 3 cap units.
-        counts.set(li.serviceTypeId, (counts.get(li.serviceTypeId) ?? 0) + li.quantity);
-      }
-    }
-    for (const [serviceTypeId, qty] of counts) {
-      // A service line on an order with no event cannot exist (the donate
-      // page writes one donation line and nothing else), so this is a type
-      // narrowing with a loud failure, never a branch anyone takes.
-      const eventId = order.eventId;
-      if (!eventId) throw new Error(`Order ${order.id} has a service line but no event`);
-      const serviceKey =
-        order.lineItems.find((li) => li.serviceTypeId === serviceTypeId)
-          ?.serviceType?.key ?? serviceTypeId;
-
-      // NEVER express this as $executeRaw / $queryRaw. An unqualified table name
-      // in raw SQL resolves through the session's `search_path`, and Supabase's
-      // transaction pooler does NOT reliably apply the connection string's
-      // `?schema=` to every pooled backend: measured on the deployed test DB,
-      // 5 of 24 pooled sessions reported `search_path = pg_catalog, public,
-      // extensions` with no `test` in it. A raw `UPDATE service_caps` then hit
-      // `public.service_caps`, matched nothing, and threw OverCapacityError on a
-      // cap that was 23/40 — rolling back the whole confirmation, so a PAID
-      // order silently reverted to PENDING (~1 in 5 confirmations). `prod` is a
-      // named schema too, so the same coin flip applied to real money. Prisma
-      // model operations always emit the schema explicitly
-      // (UPDATE "test"."service_caps"), so the schema comes from the datasource
-      // and cannot be lost. That is the entire point of this block.
-      const cap = await tx.serviceCap.findUnique({
-        where: { eventId_serviceTypeId: { eventId, serviceTypeId } },
-        select: { capacity: true },
-      });
-      // No row at all ⇒ misconfigured event, not a sold-out service.
-      if (!cap) throw new MissingCapError(serviceKey);
-
-      // GUARANTEED: two concurrent confirmations cannot oversell. updateMany
-      // compiles to ONE conditional UPDATE, so under READ COMMITTED Postgres
-      // re-evaluates `sold <= capacity - qty` against the committed row version
-      // after any concurrent writer commits, and two claims on the last seat
-      // cannot both match. That is the property the old raw statement had, and
-      // it is preserved.
-      //
-      // NOT guaranteed: `capacity` is read one statement earlier (Prisma cannot
-      // compare column-to-column with arithmetic), so a coordinator LOWERING the
-      // cap inside that window lets one already in-flight order commit against
-      // the pre-edit limit — measured sold=33 against capacity=25. Accepted
-      // deliberately: the same end state is already reachable through the admin
-      // action's own unlocked read-then-write of `sold`
-      // (src/app/admin/camps/[id]/services/actions.ts), nothing enforces
-      // sold <= capacity at the DB, and one extra paid seat beats rejecting a
-      // paid order. The durable fix is a CHECK ("sold" <= "capacity") constraint
-      // plus catching the violation; that needs a migration, so it is a later
-      // task — and it is NOT a licence to go back to $executeRaw (see above).
-      const claimed = await tx.serviceCap.updateMany({
-        where: {
-          eventId,
-          serviceTypeId,
-          // capacity null = UNCAPPED, so there is no ceiling to test and every
-          // claim succeeds. This is the reason capacity became nullable: it used
-          // to be a plain Int where 0 meant "cannot sell", and an offered
-          // service left at 0 charged the buyer and then failed right here
-          // (`sold <= 0 - 1` matches nothing). A DB CHECK now refuses 0, so the
-          // only two states left are "uncapped" and "a real ceiling".
-          ...(cap.capacity === null ? {} : { sold: { lte: cap.capacity - qty } }),
-        },
-        data: { sold: { increment: qty } },
-      });
-      // With the schema no longer in play, count === 0 has exactly one honest
-      // meaning left: the cap is genuinely full.
-      if (claimed.count === 0) throw new OverCapacityError(serviceKey);
-    }
+    // Shared with a bank debit's reservation (claimCapacity). Skipped here when
+    // the reservation already made the claim: the stamp is what says so, and
+    // making it twice would sell the same seat to the same buyer twice.
+    if (!order.capsReservedAt) await claimCapacity(tx, order);
 
     // ── Assign campIds (random tokens, not a sequence) ──
     // Event.nextCampSeq is deliberately no longer incremented: the sequence was

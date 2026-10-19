@@ -80,6 +80,9 @@ export type EventRegistrations = {
   platformFeeCents: number;
   /** The buyers' processing-cost cover: the organisation's money, kept apart so it is not mistaken for ticket revenue. */
   feeCoverCents: number;
+  /** Bank debits in flight: seats held, money not yet collected. Never inside collectedCents. */
+  processingOrders: number;
+  processingCents: number;
   orders: PaidOrderRow[];
 };
 
@@ -149,8 +152,15 @@ export async function getEventRegistrations(
   let membershipCents = 0;
   let platformFeeCents = 0;
   let feeCoverCents = 0;
+  let processingOrders = 0;
+  let processingCents = 0;
 
   for (const o of orders) {
+    const inFlight = o.payments.find((p) => p.status === "PROCESSING");
+    if (o.status === "PENDING" && inFlight) {
+      processingOrders++;
+      processingCents += inFlight.amountCents;
+    }
     const campIds = o.attendees
       .map((a) => a.campId)
       .filter((c): c is string => c !== null);
@@ -236,6 +246,8 @@ export async function getEventRegistrations(
     membershipCents,
     platformFeeCents,
     feeCoverCents,
+    processingOrders,
+    processingCents,
     orders: paid,
   };
 }

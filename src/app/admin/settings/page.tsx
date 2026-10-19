@@ -8,7 +8,8 @@ import { SiteForm } from "./SiteForm";
 import { LegalForm } from "./LegalForm";
 import { StripeCard } from "./StripeCard";
 import { DonationsForm } from "./DonationsForm";
-import { resolveOrgDonations } from "@/lib/orgSettings";
+import { PaymentsForm } from "./PaymentsForm";
+import { resolveOrgDonations, resolveOrgPayments } from "@/lib/orgSettings";
 
 export const dynamic = "force-dynamic";
 
@@ -77,6 +78,7 @@ export default async function SettingsPage() {
         payoutsEnabled={org?.stripePayoutsEnabled ?? false}
         achEnabled={org?.stripeAchEnabled ?? false}
       />
+      <PaymentsForm initial={resolveOrgPayments(org?.settings)} achCapable={org?.stripeAchEnabled ?? false} />
       <ProfileForm initial={profile} />
       <DonationsForm initial={resolveOrgDonations(org?.settings)} />
       <SiteForm initial={site} />

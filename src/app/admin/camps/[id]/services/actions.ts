@@ -33,6 +33,12 @@ type OfferingInput = {
    * disclose. Copied onto each line at creation; see src/lib/contribution.ts.
    */
   fairMarketValueDollars: number | null;
+  /**
+   * Which online methods may buy it: any; card only; or bank debit only — for
+   * the large items (a booth fee, a sponsorship, a table package) where 0.8%
+   * capped at $5 beats 2.9%. The door never sells a bank-only item.
+   */
+  onlineMethods: "ANY" | "CARD_ONLY" | "ACH_ONLY";
 };
 
 /** Blank/absent door price means "same as online" — stored as NULL, not 0. */
@@ -283,6 +289,10 @@ export async function saveOffering(
       // Same blank-is-null rule as the door price: nothing typed means
       // nothing to disclose, never a $0 value.
       fairMarketValueCents: onsiteCents(input.fairMarketValueDollars),
+      onlineMethods:
+        input.onlineMethods === "CARD_ONLY" || input.onlineMethods === "ACH_ONLY"
+          ? input.onlineMethods
+          : "ANY",
     },
   });
   revalidatePath(`/admin/camps/${eventId}/services`);

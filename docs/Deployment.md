@@ -223,6 +223,14 @@ deployment's Connect endpoint receives every connected account's events; the
 handler's ownership guard (`resolveOwnedOrder`) is what keeps them apart.
 Locally: `stripe listen --forward-to localhost:3100/api/stripe/webhook --forward-connect-to localhost:3100/api/stripe/connect`.
 
+**Bank debits.** Both endpoints must be subscribed to
+`checkout.session.async_payment_succeeded` and
+`checkout.session.async_payment_failed` (listed above) or a debit that clears
+never confirms and one that bounces never releases its seats. The
+organisation's Stripe account needs the ACH Direct Debit capability (Stripe
+dashboard → Settings → Payment methods); the Payments card on Admin → Settings
+shows whether Stripe has reported it.
+
 ### 6. GitHub (CI migrations)
 
 Repo → Settings → Environments. Create `test` and `production` (`staging` is

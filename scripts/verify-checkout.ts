@@ -992,6 +992,40 @@ async function main() {
   check("the buyer's choice is sent with the registration", /coverProcessingFee:\s*coverFee/.test(formSrc));
   check("the service fee is shown as its own line before payment", /PLATFORM_FEE_LABEL/.test(formSrc));
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // §15 Bank debits are a DELAYED-NOTIFICATION method: the session completes
+  // UNPAID and the outcome arrives later as async_payment_succeeded or
+  // async_payment_failed. Read as text, because the property is which event
+  // does what: a completed-but-unpaid session RESERVES (capacity held, no
+  // ticket), success CONFIRMS through the one idempotent path, failure
+  // RELEASES. Resume refuses while a debit is in flight (no double pay) and
+  // the expiry reaper treats an in-flight debit as live.
+  console.log("\n§15 a bank debit reserves, then confirms or releases — never admits early");
+  const hook15 = readFileSync(join(process.cwd(), "src/server/stripeWebhook.ts"), "utf8");
+  check("a completed-but-unpaid session marks the payment PROCESSING instead of just logging",
+    /payment_status !== "paid"[\s\S]{0,600}markPaymentProcessing\(/.test(hook15));
+  check("async_payment_succeeded confirms through confirmOrderPaid",
+    /async_payment_succeeded[\s\S]{0,1200}confirmOrderPaid\(/.test(hook15));
+  check("async_payment_failed releases the reservation", /async_payment_failed[\s\S]{0,1200}releaseProcessingPayment\(/.test(hook15));
+  check("...both pass the ownership guard first",
+    (() => { const g = hook15.indexOf("resolveOwnedOrder(orderId"); const a = hook15.lastIndexOf("async_payment_succeeded"); const f = hook15.lastIndexOf("async_payment_failed"); return g > -1 && a > g && f > g; })());
+  const pay15 = readFileSync(join(process.cwd(), "src/server/payments.ts"), "utf8");
+  const open15 = pay15.slice(pay15.indexOf("async function openCheckoutSession"), pay15.indexOf("\n}\n", pay15.indexOf("async function openCheckoutSession")) + 3);
+  check("Checkout is told which methods to accept, from the shared rule, never a hardcoded list",
+    /payment_method_types:\s*allowed\.methods/.test(open15) && /allowedMethodsFor\(/.test(open15));
+  check("...with instant bank verification (microdeposits add days the cutoff cannot absorb)",
+    /verification_method:\s*"instant"/.test(open15));
+  check("an empty intersection is refused BEFORE any Stripe call",
+    (() => { const r = open15.indexOf("allowed.methods.length === 0"); const c = open15.indexOf("stripe.checkout.sessions.create("); return r > -1 && c > -1 && r < c; })());
+  const resume15 = pay15.slice(pay15.indexOf("export async function resumeCheckoutForOrder"), pay15.indexOf("\nexport ", pay15.indexOf("export async function resumeCheckoutForOrder") + 1));
+  check("resume refuses while a debit is in flight", /status: "PROCESSING"/.test(resume15));
+  const reap15 = pay15.slice(pay15.indexOf("export async function reapExpiredCheckout"), pay15.indexOf("\nexport ", pay15.indexOf("export async function reapExpiredCheckout") + 1));
+  check("the expiry reaper counts an in-flight debit as live", /"PROCESSING"/.test(reap15));
+  const confirm15 = pay15.slice(pay15.indexOf("export async function confirmOrderPaid"), pay15.indexOf("\nexport ", pay15.indexOf("export async function confirmOrderPaid") + 1));
+  check("confirmOrderPaid skips the capacity claim when the reservation already made it", /capsReservedAt/.test(confirm15));
+  const catalog15 = readFileSync(join(process.cwd(), "src/server/gate.ts"), "utf8");
+  check("the door never sells a bank-only item", /ACH_ONLY/.test(catalog15));
+
   await cleanup(org.id);
 }
 

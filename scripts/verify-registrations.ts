@@ -797,6 +797,54 @@ async function main() {
   check("the admin actions require an admin and re-scope the event to the organisation",
     /requireAdmin\(\)/.test(actSrc) && /recordOfflinePayment\(/.test(actSrc) && /sendTicketEmailFor\(/.test(actSrc));
 
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§14 a bank debit in flight holds the seat once, and gives it back on failure");
+  // The reservation is the same atomic cap claim confirmation makes, stamped
+  // on the order so confirmation does not make it twice; a failed debit
+  // returns exactly what was held and leaves the order payable again.
+  const { markPaymentProcessing, releaseProcessingPayment, resumeCheckoutForOrder } = await import("../src/server/payments");
+  const { signResumeProof } = await import("../src/lib/checkoutResume");
+  const capBefore = (await db.serviceCap.findUniqueOrThrow({ where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: admit.id } } })).sold;
+  const debit = await createRegistration({
+    eventId: event.id, registrant: { name: "Bank Payer", email: "verify-regs-ach@example.org", phone: "5550003333" },
+    marketingConsent: false, quantities: [{ serviceKey: ADMIT_KEY, quantity: 2 }],
+  });
+  await db.payment.create({ data: { orgId: org.id, orderId: debit.orderId, method: "STRIPE", status: "PENDING", amountCents: debit.totalCents, stripeCheckoutId: "cs_verify_ach_1" } });
+  await markPaymentProcessing(debit.orderId, { id: "cs_verify_ach_1", payment_intent: "pi_verify_ach_1" });
+  const soldAfterHold = (await db.serviceCap.findUniqueOrThrow({ where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: admit.id } } })).sold;
+  const heldOrder = await db.order.findUniqueOrThrow({ where: { id: debit.orderId }, include: { payments: true } });
+  check("the reservation claims the two seats and stamps the order",
+    soldAfterHold === capBefore + 2 && heldOrder.capsReservedAt !== null && heldOrder.status === "PENDING", `sold ${capBefore}→${soldAfterHold}, stamp ${heldOrder.capsReservedAt}`);
+  check("...and the payment is PROCESSING with its intent recorded",
+    heldOrder.payments[0]?.status === "PROCESSING" && heldOrder.payments[0]?.stripePaymentIntentId === "pi_verify_ach_1");
+  check("...no ticket yet: nothing scans", (await db.attendee.findMany({ where: { orderId: debit.orderId } })).every((a) => a.campId === null));
+  await markPaymentProcessing(debit.orderId, { id: "cs_verify_ach_1", payment_intent: "pi_verify_ach_1" });
+  check("a retried processing event holds nothing more",
+    (await db.serviceCap.findUniqueOrThrow({ where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: admit.id } } })).sold === capBefore + 2);
+  const resumeHeld = await resumeCheckoutForOrder(debit.orderId, signResumeProof(debit.orderId), undefined, { orgId: org.id });
+  check("resume is refused while the debit is in flight (no double pay)", !resumeHeld.ok && resumeHeld.reason === "not-resumable", JSON.stringify(resumeHeld));
+  await confirmOrderPaid(debit.orderId, { method: "STRIPE", stripeCheckoutId: "cs_verify_ach_1", stripePaymentIntentId: "pi_verify_ach_1", idempotencyKey: "evt_verify_ach_ok" });
+  check("confirmation on a held order does NOT claim the seats a second time",
+    (await db.serviceCap.findUniqueOrThrow({ where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: admit.id } } })).sold === capBefore + 2);
+  check("...and mints the codes", (await db.attendee.findMany({ where: { orderId: debit.orderId } })).every((a) => a.campId !== null));
+
+  const failing = await createRegistration({
+    eventId: event.id, registrant: { name: "Bounced Payer", email: "verify-regs-ach@example.org", phone: "5550003333" },
+    marketingConsent: false, quantities: [{ serviceKey: ADMIT_KEY, quantity: 1 }],
+  });
+  await db.payment.create({ data: { orgId: org.id, orderId: failing.orderId, method: "STRIPE", status: "PENDING", amountCents: failing.totalCents, stripeCheckoutId: "cs_verify_ach_2" } });
+  await markPaymentProcessing(failing.orderId, { id: "cs_verify_ach_2", payment_intent: "pi_verify_ach_2" });
+  const soldHeld2 = (await db.serviceCap.findUniqueOrThrow({ where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: admit.id } } })).sold;
+  await releaseProcessingPayment(failing.orderId, "cs_verify_ach_2");
+  const released = await db.order.findUniqueOrThrow({ where: { id: failing.orderId }, include: { payments: true } });
+  check("a failed debit gives the seat back, marks the payment FAILED and leaves the order payable",
+    (await db.serviceCap.findUniqueOrThrow({ where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: admit.id } } })).sold === soldHeld2 - 1
+      && released.capsReservedAt === null && released.status === "PENDING" && released.payments[0]?.status === "FAILED",
+    `sold ${soldHeld2}→${(await db.serviceCap.findUniqueOrThrow({ where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: admit.id } } })).sold}`);
+  await releaseProcessingPayment(failing.orderId, "cs_verify_ach_2");
+  check("...and releasing twice gives nothing back twice",
+    (await db.serviceCap.findUniqueOrThrow({ where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: admit.id } } })).sold === soldHeld2 - 1);
+
   await cleanup(org.id);
 }
 

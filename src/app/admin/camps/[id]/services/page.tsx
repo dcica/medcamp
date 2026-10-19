@@ -131,6 +131,7 @@ export default async function EventServicesPage({
           maxDuration: toDurationInput(c.maxDurationSeconds),
           fairMarketValueDollars:
             c.fairMarketValueCents === null ? null : c.fairMarketValueCents / 100,
+          onlineMethods: c.onlineMethods,
         }))}
         catalogue={catalogue.map((s) => ({
           id: s.id,

@@ -108,8 +108,24 @@ touches the platform:
 - **Worked example, a $40 ticket:** the buyer pays $41.09; Stripe takes $1.49
   from the organisation's balance; Stripe moves $1.09 to the platform; the
   organisation nets $38.51 — or $40.00 if the buyer ticked the cover ($1.54).
+- **Bank debits (ACH) beside cards.** Off until the organisation turns them on
+  (Admin → Settings → Bank debits; the connected account must have the
+  capability too). A debit takes up to four business days to clear and can
+  still fail, so Checkout stops offering it a configurable number of business
+  days before an event starts (default 5; a gift or a membership has no event
+  and no cutoff). A session that completes by debit is UNPAID: the order's
+  capacity is held (`Order.capsReservedAt`), the payment is `PROCESSING`, no
+  ticket exists and nothing scans; `async_payment_succeeded` confirms through
+  the same idempotent path as a card, `async_payment_failed` gives the seats
+  back and emails the buyer to register again by card. An offering may be
+  marked **bank debit only** per event (a booth fee, a sponsorship, a table
+  package: 0.8% capped at $5 instead of 2.9%); the door never sells one, and an
+  order over the organisation's threshold is bank-only. Verification is
+  instant only. The arithmetic and the method rule live in `src/lib/fees.ts`.
 - **Offline money** (Zelle, cheque, cash) is recorded from the registrations
-  page and carries no fee. **Refunds** stay staff-initiated.
+  page and carries no fee. **Refunds** stay staff-initiated; the in-app refund
+  (plan task P5) is not built yet — a refund is issued in the Stripe
+  dashboard and the order corrected by hand until it is.
 
 ---
 

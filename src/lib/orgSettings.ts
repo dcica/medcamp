@@ -127,6 +127,44 @@ export const DEFAULT_DONATIONS: OrgDonations = {
   minCents: 100,
 };
 
+/**
+ * The organisation's bank-debit (ACH) policy (`settings.payments.ach`): off
+ * until it turns it on; a cutoff in business days before an event's start
+ * (a debit takes ~4 to clear and can still fail); instant verification only
+ * (microdeposits add days the cutoff cannot absorb); and an optional total
+ * above which an order is bank-only. Resolves to a complete policy, like the
+ * donations door.
+ */
+export const paymentsSchema = z.object({
+  ach: z.object({
+    enabled: z.boolean(),
+    cutoffBusinessDays: z.number().int().min(0).max(30),
+    verification: z.enum(["instant"]),
+    achOnlyAboveCents: z.number().int().min(100).max(100_000_000).nullable(),
+  }),
+});
+export type OrgPayments = z.infer<typeof paymentsSchema>;
+
+export const DEFAULT_PAYMENTS: OrgPayments = {
+  ach: { enabled: false, cutoffBusinessDays: 5, verification: "instant", achOnlyAboveCents: null },
+};
+
+export function resolveOrgPayments(settings: unknown): OrgPayments {
+  const raw = blob(settings, "payments");
+  const ach =
+    raw && raw.ach && typeof raw.ach === "object" && !Array.isArray(raw.ach)
+      ? (raw.ach as Record<string, unknown>)
+      : null;
+  const out: OrgPayments = { ach: { ...DEFAULT_PAYMENTS.ach } };
+  if (!ach) return out;
+  const shape = paymentsSchema.shape.ach.shape;
+  for (const key of Object.keys(shape) as (keyof OrgPayments["ach"])[]) {
+    const parsed = shape[key].safeParse(ach[key]);
+    if (parsed.success) (out.ach as Record<string, unknown>)[key] = parsed.data;
+  }
+  return out;
+}
+
 export function resolveOrgDonations(settings: unknown): OrgDonations {
   const raw = blob(settings, "donations");
   const out: OrgDonations = { ...DEFAULT_DONATIONS };

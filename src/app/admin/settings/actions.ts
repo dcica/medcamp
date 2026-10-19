@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
 import { requireCoordinator } from "@/server/admin";
 import { readStoredTheme, themeWithBrand } from "@/lib/branding";
-import { PROFILE_LABELS, donationsSchema, legalSchema, profileSchema, siteSchema } from "@/lib/orgSettings";
+import { PROFILE_LABELS, donationsSchema, legalSchema, paymentsSchema, profileSchema, siteSchema } from "@/lib/orgSettings";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -199,6 +199,45 @@ export async function updateOrgDonations(input: DonationsInput): Promise<ActionR
   revalidatePath("/admin/settings");
   revalidatePath("/", "layout");
   revalidatePath("/donate");
+  return { ok: true };
+}
+
+export type PaymentsInput = {
+  achEnabled: boolean;
+  /** Business days before an event's start after which bank debits are off. */
+  cutoffBusinessDays: string;
+  /** Dollars; blank = no threshold. Orders over it are bank-only. */
+  achOnlyAboveDollars: string;
+};
+
+export async function updateOrgPayments(input: PaymentsInput): Promise<ActionResult> {
+  await requireCoordinator();
+  const org = await getActiveOrg();
+  if (!org) return { ok: false, error: "No active org." };
+  const cutoff = input.cutoffBusinessDays.trim();
+  if (!/^\d{1,2}$/.test(cutoff)) return { ok: false, error: "Cutoff: a whole number of business days (0–30)." };
+  const above = input.achOnlyAboveDollars.trim();
+  const aboveCents = above === "" ? null : dollarsToCentsOrNull(above);
+  if (above !== "" && aboveCents === null) return { ok: false, error: "Bank-only above: a dollar amount, or blank." };
+  const parsed = paymentsSchema.safeParse({
+    ach: {
+      enabled: Boolean(input.achEnabled),
+      cutoffBusinessDays: Number(cutoff),
+      verification: "instant",
+      achOnlyAboveCents: aboveCents,
+    },
+  });
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    return { ok: false, error: `${issue?.path.join(".") || "payments"}: ${issue?.message ?? "invalid"}` };
+  }
+  const settings = {
+    ...(org.settings as Record<string, unknown>),
+    payments: parsed.data,
+  };
+  await db.organization.update({ where: { id: org.id }, data: { settings } });
+  revalidatePath("/admin/settings");
+  revalidatePath("/", "layout");
   return { ok: true };
 }
 

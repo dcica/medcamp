@@ -794,7 +794,10 @@ export async function getGateCatalog(eventId: string): Promise<{
         (o) =>
           o.serviceType.kind === "ADMISSION" &&
           !o.serviceType.hasLab &&
-          Math.max(1, o.serviceType.admitsCount) === 1,
+          Math.max(1, o.serviceType.admitsCount) === 1 &&
+          // A bank-only item (a booth fee): a debit takes days to clear and the
+          // guest is standing in front of you. Never at the door.
+          o.onlineMethods !== "ACH_ONLY",
       )
       .map((o) => ({
         id: o.serviceType.id,
@@ -804,7 +807,7 @@ export async function getGateCatalog(eventId: string): Promise<{
         admitsCount: Math.max(1, o.serviceType.admitsCount),
       })),
     merch: offerings
-      .filter((o) => o.serviceType.kind === "MERCH")
+      .filter((o) => o.serviceType.kind === "MERCH" && o.onlineMethods !== "ACH_ONLY")
       .map((o) => ({
         id: o.serviceType.id,
         name: o.serviceType.name,
@@ -815,7 +818,7 @@ export async function getGateCatalog(eventId: string): Promise<{
     // A competition entry sold at the desk. Buying one admits nobody and hands
     // over nothing.
     fees: offerings
-      .filter((o) => o.serviceType.kind === "FEE" && !o.serviceType.hasLab)
+      .filter((o) => o.serviceType.kind === "FEE" && !o.serviceType.hasLab && o.onlineMethods !== "ACH_ONLY")
       .map((o) => ({ id: o.serviceType.id, name: o.serviceType.name, priceCents: doorCents(o), remaining: left(o) })),
   };
 }

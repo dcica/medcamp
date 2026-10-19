@@ -414,6 +414,16 @@ enum ServiceKind {
   FEE // buys a slot and admits nobody — e.g. a competition entry
 }
 
+/// Which online payment methods an offering may be bought with, per event
+/// (src/lib/fees.ts allowedMethodsFor). ACH_ONLY is for the large items — a
+/// booth fee, a sponsorship, a table package — where a bank debit's 0.8%
+/// capped at $5 beats a card's 2.9%; the door never sells one.
+enum OnlineMethods {
+  ANY
+  CARD_ONLY
+  ACH_ONLY
+}
+
 /// Org-level catalogue of offerable services. Reused across events; the actual
 /// price + capacity for a given event live on the per-event offering (ServiceCap),
 /// so the same catalogue service can be coded at different prices per event.
@@ -499,6 +509,9 @@ model ServiceCap {
   /// dinner, not the school's cost to host it. Set per event beside the
   /// price; copied onto each line at creation. Null = nothing to disclose.
   fairMarketValueCents Int?
+  /// Per event, beside the price: the same catalogue item can be a $50 booth
+  /// at one event and a $2,000 one at another.
+  onlineMethods        OnlineMethods @default(ANY)
 
   @@unique([eventId, serviceTypeId])
   @@index([eventId])
@@ -627,6 +640,12 @@ model Order {
   /// When the donation receipt email was delivered. Null = not yet, or the
   /// deployment has no mail provider (the console path is not delivery).
   receiptSentAt DateTime?
+
+  /// A bank debit in flight claimed this order's capacity (the same atomic
+  /// decrement confirmation makes). Set once by markPaymentProcessing, read by
+  /// confirmOrderPaid so the claim is never made twice, cleared when a failed
+  /// debit gives the seats back.
+  capsReservedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -902,6 +921,10 @@ model PerformanceEntry {
 
 enum PaymentStatus {
   PENDING
+  /// A bank debit in flight: the Checkout session completed UNPAID, capacity
+  /// is reserved (Order.capsReservedAt), no ticket exists yet. Resolves to
+  /// SUCCEEDED or FAILED when Stripe reports the outcome (up to ~4 business days).
+  PROCESSING
   SUCCEEDED
   FAILED
   REFUNDED

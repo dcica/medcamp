@@ -318,6 +318,52 @@ export async function sendDonationReceiptEmail(
   }
 }
 
+// ── Bank debit (ACH) notices ─────────────────────────────────────────────────
+
+export type PaymentProcessingEmail = {
+  to: string;
+  registrantName: string;
+  eventName: string;
+  orgName: string;
+};
+
+/** The session completed by bank debit: nothing is confirmed yet, and nothing scans. Plain text. */
+export async function sendPaymentProcessingEmail(
+  msg: PaymentProcessingEmail,
+  sender: Sender = defaultSender(),
+): Promise<{ delivered: boolean }> {
+  return dispatch(
+    sender,
+    msg.to,
+    `${msg.eventName} — your bank payment is processing`,
+    [
+      `Hi ${msg.registrantName},`,
+      `Your bank payment for ${msg.eventName} is on its way. A bank debit takes up to 4 business days to clear.`,
+      `Your place is held meanwhile. Your tickets are emailed the moment the payment clears — there is nothing to show at the door until then.`,
+      `If the bank declines it, we will let you know so you can pay another way.`,
+      `— ${msg.orgName}`,
+    ].join("\n"),
+  );
+}
+
+/** The bank declined the debit: the seats are released and the buyer may pay by card. Plain text. */
+export async function sendPaymentFailedEmail(
+  msg: PaymentProcessingEmail,
+  sender: Sender = defaultSender(),
+): Promise<{ delivered: boolean }> {
+  return dispatch(
+    sender,
+    msg.to,
+    `${msg.eventName} — your bank payment did not go through`,
+    [
+      `Hi ${msg.registrantName},`,
+      `Your bank was unable to complete the payment for ${msg.eventName}, so your place has been released and nothing has been charged.`,
+      `To attend, please register again and pay by card; it confirms immediately.`,
+      `— ${msg.orgName}`,
+    ].join("\n"),
+  );
+}
+
 // ── Volunteer module emails ──────────────────────────────────────────────────
 
 export type VolunteerSignupEmail = {

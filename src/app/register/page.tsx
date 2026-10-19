@@ -139,6 +139,8 @@ export default async function RegisterPage({
     kind: o.serviceType.kind,
     // Heads per unit, so a doubles entry asks for two names per unit sold.
     admitsCount: o.serviceType.admitsCount,
+    // Bank-only items are labelled, and make the whole order a bank debit.
+    onlineMethods: o.onlineMethods,
   }));
 
   // Active family membership plans (shown as an add-on / compare on the form).

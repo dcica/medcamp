@@ -1012,6 +1012,21 @@ async function main(): Promise<void> {
   await rejectsWith("an empty basket is refused",
     () => gate.sellAtGate(event.id, [], { buyerName: "Nobody" }), "Pick at least one item");
 
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§16 the door never sells a bank-only item");
+
+  // A bank-only offering (a $2,000 booth fee) has no business at a door: a
+  // debit takes days to clear and the guest is standing in front of you.
+  const bankOnly = await db.serviceType.upsert({
+    where: { orgId_key: { orgId: org.id, key: "verify-gate-bank-only" } },
+    update: { kind: "ADMISSION", priceCents: 200000 },
+    create: { orgId: org.id, key: "verify-gate-bank-only", name: "Verify Booth Fee", priceCents: 200000, kind: "ADMISSION" },
+  });
+  await db.serviceCap.create({ data: { eventId: event.id, serviceTypeId: bankOnly.id, priceCents: 200000, onlineMethods: "ACH_ONLY" } });
+  const doorMenu = await gate.getGateCatalog(event.id);
+  check("the door menu hides a bank-only offering", !doorMenu.admission.some((a) => a.id === bankOnly.id));
+  await db.serviceCap.deleteMany({ where: { eventId: event.id, serviceTypeId: bankOnly.id } });
+  await db.serviceType.delete({ where: { id: bankOnly.id } });
   await cleanup(org.id);
 }
 
@@ -1130,7 +1145,7 @@ async function cleanup(orgId: string): Promise<void> {
     await db.payment.deleteMany({ where: { orderId: { in: orderIds } } });
     await db.event.delete({ where: { id: event.id } });
   }
-  await db.serviceType.deleteMany({ where: { orgId, key: { in: [ADM_KEY, MERCH_KEY, FEE_KEY] } } });
+  await db.serviceType.deleteMany({ where: { orgId, key: { in: [ADM_KEY, MERCH_KEY, FEE_KEY, "verify-gate-bank-only"] } } });
   await db.event.deleteMany({ where: { org: { slug: SCRATCH_ORG_SLUG } } });
   await db.organization.deleteMany({ where: { slug: SCRATCH_ORG_SLUG } });
   // Memberships cascade from the user.

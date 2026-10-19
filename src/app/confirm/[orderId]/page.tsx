@@ -24,6 +24,8 @@ const orderInclude = {
       lineItems: { include: { serviceType: true } },
     },
   },
+  // A bank debit in flight shows as "processing", not "not confirmed yet".
+  payments: { select: { status: true } },
 } as const;
 
 /**
@@ -132,7 +134,17 @@ export default async function ConfirmPage({
         }
       />
 
-      {!isConfirmed && (
+      {!isConfirmed && order.payments.some((p) => p.status === "PROCESSING") && (
+        <div className="mt-6 rounded-xl border border-blue-200 bg-blue-50 p-4">
+          <p className="text-sm text-blue-800">
+            Your bank payment is processing. A bank debit takes up to four business
+            days to clear; your place is held meanwhile, and your tickets are emailed
+            (and shown here) the moment it does. There is nothing to show at the door
+            until then.
+          </p>
+        </div>
+      )}
+      {!isConfirmed && !order.payments.some((p) => p.status === "PROCESSING") && (
         <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
           <p className="text-sm text-amber-800">
             Payment hasn&apos;t been confirmed yet. Once your payment clears

@@ -36,6 +36,7 @@
  */
 import { z } from "zod";
 import { formatCents } from "@/lib/money";
+import { venueDayKey } from "@/lib/eventTime";
 
 /** Mirrors the Prisma enum of the same name on LineItem.feeKind. */
 export type FeeLineKind = "PLATFORM_FEE" | "FEE_COVER";
@@ -168,10 +169,28 @@ export function grossUpForCardFee(
   baseCents: number,
   processing: { percentBps: number; fixedCents: number },
 ): number {
+  return grossUpForFee(baseCents, processing);
+}
+
+/**
+ * The gross-up for any percent + fixed rate, with an optional per-charge cap
+ * (a bank debit is 0.8% capped at $5). Once the fee on the grossed-up charge
+ * would reach the cap, the fee IS the cap, so the cover is exactly the cap
+ * and no gross-up is needed on top of it.
+ */
+export function grossUpForFee(
+  baseCents: number,
+  processing: { percentBps: number; fixedCents: number; capCents?: number | null },
+): number {
   if (baseCents <= 0) return 0;
   const gross = Math.ceil(
     ((baseCents + processing.fixedCents) * 10_000) / (10_000 - processing.percentBps),
   );
+  const cap = processing.capCents ?? null;
+  if (cap !== null) {
+    const feeOnGross = Math.round((gross * processing.percentBps) / 10_000) + processing.fixedCents;
+    if (feeOnGross >= cap) return cap;
+  }
   return gross - baseCents;
 }
 
@@ -182,7 +201,12 @@ export function grossUpForCardFee(
 export function computeOrderFees(
   lines: FeeableLine[],
   policy: FeePolicy | null,
-  opts: { coverProcessing: boolean; orgName: string },
+  opts: {
+    coverProcessing: boolean;
+    orgName: string;
+    /** The rate the cover is grossed up at; the policy's card rate unless the order can only be paid by bank debit. */
+    processing?: { percentBps: number; fixedCents: number; capCents?: number | null };
+  },
 ): OrderFees {
   const goods = lines.filter((li) => !li.feeKind);
   const subtotalCents = goods.reduce((s, li) => s + li.amountCents * li.quantity, 0);
@@ -207,7 +231,7 @@ export function computeOrderFees(
   // 2.9% of the fee on every covered order.
   const coverCents =
     opts.coverProcessing && policy.allowBuyerCover
-      ? grossUpForCardFee(subtotalCents + buyerFeeCents, policy.processing)
+      ? grossUpForFee(subtotalCents + buyerFeeCents, opts.processing ?? policy.processing)
       : 0;
   if (coverCents > 0) {
     out.push({ feeKind: "FEE_COVER", description: coverLabel(coverCents, opts.orgName), amountCents: coverCents, quantity: 1 });
@@ -231,4 +255,104 @@ export function computeOrderFees(
  */
 export function receiptLines<T extends FeeableLine>(lines: T[]): T[] {
   return lines.filter((li) => li.feeKind !== "PLATFORM_FEE");
+}
+
+// ── Bank debits (ACH) ────────────────────────────────────────────────────────
+//
+// A bank debit takes about four business days to clear and can still fail,
+// so it is switched off a configurable number of business days before an
+// event's start; a gift or a membership has no event and no cutoff. An
+// offering may be card-only or bank-only per event (ServiceCap.onlineMethods),
+// and an order over the organisation's threshold is bank-only. What Checkout
+// is told to accept is the intersection of all of that; an empty intersection
+// is a sentence to the buyer before any Stripe call.
+
+export type OnlineMethod = "card" | "us_bank_account";
+/** Mirrors the Prisma enum of the same name on ServiceCap.onlineMethods. */
+export type OfferingMethods = "ANY" | "CARD_ONLY" | "ACH_ONLY";
+
+/** Stripe's bank-debit rate: 0.8%, capped at $5, no fixed part. */
+export const ACH_PROCESSING = { percentBps: 80, fixedCents: 0, capCents: 500 } as const;
+
+export type AchPolicy = {
+  enabled: boolean;
+  cutoffBusinessDays: number;
+  /** An order whose total exceeds this is bank-only. Null = no threshold. */
+  achOnlyAboveCents?: number | null;
+};
+
+/**
+ * Weekdays (Mon–Fri, on the venue's calendar) strictly after `now`'s day up
+ * to and including `target`'s day. Friday evening to Monday morning is ONE.
+ * Zero when the target is today or already past. Public holidays are not
+ * modelled; the five-day default is what absorbs them.
+ */
+export function businessDaysUntil(now: Date, target: Date): number {
+  const start = venueDayKey(now);
+  const end = venueDayKey(target);
+  if (end <= start) return 0;
+  let count = 0;
+  const d = new Date(`${start}T12:00:00Z`);
+  const last = new Date(`${end}T12:00:00Z`);
+  while (d < last) {
+    d.setUTCDate(d.getUTCDate() + 1);
+    const dow = d.getUTCDay();
+    if (dow !== 0 && dow !== 6) count++;
+  }
+  return count;
+}
+
+/** May this order be paid by bank debit at all, today? */
+export function achAllowedFor(input: {
+  eventStartsAt: Date | null;
+  now: Date;
+  policy: AchPolicy;
+  orgAchCapable: boolean;
+}): boolean {
+  if (!input.policy.enabled || !input.orgAchCapable) return false;
+  if (!input.eventStartsAt) return true;
+  return businessDaysUntil(input.now, input.eventStartsAt) >= input.policy.cutoffBusinessDays;
+}
+
+/**
+ * The methods Checkout may offer for this order: every line's rule, the
+ * cutoff and the threshold, intersected. `refusal` is the buyer-readable
+ * sentence when nothing is left — it names the organiser's other ways to pay.
+ */
+export function allowedMethodsFor(input: {
+  lines: { onlineMethods: OfferingMethods }[];
+  totalCents: number;
+  eventStartsAt: Date | null;
+  now: Date;
+  policy: AchPolicy;
+  orgAchCapable: boolean;
+}): { methods: OnlineMethod[]; refusal: string | null } {
+  const achOk = achAllowedFor(input);
+  let card = true;
+  let ach = achOk;
+  for (const li of input.lines) {
+    if (li.onlineMethods === "CARD_ONLY") ach = false;
+    if (li.onlineMethods === "ACH_ONLY") card = false;
+  }
+  const above = input.policy.achOnlyAboveCents ?? null;
+  const overThreshold = above !== null && input.totalCents > above;
+  if (overThreshold) card = false;
+
+  const methods: OnlineMethod[] = [];
+  if (card) methods.push("card");
+  if (ach) methods.push("us_bank_account");
+  if (methods.length > 0) return { methods, refusal: null };
+
+  const bankOnly = overThreshold || input.lines.some((li) => li.onlineMethods === "ACH_ONLY");
+  let refusal: string;
+  if (bankOnly && (!input.policy.enabled || !input.orgAchCapable)) {
+    refusal =
+      "This item can only be paid by bank transfer, and bank transfers are not available online right now. Contact the organizer to pay by check or Zelle.";
+  } else if (bankOnly) {
+    refusal = `This item can only be paid by bank transfer, and bank transfers close ${input.policy.cutoffBusinessDays} business days before the event. Contact the organizer to pay by check or Zelle.`;
+  } else {
+    refusal =
+      "These items cannot be paid together online: one is card-only and another bank-transfer-only. Contact the organizer to pay by check or Zelle.";
+  }
+  return { methods, refusal };
 }

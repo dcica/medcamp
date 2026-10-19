@@ -4,7 +4,9 @@ import { db } from "@/lib/db";
 import { log } from "@/lib/logger";
 import {
   confirmOrderPaid,
+  markPaymentProcessing,
   reapExpiredCheckout,
+  releaseProcessingPayment,
   resolveOwnedOrder,
   MissingCapError,
   OverCapacityError,
@@ -61,9 +63,15 @@ export async function handleStripeEvent(event: Stripe.Event, scope: WebhookScope
     return json({ received: true, note: "refund settlement pending" });
   }
 
-  // Both checkout events carry their order on metadata (set in
-  // openCheckoutSession), so they share one entry point.
-  if (event.type === "checkout.session.completed" || event.type === "checkout.session.expired") {
+  // Every checkout event carries its order on metadata (set in
+  // openCheckoutSession), so they share one entry point. The two async ones
+  // are a bank debit's outcome, days after the session completed unpaid.
+  if (
+    event.type === "checkout.session.completed" ||
+    event.type === "checkout.session.expired" ||
+    event.type === "checkout.session.async_payment_succeeded" ||
+    event.type === "checkout.session.async_payment_failed"
+  ) {
     const session = event.data.object as Stripe.Checkout.Session;
     const orderId = session.metadata?.orderId;
     if (!orderId) return json({ received: true, note: "no orderId" });
@@ -91,18 +99,46 @@ export async function handleStripeEvent(event: Stripe.Event, scope: WebhookScope
       return json({ received: true, note: "order not in this deployment" });
     }
 
-    if (event.type === "checkout.session.completed") {
+    // ── A bank debit failed, days after the session completed ──
+    // Give back exactly what the reservation held, mark the payment FAILED,
+    // leave the order payable, tell the buyer. Idempotent, so a retry is safe.
+    if (event.type === "checkout.session.async_payment_failed") {
+      try {
+        await releaseProcessingPayment(orderId, session.id);
+        return json({ received: true, released: true });
+      } catch (err) {
+        log.error("stripe webhook: release after failed debit failed", { orderId, err });
+        throw err;
+      }
+    }
+
+    if (
+      event.type === "checkout.session.completed" ||
+      event.type === "checkout.session.async_payment_succeeded"
+    ) {
       // A delayed-notification method (a bank debit) completes the session
       // UNPAID and reports the outcome later as async_payment_succeeded or
       // async_payment_failed. Only a PAID session confirms an order; a card
-      // session is always paid here, so this changes nothing for cards.
+      // session is always paid here, so this changes nothing for cards. An
+      // unpaid completion RESERVES: capacity held, payment PROCESSING, no
+      // ticket — the buyer is told their payment is on its way.
       if (session.payment_status !== "paid") {
-        log.info("stripe webhook: session completed but not yet paid", {
-          orderId,
-          eventId: event.id,
-          paymentStatus: session.payment_status,
-        });
-        return json({ received: true, note: "awaiting payment" });
+        try {
+          await markPaymentProcessing(orderId, {
+            id: session.id,
+            payment_intent:
+              typeof session.payment_intent === "string" ? session.payment_intent : null,
+          });
+          return json({ received: true, processing: true });
+        } catch (err) {
+          if (err instanceof OverCapacityError) {
+            // The debit will still clear; staff refunds, as for a card.
+            log.warn("stripe webhook: debit reservation over capacity", { orderId, serviceKey: err.serviceKey });
+            return json({ received: true, overCapacity: true });
+          }
+          log.error("stripe webhook: debit reservation failed", { orderId, err });
+          throw err;
+        }
       }
       try {
         await confirmOrderPaid(orderId, {

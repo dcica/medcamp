@@ -138,6 +138,13 @@ export default async function EventRegistrationsPage({
         {/* The gap between this screen's count and a raw row count, named
             rather than left for someone to rediscover. Amber, not red: an
             abandoned cart is normal retail behaviour, not a fault. */}
+        {data.processingOrders > 0 && (
+          <p className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
+            {data.processingOrders} bank debit{data.processingOrders === 1 ? "" : "s"} in flight —{" "}
+            {formatCents(data.processingCents)} held, not yet collected. Seats are reserved; tickets
+            go out when each clears (up to four business days).
+          </p>
+        )}
         {data.unpaidOrders > 0 && (
           <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
             {data.unpaidOrders} cart{data.unpaidOrders === 1 ? "" : "s"} started

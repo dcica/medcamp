@@ -4,7 +4,7 @@ import type { ServiceKind } from "@prisma/client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { formatCents } from "@/lib/money";
-import { computeOrderFees, coverLabel, PLATFORM_FEE_LABEL, type FeePolicy } from "@/lib/fees";
+import { ACH_PROCESSING, computeOrderFees, coverLabel, PLATFORM_FEE_LABEL, type FeePolicy } from "@/lib/fees";
 import { trackBeginCheckout } from "@/lib/analyticsEvents";
 import {
   clearDraft,
@@ -32,6 +32,8 @@ type Service = {
   kind: ServiceKind;
   /** Heads per unit: 1 for a ticket, 2 for a doubles entry, 8 for a table. */
   admitsCount: number;
+  /** ANY, CARD_ONLY or ACH_ONLY (bank debit only — labelled, and it makes the whole order a bank debit). */
+  onlineMethods?: "ANY" | "CARD_ONLY" | "ACH_ONLY";
 };
 
 type Plan = {
@@ -264,11 +266,18 @@ export function RegisterForm({
       : []),
     ...(donationCents > 0 ? [{ amountCents: donationCents, quantity: 1, isDonation: true }] : []),
   ];
-  const fees = computeOrderFees(cartLines, feePolicy, { coverProcessing: coverFee, orgName });
+  // A bank-only item in the cart makes the whole order a bank debit, and the
+  // cover is then grossed up at the bank rate (0.8% capped at $5), not the
+  // card rate — the same rule the server applies in openCheckoutSession.
+  const bankOnlyInCart = services.some(
+    (s) => s.onlineMethods === "ACH_ONLY" && (quantities[s.key] ?? 0) > 0,
+  );
+  const feeOpts = bankOnlyInCart ? { processing: ACH_PROCESSING } : {};
+  const fees = computeOrderFees(cartLines, feePolicy, { coverProcessing: coverFee, orgName, ...feeOpts });
   // What ticking the box would add, shown on the label whether or not it is ticked.
   const coverIfTicked = coverFee
     ? fees.coverCents
-    : computeOrderFees(cartLines, feePolicy, { coverProcessing: true, orgName }).coverCents;
+    : computeOrderFees(cartLines, feePolicy, { coverProcessing: true, orgName, ...feeOpts }).coverCents;
 
   const total = fees.totalCents;
 
@@ -578,6 +587,11 @@ export function RegisterForm({
                           ? "Free"
                           : formatCents(s.priceCents)}
                     </span>
+                    {s.onlineMethods === "ACH_ONLY" && (
+                      <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
+                        bank transfer only
+                      </span>
+                    )}
                   </span>
                 </span>
                 <span className="flex items-center gap-2">
@@ -636,6 +650,13 @@ export function RegisterForm({
             Each admission counts as one entry — you&apos;ll get a QR per entry to
             scan at the door.
           </p>
+          {bankOnlyInCart && (
+            <p className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
+              An item in your order is paid by bank transfer, so this whole order will be
+              paid by bank debit on Stripe&apos;s page. It can take up to four business days to
+              clear; your place is held meanwhile and your tickets are emailed when it does.
+            </p>
+          )}
         </section>
       )}
 

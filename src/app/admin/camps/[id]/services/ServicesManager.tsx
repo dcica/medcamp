@@ -30,6 +30,8 @@ export type Offering = {
   maxDuration: string | null;
   /** Fair market value per unit, dollars. Null = nothing to disclose on the receipt. */
   fairMarketValueDollars: number | null;
+  /** Which online methods may buy it. ACH_ONLY is for the large items; the door never sells one. */
+  onlineMethods: "ANY" | "CARD_ONLY" | "ACH_ONLY";
 };
 
 /** A catalogue service, for the Add picker. */
@@ -261,9 +263,11 @@ function OfferingEditor({
   const [fairMarketValue, setFairMarketValue] = useState(
     row.fairMarketValueDollars === null ? "" : String(row.fairMarketValueDollars),
   );
+  const [onlineMethods, setOnlineMethods] = useState(row.onlineMethods);
 
   const capacityValue = capped ? capacity.trim() : "";
   const dirty =
+    onlineMethods !== row.onlineMethods ||
     fairMarketValue !==
       (row.fairMarketValueDollars === null ? "" : String(row.fairMarketValueDollars)) ||
     price !== String(row.priceDollars) ||
@@ -361,6 +365,24 @@ function OfferingEditor({
           onChange={(e) => setOnsitePrice(e.target.value)}
         />
       </label>
+
+      <label className="block text-sm text-gray-600">
+        Paid online by
+        <select
+          className={inputCls}
+          value={onlineMethods}
+          onChange={(e) => setOnlineMethods(e.target.value as "ANY" | "CARD_ONLY" | "ACH_ONLY")}
+        >
+          <option value="ANY">Card or bank debit (whatever the organisation offers)</option>
+          <option value="CARD_ONLY">Card only</option>
+          <option value="ACH_ONLY">Bank debit only</option>
+        </select>
+      </label>
+      <p className="text-xs text-gray-500">
+        Bank debit only: for large fees — a booth, a sponsorship, a table package — Stripe
+        charges 0.8% capped at $5 instead of 2.9%. A debit takes days to clear, so it closes
+        before the event and the door never sells a bank-only item.
+      </p>
 
       <label className="block text-sm text-gray-600">
         Fair market value per unit ($)
@@ -511,6 +533,7 @@ function OfferingEditor({
                 minDuration: minDuration.trim() === "" ? null : minDuration,
                 maxDuration: maxDuration.trim() === "" ? null : maxDuration,
                 fairMarketValueDollars: blankToNull(fairMarketValue),
+                onlineMethods,
               }),
             )
           }

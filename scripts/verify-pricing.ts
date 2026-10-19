@@ -634,6 +634,58 @@ async function main(): Promise<void> {
     { fee: f4.platformFeeCents, cover: f4.coverCents, total: f4.totalCents, kinds: await feeKindsInDb() },
     { fee: 0, cover: 0, total: 3000, kinds: [] });
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // 10. Bank debits (ACH). A debit takes about four business days to clear and
+  // can still fail, so it is switched off a configurable number of business
+  // days before an event's start; a donation or a membership has no event and
+  // no cutoff. An offering may be card-only or bank-only (a $2,000 booth fee
+  // pays 0.8% capped at $5 by bank rather than 2.9%), and an order over the
+  // organisation's threshold is bank-only. The intersection of every line's
+  // rule with the cutoff is what Checkout is told to accept; an empty
+  // intersection is a sentence to the buyer before any Stripe call.
+  console.log("\n10. Bank debits: the business-day cutoff and the per-offering method rules");
+  const bd = (a: string, b: string) => fees.businessDaysUntil(new Date(a), new Date(b));
+  check("Friday evening to Monday morning is ONE business day (the weekend does not count)",
+    bd("2026-10-16T22:00:00-05:00", "2026-10-19T09:00:00-05:00"), 1);
+  check("Friday to the next Friday is five", bd("2026-10-16T12:00:00-05:00", "2026-10-23T12:00:00-05:00"), 5);
+  check("the same day is zero", bd("2026-10-19T09:00:00-05:00", "2026-10-19T18:00:00-05:00"), 0);
+  check("a target in the past counts nothing", bd("2026-10-19T09:00:00-05:00", "2026-10-12T09:00:00-05:00"), 0);
+  const achOn = { enabled: true, cutoffBusinessDays: 5, achOnlyAboveCents: null as number | null };
+  const achNow = new Date("2026-10-19T09:00:00-05:00"); // a Monday
+  const inBdays = (n: number) => {
+    const d = new Date(achNow);
+    let left = n;
+    while (left > 0) { d.setUTCDate(d.getUTCDate() + 1); const dow = d.getUTCDay(); if (dow !== 0 && dow !== 6) left--; }
+    return d;
+  };
+  check("an event three business days out: no bank debit", fees.achAllowedFor({ eventStartsAt: inBdays(3), now: achNow, policy: achOn, orgAchCapable: true }), false);
+  check("five business days out: allowed", fees.achAllowedFor({ eventStartsAt: inBdays(5), now: achNow, policy: achOn, orgAchCapable: true }), true);
+  check("no event (a gift, a membership): allowed", fees.achAllowedFor({ eventStartsAt: null, now: achNow, policy: achOn, orgAchCapable: true }), true);
+  check("the organisation has not enabled bank debits: never", fees.achAllowedFor({ eventStartsAt: null, now: achNow, policy: { ...achOn, enabled: false }, orgAchCapable: true }), false);
+  check("the connected account lacks the capability: never", fees.achAllowedFor({ eventStartsAt: null, now: achNow, policy: achOn, orgAchCapable: false }), false);
+
+  const far = inBdays(10);
+  const methods = (lines: ("ANY" | "CARD_ONLY" | "ACH_ONLY")[], extra: Partial<Parameters<typeof fees.allowedMethodsFor>[0]> = {}) =>
+    fees.allowedMethodsFor({ lines: lines.map((onlineMethods) => ({ onlineMethods })), totalCents: 5000, eventStartsAt: far, now: achNow, policy: achOn, orgAchCapable: true, ...extra });
+  check("ANY + ANY → card and bank", methods(["ANY", "ANY"]).methods, ["card", "us_bank_account"]);
+  check("ANY + card-only → card", methods(["ANY", "CARD_ONLY"]).methods, ["card"]);
+  check("ANY + bank-only → bank", methods(["ANY", "ACH_ONLY"]).methods, ["us_bank_account"]);
+  check("card-only + bank-only → nothing, with a sentence for the buyer",
+    [methods(["CARD_ONLY", "ACH_ONLY"]).methods, typeof methods(["CARD_ONLY", "ACH_ONLY"]).refusal], [[], "string"]);
+  const inside = methods(["ACH_ONLY"], { eventStartsAt: inBdays(2) });
+  check("bank-only inside the cutoff → nothing, and the sentence names the organiser's other ways to pay",
+    [inside.methods, /bank transfer/i.test(inside.refusal ?? "") && /5 business days/.test(inside.refusal ?? "") && /check or Zelle/i.test(inside.refusal ?? "")],
+    [[], true]);
+  check("an order over the organisation's bank-only threshold → bank only",
+    methods(["ANY"], { totalCents: 250000, policy: { ...achOn, achOnlyAboveCents: 100000 } }).methods, ["us_bank_account"]);
+  check("...and under it → both", methods(["ANY"], { totalCents: 5000, policy: { ...achOn, achOnlyAboveCents: 100000 } }).methods, ["card", "us_bank_account"]);
+  check("bank debits off → card only, whatever the lines say", methods(["ANY"], { policy: { ...achOn, enabled: false } }).methods, ["card"]);
+  check("a bank-only cover is grossed up at the bank rate: 0.8% → $0.81 on $100 (the card rate would be $3.30)",
+    [fees.grossUpForFee(10000, fees.ACH_PROCESSING), fees.grossUpForCardFee(10000, P.processing)], [81, 330]);
+  check("...capped at $5 like the fee it covers: $5.00 on $1,000", fees.grossUpForFee(100000, fees.ACH_PROCESSING), 500);
+  check("computeOrderFees takes the rate as an option, so a bank-only order's cover is the bank gross-up",
+    fees.computeOrderFees([{ amountCents: 10000, quantity: 1 }], { ...P, payer: "absorb" }, { coverProcessing: true, orgName: ORG, processing: fees.ACH_PROCESSING }).coverCents, 81);
+
   await cleanup(org.id);
 }
 
