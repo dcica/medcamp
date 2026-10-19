@@ -725,11 +725,83 @@ async function main() {
   check("confirmOrderPaid sends a donation receipt for an eventless order", /sendDonationReceiptEmail\(/.test(paySrc));
   check("...and stamps receiptSentAt only when it was delivered", /receiptSentAt/.test(paySrc) && /delivered/.test(paySrc));
 
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§13 a Zelle, cheque or cash payment is recorded from the registrations page");
+  // What scripts/mint-offline-order.ts did from a laptop, now a server function
+  // the admin page calls: the SAME createRegistration (prices from the cap
+  // rows, never from the form) and the SAME confirmOrderPaid (caps, codes,
+  // one ledger row), keyed on the payment reference so a double entry cannot
+  // mint twice, and refusing to confirm when the money received is not what
+  // the basket costs — the order is left PENDING for a human to look at.
+  const { recordOfflinePayment } = await import("../src/server/offlineOrders");
+  const payer = { name: "Zelle Payer", email: "verify-regs-zelle@example.org" };
+  const zelle = await recordOfflinePayment(org.id, {
+    eventId: event.id, registrant: payer, items: [{ serviceKey: ADMIT_KEY, quantity: 2 }],
+    method: "ZELLE", amountCents: 5000, ref: "ZL-VERIFY-1",
+  });
+  check("a Zelle payment for 2 × $25 confirms the order and mints two codes",
+    zelle.ok && zelle.campIds.length === 2 && zelle.alreadyConfirmed === false, JSON.stringify(zelle));
+  if (zelle.ok) {
+    const zo = await db.order.findUniqueOrThrow({ where: { id: zelle.orderId }, include: { payments: true, lineItems: true } });
+    check("...settled as ZELLE with one SUCCEEDED payment for the amount received",
+      zo.status === "CONFIRMED" && zo.method === "ZELLE" && zo.payments.length === 1 && zo.payments[0]?.status === "SUCCEEDED" && zo.payments[0]?.amountCents === 5000);
+    check("...keyed on the payment reference", zo.idempotencyKey === "ZL-VERIFY-1");
+    check("...with no phone invented: the sentinel stands in", zo.registrantPhone === "000-000-0000");
+  }
+  const again = await recordOfflinePayment(org.id, {
+    eventId: event.id, registrant: payer, items: [{ serviceKey: ADMIT_KEY, quantity: 2 }],
+    method: "ZELLE", amountCents: 5000, ref: "ZL-VERIFY-1",
+  });
+  check("the same reference again is refused as a duplicate, not minted twice",
+    !again.ok && again.reason === "duplicate-ref", JSON.stringify(again));
+  const short = await recordOfflinePayment(org.id, {
+    eventId: event.id, registrant: payer, items: [{ serviceKey: ADMIT_KEY, quantity: 2 }],
+    method: "CHECK", amountCents: 4000, ref: "CHK-VERIFY-2",
+  });
+  check("money that does not match the basket is NOT confirmed: the order is left PENDING, and says why",
+    !short.ok && short.reason === "amount-mismatch" && short.totalCents === 5000 && typeof short.orderId === "string"
+      && (await db.order.findUniqueOrThrow({ where: { id: short.orderId! } })).status === "PENDING",
+    JSON.stringify(short));
+  const unknownItem = await recordOfflinePayment(org.id, {
+    eventId: event.id, registrant: payer, items: [{ serviceKey: "not-offered", quantity: 1 }],
+    method: "CASH", amountCents: 100, ref: "CASH-VERIFY-3",
+  });
+  check("an item the event does not sell is refused in the buyer's words", !unknownItem.ok && unknownItem.reason === "refused");
+  const camp = await db.event.create({
+    data: {
+      orgId: org.id, type: "CAMP", status: "OPEN", code: `${CODE}-CAMP`, name: "Registrations Camp",
+      startsAt: new Date(Date.now() + 20 * 24 * 3600_000), endsAt: new Date(Date.now() + 20 * 24 * 3600_000 + 3 * 3600_000),
+      collectsAttendeeDetails: true,
+    },
+  });
+  const campTry = await recordOfflinePayment(org.id, {
+    eventId: camp.id, registrant: payer, items: [{ serviceKey: ADMIT_KEY, quantity: 1 }],
+    method: "ZELLE", amountCents: 2500, ref: "ZL-VERIFY-4",
+  });
+  check("an attendee-mode event is refused (per-person details cannot be invented here)",
+    !campTry.ok && campTry.reason === "attendee-mode", JSON.stringify(campTry));
+  const foreign = await recordOfflinePayment("not-this-org", {
+    eventId: event.id, registrant: payer, items: [{ serviceKey: ADMIT_KEY, quantity: 1 }],
+    method: "ZELLE", amountCents: 2500, ref: "ZL-VERIFY-5",
+  });
+  check("another organisation's event is refused with the same words as a missing one",
+    !foreign.ok && foreign.message === "That event could not be found.", JSON.stringify(foreign));
+  // The ticket email has ONE builder now, shared by the webhook path, the
+  // resend button and the offline script. Read as text.
+  const paySrc2 = readFileSync(join(process.cwd(), "src/server/payments.ts"), "utf8");
+  check("confirmOrderPaid sends the ticket through sendTicketEmailFor", /sendTicketEmailFor\(/.test(paySrc2));
+  check("...and there is exactly one sendConfirmationEmail call in payments.ts", (paySrc2.match(/sendConfirmationEmail\(/g) ?? []).length === 1);
+  check("the offline script's --resend uses the shared builder too",
+    /sendTicketEmailFor\(/.test(readFileSync(join(process.cwd(), "scripts/mint-offline-order.ts"), "utf8")));
+  const actSrc = readFileSync(join(process.cwd(), "src/app/admin/camps/[id]/registrations/actions.ts"), "utf8");
+  check("the admin actions require an admin and re-scope the event to the organisation",
+    /requireAdmin\(\)/.test(actSrc) && /recordOfflinePayment\(/.test(actSrc) && /sendTicketEmailFor\(/.test(actSrc));
+
   await cleanup(org.id);
 }
 
 async function cleanup(orgId: string): Promise<void> {
-  const events = await db.event.findMany({ where: { orgId, code: CODE } });
+  const events = await db.event.findMany({ where: { orgId, code: { in: [CODE, `${CODE}-CAMP`] } } });
   for (const event of events) {
     const orders = await db.order.findMany({
       where: { eventId: event.id },

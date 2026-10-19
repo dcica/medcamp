@@ -6,7 +6,10 @@ import { getActiveOrg } from "@/lib/tenant";
 import { formatCents } from "@/lib/money";
 import { VENUE_TIME_ZONE } from "@/lib/eventTime";
 import { getEventRegistrations } from "@/server/registrations";
+import { emailConfig } from "@/lib/email";
 import { Breadcrumbs, campTrail } from "@/app/_components/Breadcrumbs";
+import { OfflinePaymentForm } from "./OfflinePaymentForm";
+import { ResendTicketButton } from "./ResendTicketButton";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +41,22 @@ export default async function EventRegistrationsPage({
   if (!event) notFound();
 
   const data = await getEventRegistrations(org.id, event.id);
+  // The offline-payment form's item list: quantity mode only (an attendee-mode
+  // order needs per-person details nobody should invent from a bank transfer).
+  const offlineOfferings = event.collectsAttendeeDetails
+    ? []
+    : (
+        await db.serviceCap.findMany({
+          where: { eventId: event.id, serviceType: { active: true, kind: { in: ["ADMISSION", "MERCH"] } } },
+          include: { serviceType: true },
+          orderBy: { serviceType: { name: "asc" } },
+        })
+      ).map((c) => ({
+        key: c.serviceType.key,
+        name: c.serviceType.name,
+        priceCents: c.priceCents,
+        onsitePriceCents: c.onsitePriceCents,
+      }));
   const otherRevenue =
     data.donationCents + data.membershipCents + data.platformFeeCents + data.feeCoverCents;
 
@@ -176,6 +195,15 @@ export default async function EventRegistrationsPage({
         <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
           Paid orders
         </h3>
+        {!event.collectsAttendeeDetails && (
+          <div className="mb-3">
+            <OfflinePaymentForm
+              eventId={event.id}
+              offerings={offlineOfferings}
+              emailConfigured={emailConfig().configured}
+            />
+          </div>
+        )}
         {event.namesAttendees && (
           <a
             href={`/api/reports/entrants?event=${event.id}`}
@@ -246,6 +274,7 @@ export default async function EventRegistrationsPage({
                     </p>
                   )
                 )}
+                <ResendTicketButton orderId={o.id} />
               </li>
             ))}
           </ul>

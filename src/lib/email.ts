@@ -183,7 +183,7 @@ async function dispatch(
    * cannot roll back an already-paid, already-confirmed order.
    */
   buildRaw?: () => Promise<Buffer>,
-): Promise<void> {
+): Promise<{ delivered: boolean }> {
   // ONE chokepoint, before anything else. Every walk-up cash sale is recorded
   // against gate@gate.local, a reserved TLD (RFC 6762) that never resolves --
   // so today each one is a silent hard bounce, and SES suspends an account over
@@ -192,7 +192,7 @@ async function dispatch(
   // it until sending stopped working for real guests.
   if (isUndeliverableAddress(to)) {
     log.info("email skipped: reserved address", { to, subject });
-    return;
+    return { delivered: false };
   }
   try {
     let raw: Buffer | undefined;
@@ -210,7 +210,7 @@ async function dispatch(
         });
       }
     }
-    await send(sender, to, subject, body, raw);
+    return await send(sender, to, subject, body, raw);
   } catch (err) {
     log.error("email send failed", {
       provider: env.EMAIL_PROVIDER,
@@ -218,6 +218,7 @@ async function dispatch(
       subject,
       err,
     });
+    return { delivered: false };
   }
 }
 
@@ -282,8 +283,8 @@ export async function getSesAccountStatus(): Promise<SesAccountStatus | null> {
 export async function sendConfirmationEmail(
   msg: ConfirmationEmail,
   sender: Sender = defaultSender(),
-): Promise<void> {
-  await dispatch(sender, msg.to, confirmationSubject(msg), confirmationText(msg), () =>
+): Promise<{ delivered: boolean }> {
+  return dispatch(sender, msg.to, confirmationSubject(msg), confirmationText(msg), () =>
     buildConfirmationMime(msg, sender.from, sender.replyTo),
   );
 }

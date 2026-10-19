@@ -448,6 +448,84 @@ export async function ensureFeeLines(order: {
 }
 
 /**
+ * Build and send the ticket email for a CONFIRMED order — the ONE builder,
+ * called from confirmOrderPaid's post-transaction block (the webhook path),
+ * from the registrations page's resend button, and from the offline script's
+ * --resend. Reports delivery (the no-provider console path is not delivery)
+ * so a desk can tell whether the guest has their pass. Never throws: email is
+ * best-effort and the order is already confirmed.
+ *
+ * Returns `{ delivered: false }` without sending for an order that is not
+ * CONFIRMED or has no event (a general-fund donation gets a receipt, not a
+ * ticket — see confirmOrderPaid).
+ */
+export async function sendTicketEmailFor(orderId: string): Promise<{ delivered: boolean }> {
+  const order = await db.order.findUnique({
+    where: { id: orderId },
+    // Line items (with their service type) drive the PAID block and the
+    // will-call list; the event carries venue, times and the refund policy.
+    // Every link is built from the organisation's own host — this runs from
+    // the webhook too, where no request is in scope.
+    include: {
+      event: true,
+      lineItems: { include: { serviceType: true } },
+      performanceEntry: true,
+      attendees: { select: { campId: true }, orderBy: { seat: "asc" } },
+      org: { include: { domains: true } },
+    },
+  });
+  if (!order || !order.event || order.status !== "CONFIRMED") return { delivered: false };
+
+  const base = orgBaseUrl(order.org);
+  const profile = resolveOrgProfile(order.org.settings);
+  const campIds = order.attendees.map((a) => a.campId).filter((c): c is string => Boolean(c));
+  return sendConfirmationEmail(
+    {
+      to: order.registrantEmail,
+      registrantName: order.registrantName,
+      eventName: order.event.name,
+      confirmUrl: `${base}/confirm/${order.id}`,
+      walletBaseUrl: base,
+      campIds,
+      // A FEE-kind entry admits nobody, so the wording must not call the
+      // code a ticket or promise it admits anyone. The entry URL is keyed on
+      // the receipt code, which only exists once the order is confirmed.
+      performanceEntry: order.performanceEntry
+        ? {
+            groupName: order.performanceEntry.groupName,
+            songTitle: order.performanceEntry.songTitle,
+            songNeeded: order.performanceEntry.songObjectPath === null,
+            entryUrl: `${base}/perform/${campIds[0] ?? ""}`,
+          }
+        : null,
+      lineItems: order.lineItems.map((li) => ({
+        description: li.serviceType?.name ?? li.description,
+        quantity: li.quantity,
+        amountCents: li.amountCents,
+      })),
+      // Only MERCH service types are physical goods handed over at the gate —
+      // admission and fee lines have nothing to collect.
+      merch: order.lineItems
+        .filter((li) => li.serviceType?.kind === "MERCH")
+        .map((li) => ({
+          description: li.serviceType?.name ?? li.description,
+          quantity: li.quantity,
+        })),
+      totalPaidCents: order.lineItems.reduce((s, li) => s + li.amountCents * li.quantity, 0),
+      venue: order.event.location,
+      startsAt: order.event.startsAt,
+      endsAt: order.event.endsAt,
+      allowsRefunds: order.event.allowsRefunds,
+      theme: emailThemeOf(order.org.settings),
+      // The Pub 1771 statement, from the values snapshotted on the lines at
+      // creation; null (nothing said) unless an offering carried one.
+      contribution: contributionOf(order.lineItems),
+    },
+    { from: senderFor(profile, env.EMAIL_FROM), replyTo: profile.contactEmail },
+  );
+}
+
+/**
  * The buyer's GA client id, read from their first-party `_ga` cookie, or null.
  *
  * ── WHY THE try/catch IS NOT DEFENSIVE CLUTTER ──
@@ -1074,7 +1152,6 @@ export async function confirmOrderPaid(
           org: { include: { domains: true } },
         },
       });
-      const base = orgBaseUrl(order.org);
       const profile = resolveOrgProfile(order.org.settings);
       const sender = { from: senderFor(profile, env.EMAIL_FROM), replyTo: profile.contactEmail };
       if (!order.event) {
@@ -1105,50 +1182,9 @@ export async function confirmOrderPaid(
           await db.order.update({ where: { id: order.id }, data: { receiptSentAt: new Date() } });
         }
       } else {
-      await sendConfirmationEmail({
-        to: order.registrantEmail,
-        registrantName: order.registrantName,
-        eventName: order.event.name,
-        confirmUrl: `${base}/confirm/${order.id}`,
-        walletBaseUrl: base,
-        campIds: result.campIds,
-        // A FEE-kind entry admits nobody, so the wording must not call the
-        // code a ticket or promise it admits anyone. The entry URL is keyed on
-        // the receipt code, which only exists now that the order is confirmed.
-        performanceEntry: order.performanceEntry
-          ? {
-              groupName: order.performanceEntry.groupName,
-              songTitle: order.performanceEntry.songTitle,
-              songNeeded: order.performanceEntry.songObjectPath === null,
-              entryUrl: `${base}/perform/${result.campIds[0] ?? ""}`,
-            }
-          : null,
-        lineItems: order.lineItems.map((li) => ({
-          description: li.serviceType?.name ?? li.description,
-          quantity: li.quantity,
-          amountCents: li.amountCents,
-        })),
-        // Only MERCH service types are physical goods handed over at
-        // the gate — admission and fee lines have nothing to collect.
-        merch: order.lineItems
-          .filter((li) => li.serviceType?.kind === "MERCH")
-          .map((li) => ({
-            description: li.serviceType?.name ?? li.description,
-            quantity: li.quantity,
-          })),
-        totalPaidCents: order.lineItems.reduce(
-          (s, li) => s + li.amountCents * li.quantity,
-          0,
-        ),
-        venue: order.event.location,
-        startsAt: order.event.startsAt,
-        endsAt: order.event.endsAt,
-        allowsRefunds: order.event.allowsRefunds,
-        theme: emailThemeOf(order.org.settings),
-        // The Pub 1771 statement, from the values snapshotted on the lines at
-        // creation; null (nothing said) unless an offering carried one.
-        contribution: contributionOf(order.lineItems),
-      }, sender);
+        // The ONE ticket-email builder, shared with the resend button and the
+        // offline script, so the three can never drift.
+        await sendTicketEmailFor(order.id);
       }
 
       // ── GA4 `purchase`, same guard, same side of the transaction ──

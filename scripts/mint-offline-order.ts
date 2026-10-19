@@ -605,47 +605,10 @@ async function main() {
         .map((a) => a.campId)
         .filter((c): c is string => Boolean(c));
 
-      const { problems } = await watchingEmailLog(log, () =>
-        sendConfirmationEmail({
-          to: order.registrantEmail,
-          registrantName: order.registrantName,
-          eventName: ev.name,
-          confirmUrl: `${orgBaseUrl(event.org)}/confirm/${order.id}`,
-          walletBaseUrl: orgBaseUrl(event.org),
-          campIds,
-          performanceEntry: order.performanceEntry
-            ? {
-                groupName: order.performanceEntry.groupName,
-                songTitle: order.performanceEntry.songTitle,
-                songNeeded: order.performanceEntry.songObjectPath === null,
-                entryUrl: `${orgBaseUrl(event.org)}/perform/${campIds[0] ?? ""}`,
-              }
-            : null,
-          lineItems: order.lineItems.map((li) => ({
-            description: li.serviceType?.name ?? li.description,
-            quantity: li.quantity,
-            amountCents: li.amountCents,
-          })),
-          merch: order.lineItems
-            .filter((li) => li.serviceType?.kind === "MERCH")
-            .map((li) => ({
-              description: li.serviceType?.name ?? li.description,
-              quantity: li.quantity,
-            })),
-          totalPaidCents: order.lineItems.reduce(
-            (s, li) => s + li.amountCents * li.quantity,
-            0,
-          ),
-          venue: ev.location,
-          startsAt: ev.startsAt,
-          endsAt: ev.endsAt,
-          allowsRefunds: ev.allowsRefunds,
-          theme: emailThemeOf(event.org.settings),
-        }, {
-          from: senderFor(resolveOrgProfile(event.org.settings), env.EMAIL_FROM),
-          replyTo: resolveOrgProfile(event.org.settings).contactEmail,
-        }),
-      );
+      // The ONE ticket-email builder, shared with the webhook path and the
+      // registrations page's resend button (src/server/payments.ts).
+      const { sendTicketEmailFor } = await import("../src/server/payments");
+      const { problems } = await watchingEmailLog(log, () => sendTicketEmailFor(order.id));
       if (problems.length > 0) {
         fail(`${e.email}: resend failed — ${problems.join("; ")}`);
       } else {

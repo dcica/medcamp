@@ -46,7 +46,7 @@
 import type { Role } from "@prisma/client";
 import * as dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 // The machine has a global DATABASE_URL pointing at an unrelated project; dotenv
@@ -344,6 +344,13 @@ async function main(): Promise<void> {
   check("startCardSale shows the total Checkout will charge, not the goods total",
     /const \{ url, totalCents \} = await createCheckoutForOrder\(orderId\)/.test(cardBodies)
       && !/totalCents \} = await sellAtGate/.test(cardBodies));
+
+  // Recording a Zelle/cheque/cash payment is a REGISTRATIONS-PAGE action, never
+  // a door one: the scan station must have no path to it, or a volunteer at the
+  // gate could mint and confirm an order with no till and no money.
+  const scanFiles = walkDir("src/app/scan");
+  check("the scan station never imports the offline recorder",
+    scanFiles.every((f) => !/offlineOrders/.test(readFileSync(f, "utf8"))), scanFiles.length + " files");
 
   const declared = [...actionsSrc.matchAll(/export async function (\w+)\(/g)].map((m) => m[1]);
   eq("no unclassified gate action", declared.filter((n) => ![...CASH_ACTIONS, ...OPEN_ACTIONS].includes(n)), []);
@@ -1091,6 +1098,14 @@ async function makeMember(orgId: string, email: string, role: Role, canHoldTill:
 }
 
 /** The source text of one exported action, up to the next export. */
+/** Every .ts/.tsx under a directory, for the scan-station sweep in §2. */
+function walkDir(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const p = join(dir, name);
+    return statSync(p).isDirectory() ? walkDir(p) : /\.(ts|tsx)$/.test(p) ? [p] : [];
+  });
+}
+
 function actionBody(src: string, name: string): string {
   const start = src.indexOf(`export async function ${name}(`);
   if (start === -1) return "";
