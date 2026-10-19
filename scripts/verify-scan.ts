@@ -30,6 +30,7 @@ import { join } from "node:path";
 import * as v from "../src/lib/scanVerdict";
 import * as latch from "../src/lib/scanLatch";
 import * as tones from "../src/lib/scanTones";
+import * as words from "../src/lib/scanToneStyles";
 
 let failures = 0;
 
@@ -61,6 +62,7 @@ async function main(): Promise<void> {
     "PARTY_ADMITTED", "PARTY_PARTIAL",
     "UNPAID", "PAYMENT_UNCONFIRMED", "NOT_A_TICKET", "ORDER_VOID", "WRONG_EVENT",
     "WAIVER_UNSIGNED", "NO_MATCH", "CAMERA_ERROR", "SERVER_ERROR",
+    "PICKUP", "ALREADY_COLLECTED",
   ];
 
   const SIGNALS: v.ScanSignal[] = [
@@ -73,6 +75,8 @@ async function main(): Promise<void> {
     { kind: "unpaid", owed: "$25.00" },
     { kind: "paymentUnconfirmed" },
     { kind: "notATicket" },
+    { kind: "pickup", pending: 2, collected: 0, items: "Unlimited Rides ×2 · Laser Tag" },
+    { kind: "pickup", pending: 0, collected: 2, at: "4:12 PM" },
     { kind: "voidOrder", status: "REFUNDED" },
     { kind: "wrongEvent", eventName: "Garba 2026" },
     { kind: "waiverUnsigned" },
@@ -153,6 +157,32 @@ async function main(): Promise<void> {
   eq("a party of one collapses to the ordinary single admit",
     party(1, 0).outcome, "ADMITTED");
   check("singular wristband for one person", party(3, 0).instruction === "Give 3 wristbands");
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // A PAID RECEIPT WITH GOODS ON IT IS A PICKUP, NOT A REFUSAL. Diwali's kids
+  // carnival sells wristbands and tokens as MERCH on a free-entry festival, so
+  // every carnival order is merch-only: one receipt code and nothing to admit.
+  // The old mapping settled that as NOT_A_TICKET -- red, "Sell them admission"
+  // -- at a booth whose only job is to hand the goods over. The list of what to
+  // hand over IS the detail, because the volunteer reads it rather than a
+  // colour; that is also why it is a hold and not a go.
+  const pickup = v.verdictFor({
+    kind: "pickup", pending: 2, collected: 0, items: "Unlimited Rides ×2 · Laser Tag",
+  });
+  const collected = v.verdictFor({ kind: "pickup", pending: 0, collected: 2, at: "4:12 PM" });
+  eq("A PAID RECEIPT WITH GOODS TO HAND OVER IS A HOLD, NOT A STOP", pickup.tone, "hold");
+  // Nor green: the scan itself stamped nothing. "Handed over" is green AFTER the tap.
+  eq("...nor a GO -- the scan changed nothing yet", pickup.tone !== "go", true);
+  eq("...and it is its own outcome, not NOT_A_TICKET", pickup.outcome, "PICKUP");
+  check("...and it lists what to hand over",
+    pickup.detail?.includes("Unlimited Rides ×2") === true, String(pickup.detail));
+  check("...and never says wristband -- that word means floor access here",
+    !/wristband/i.test(pickup.instruction ?? ""), String(pickup.instruction));
+  eq("an all-collected re-scan reads ALREADY_COLLECTED", collected.outcome, "ALREADY_COLLECTED");
+  eq("...as a hold, like any other re-scan", collected.tone, "hold");
+  check("...and says when", collected.detail?.includes("4:12 PM") === true, String(collected.detail));
+  check("...and tells the volunteer to hand over nothing more",
+    /nothing more/i.test(collected.instruction ?? ""), String(collected.instruction));
 
   // ───────────────────────────────────────────────────────────────────────────
   // A REFUNDED order is not paid AND owes nothing -- every line is REFUNDED,
@@ -342,6 +372,17 @@ async function main(): Promise<void> {
   // The tone also reaches the volunteer as WORDS. Colour fails in a bright
   // doorway, the glyph fails on a cracked screen; "LET IN" fails in neither.
   check("the tone is also stated in words", gateMode.includes("TONE_WORD"));
+  // THE WORD IS WHAT THE VOLUNTEER SAYS OUT LOUD. PICKUP is a hold (the scan
+  // stamped nothing), and the hold word is "STOP · ASK" -- which, above a
+  // headline of "Hand over", is a contradiction a volunteer has to resolve
+  // under queue pressure. The word for that one outcome says the action.
+  // ALREADY_COLLECTED keeps the tone's word: nothing more is handed over.
+  eq("a pickup's word says the action, not the tone's STOP · ASK",
+    words.OUTCOME_WORD.PICKUP, "READ · HAND OVER");
+  eq("...and an all-collected re-scan keeps STOP · ASK",
+    words.OUTCOME_WORD.ALREADY_COLLECTED, undefined);
+  check("...and the station reads the outcome's word before the tone's",
+    /OUTCOME_WORD\[phase\.verdict\.outcome\] \?\? TONE_WORD\[phase\.verdict\.tone\]/.test(gateMode));
   check("the station hard-codes no border colour of its own",
     !/border-(green|amber|red)-[0-9]/.test(gateMode),
     (gateMode.match(/border-(green|amber|red)-[0-9]+/g) ?? []).join(" "));
@@ -420,8 +461,37 @@ async function main(): Promise<void> {
     /admitsNobody: boolean/.test(gate));
   check("...populated from the shared predicate, not re-derived",
     /admitsNobody: admitsNobody\(/.test(gate));
-  check("...and the door settles it on the SCAN, before any tap",
-    /g\.admitsNobody[\s\S]{0,120}notATicket/.test(gateMode));
+  // ...AND A PAID RECEIPT WITH GOODS ON IT SETTLES AS A PICKUP, NOT A REFUSAL.
+  // Diwali's carnival sells wristbands and tokens as MERCH on a free-entry
+  // festival, so every carnival order is merch-only, and "Sell them admission"
+  // was the booth's verdict for everyone who had paid. Still settled on the
+  // SCAN, before any tap; still NOT_A_TICKET when there is nothing to collect.
+  check("...and the door settles a paid receipt as a pickup on the SCAN, before any tap",
+    /g\.admitsNobody[\s\S]{0,900}kind: "pickup"/.test(gateMode));
+  check("...only when it is paid and has goods on it",
+    /g\.isPaid && g\.pickupItems\.length > 0/.test(gateMode));
+  check("...and a receipt with nothing to collect still reads not-a-ticket",
+    /kind: "pickup"[\s\S]{0,600}kind: "notATicket"/.test(gateMode));
+  check("...with every pending line pre-ticked, so the hand-over is one tap",
+    /setPickupSel\(new Set\(pending\.map/.test(gateMode));
+  // The dock used to offer "Admit & wristband" under that red verdict, and
+  // "Take cash & admit" for an unpaid receipt -- which took the cash,
+  // confirmed, and THEN threw NOT_A_TICKET before the goods were stamped.
+  check("the dock never offers Admit or Take-cash-and-admit on a receipt",
+    /view\.admitsNobody\) return null/.test(gateMode));
+  // A guest found by name search is the same guest as one found by scan.
+  check("a search hit is classified by the same rule as a scan",
+    /settleFor\(hit, "acted"\)/.test(gateMode) && /settleFor\(g, "resolved"\)/.test(gateMode));
+  // A walk-up basket that admits nobody -- four carnival wristbands -- is
+  // sold AND handed over by the server in one call. "Admitted · Give
+  // wristband" was the cash verdict for it, and "Already in" the card one,
+  // because party(0, 0) collapses to a re-scan.
+  check("a cash walk-up that admits nobody settles as a hand-over, not an admit",
+    /admits === 0\s*\?\s*handedOver\("Sold and handed over"/.test(gateMode));
+  check("...and so does a card walk-up",
+    /cardSale\.admits === 0\s*\?\s*handedOver\("Paid/.test(gateMode));
+  check("...and the cash button says hand over, not admit 0",
+    /admits === 0 \? "& hand over"/.test(gateMode));
 
   // PART OF A PARTY CAN ARRIVE FIRST. The redesign replaced the old
   // per-ticket Admit buttons with pips, which are not tappable, so a family

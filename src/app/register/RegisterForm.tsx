@@ -540,8 +540,9 @@ export function RegisterForm({
             );
           })}
           <p className="text-xs text-gray-400">
-            Each admission counts as one entry — you&apos;ll get a QR per entry to
-            scan at the door.
+            {services.some((s) => s.kind === "ADMISSION")
+              ? "Each admission counts as one entry — you'll get a QR per entry to scan at the door."
+              : "You'll get one QR code — show it at the booth to collect your items."}
           </p>
         </section>
       )}

@@ -75,6 +75,19 @@ export default async function TicketPage({
   const merch = attendee.order.lineItems.filter(
     (li) => li.serviceType?.kind === "MERCH",
   );
+  // A MERCH-only order (Diwali's carnival wristbands) is a pickup receipt:
+  // nothing on it admits, so "show this at the gate" is the wrong sentence,
+  // and once every line is stamped the useful news is that it is all collected.
+  const pickupOnly =
+    merch.length > 0 &&
+    !attendee.order.lineItems.some((li) => li.serviceType?.kind === "ADMISSION");
+  const collectedAt =
+    pickupOnly && merch.every((li) => li.fulfilledAt)
+      ? merch.reduce<Date | null>((latest, li) => {
+          const t = li.fulfilledAt!;
+          return latest && latest > t ? latest : t;
+        }, null)
+      : null;
 
   return (
     <main className="mx-auto max-w-screen-sm px-4 py-6">
@@ -104,9 +117,15 @@ export default async function TicketPage({
         <p className="mt-3 rounded-lg bg-red-600 px-4 py-3 font-semibold text-white">
           Not paid yet — settle at the desk before entry.
         </p>
+      ) : collectedAt ? (
+        <p className="mt-3 rounded-lg bg-amber-400 px-4 py-3 font-semibold text-[#16201f]">
+          All collected · {formatVenueDate(collectedAt)} {formatVenueTime(collectedAt)}
+        </p>
       ) : (
         <p className="mt-3 rounded-lg bg-green-600 px-4 py-3 font-semibold text-white">
-          Valid — show this at the gate
+          {pickupOnly
+            ? "Valid — show this to collect your items"
+            : "Valid — show this at the gate"}
         </p>
       )}
 

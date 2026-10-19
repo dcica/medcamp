@@ -725,7 +725,11 @@ async function main() {
   // where a slow endpoint holds a DB lock on the money path.
   const paySrc = readFileSync("src/server/payments.ts", "utf8");
   const sendAt = paySrc.indexOf("sendPurchaseEvent({");
-  const guardAt = paySrc.indexOf("if (!result.alreadyConfirmed)");
+  // Matched on the guard's STEM, not the whole expression: the condition may
+  // legitimately carry more clauses (--historical suppression, below), and
+  // pinning the exact text would make any addition look like a regression. The
+  // property being asserted is only that the send sits INSIDE this guard.
+  const guardAt = paySrc.indexOf("if (!result.alreadyConfirmed");
   const thenAt = paySrc.indexOf(".then(async (result)");
   check("confirmOrderPaid sends the purchase event", sendAt > 0);
   check(
@@ -739,6 +743,18 @@ async function main() {
   check(
     "…and outside the transaction, so Google cannot hold a DB lock",
     thenAt > 0 && sendAt > thenAt,
+  );
+  // The email and the purchase event describe the same thing — a sale that just
+  // happened — so a reconstruction of a PAST sale must suppress both or neither.
+  // One guard, not two: splitting them is how you end up mailing a ticket for
+  // last night's event, or booking last night's revenue against today in GA4.
+  check(
+    "…and ONE condition suppresses the email and the purchase event together (--historical)",
+    /if \(!result\.alreadyConfirmed && !input\.historical\)/.test(paySrc),
+  );
+  check(
+    "…with no second, separate historical check that could drift from it",
+    paySrc.split("input.historical").length - 1 === 1,
   );
   check(
     "the client id is captured in openCheckoutSession — the one path every checkout takes",

@@ -8,7 +8,7 @@ import { GATE_MAX_QTY_PER_LINE, type GateSaleItem } from "@/lib/ticketMinting";
 import Link from "next/link";
 
 import { QrScanner } from "@/app/_components/QrScanner";
-import { PENDING_WORD, TONE_BAND, TONE_WORD } from "@/lib/scanToneStyles";
+import { OUTCOME_WORD, PENDING_WORD, TONE_BAND, TONE_WORD } from "@/lib/scanToneStyles";
 import {
   verdictFor,
   signalForError,
@@ -43,6 +43,24 @@ type CatalogItem = { id: string; name: string; priceCents: number };
 /** id -> quantity. A Set could not hold a duplicate, which is exactly why
     the gate could never sell two of anything. */
 type Basket = Map<string, number>;
+
+/** The inverse of basketItems, for the paths that only hold the array. */
+function basketOf(items: GateSaleItem[]): Basket {
+  return new Map(items.map((i) => [i.serviceTypeId, i.quantity]));
+}
+
+/** "Unlimited Rides ×2 · Laser Tag" — what a walk-up basket hands over. */
+function describeBasket(catalog: Catalog, items: GateSaleItem[]): string {
+  const all: CatalogItem[] = [...catalog.admission, ...catalog.merch, ...catalog.fees];
+  return items
+    .map((i) => {
+      const it = all.find((x) => x.id === i.serviceTypeId);
+      if (!it) return null;
+      return i.quantity > 1 ? `${it.name} ×${i.quantity}` : it.name;
+    })
+    .filter((s): s is string => s !== null)
+    .join(" · ");
+}
 
 function basketItems(b: Basket): GateSaleItem[] {
   return [...b.entries()].map(([serviceTypeId, quantity]) => ({ serviceTypeId, quantity }));
@@ -157,6 +175,14 @@ export function GateMode({
     qr: string;
     url: string;
     totalCents: number;
+    /**
+     * Heads this basket admits, and what it hands over. Fixed when the sale
+     * starts, because the poll only learns "paid" — and a carnival basket
+     * that admits nobody must settle as a hand-over, not as "Already in",
+     * which is what party(0, 0) collapses to.
+     */
+    admits: number;
+    items: string;
   } | null>(null);
   const [cardWaited, setCardWaited] = useState(0);
   /** Bumped to remount WalkUpForm with empty state, without hiding it. */
@@ -180,13 +206,13 @@ export function GateMode({
    * deliberately does NOT reuse the ADMITTED verdict: nobody was admitted,
    * and "give wristband" under a merch pickup is how someone walks in free.
    */
-  function handedOver(headline: string): ScanVerdict {
+  function handedOver(headline: string, detail?: string | null): ScanVerdict {
     return {
       outcome: "ADMITTED",
       tone: "go",
       glyph: "✓",
       headline,
-      detail: view?.name ?? null,
+      detail: detail ?? view?.name ?? null,
       instruction: "Goods given to the guest",
     };
   }
@@ -274,16 +300,9 @@ export function GateMode({
     setPickupSel(new Set());
     setBuySel(new Map());
     setView(hit);
-    if (hit.alreadyAdmitted) {
-      settle(
-        verdictFor({
-          kind: "already",
-          flow: "gate",
-          at: hit.admittedAt ? formatVenueTime(new Date(hit.admittedAt)) : null,
-        }),
-        "acted",
-      );
-    }
+    // "acted", not "resolved": the latch only takes a resolve while it is
+    // reading a decode, and a search tap happens from the idle station.
+    settleFor(hit, "acted");
   }
 
   function clearGuest() {
@@ -320,50 +339,83 @@ export function GateMode({
       setPickupSel(new Set());
       setBuySel(new Map());
       setView(g);
+      settleFor(g, "resolved");
+    });
+  }
 
-      // A resolve is already a verdict for every state the volunteer cannot
-      // simply act on. Only "paid, here, not yet admitted" leaves the station
-      // quiet and waiting for the Admit tap, because nothing has happened yet.
-      if (g.eventId !== eventId) {
-        return settle(
-          verdictFor({ kind: "wrongEvent", eventName: g.eventName }),
-          "resolved",
-        );
-      }
-      // Money already went back, or the sale was called off. Neither is
-      // payable, and both used to read as "owes $0.00" because a REFUNDED
-      // line is not a PENDING_PAYMENT one.
-      if (isVoidOrder(g.orderStatus)) {
-        return settle(
-          verdictFor({ kind: "voidOrder", status: g.orderStatus as "REFUNDED" | "CANCELLED" }),
-          "resolved",
-        );
-      }
-      // Merch or a fee only. The server refuses this on admit anyway; saying
-      // so NOW is the difference between a volunteer reading "sell them
-      // admission" and a volunteer telling someone they are in and then
-      // taking it back.
-      if (g.admitsNobody) {
-        return settle(verdictFor({ kind: "notATicket" }), "resolved");
-      }
-      if (g.alreadyAdmitted) {
+  /**
+   * ONE classification for a resolved guest, whether they arrived by scan or
+   * by name search — pickHit used to settle only "already admitted" and let
+   * an unpaid or merch-only search hit sit as READY · TAP ADMIT.
+   *
+   * A resolve is already a verdict for every state the volunteer cannot
+   * simply act on. Only "paid, here, not yet admitted" leaves the station
+   * quiet and waiting for the Admit tap, because nothing has happened yet.
+   */
+  function settleFor(g: GateView, event: "resolved" | "acted") {
+    if (g.eventId !== eventId) {
+      return settle(
+        verdictFor({ kind: "wrongEvent", eventName: g.eventName }),
+        event,
+      );
+    }
+    // Money already went back, or the sale was called off. Neither is
+    // payable, and both used to read as "owes $0.00" because a REFUNDED
+    // line is not a PENDING_PAYMENT one.
+    if (isVoidOrder(g.orderStatus)) {
+      return settle(
+        verdictFor({ kind: "voidOrder", status: g.orderStatus as "REFUNDED" | "CANCELLED" }),
+        event,
+      );
+    }
+    // Merch or a fee only. The server refuses an ADMIT on this anyway;
+    // saying so NOW is the difference between a volunteer reading the right
+    // sentence and a volunteer telling someone they are in and then taking
+    // it back.
+    if (g.admitsNobody) {
+      // A PAID receipt with goods still on it is a PICKUP, not a refusal:
+      // Diwali's carnival sells wristbands and tokens as MERCH on a
+      // free-entry festival, so every carnival order lands here. Every
+      // pending line is pre-ticked, so the hand-over is one tap at a queue.
+      if (g.isPaid && g.pickupItems.length > 0) {
+        const pending = g.pickupItems.filter((it) => !it.fulfilledAt);
+        setPickupSel(new Set(pending.map((it) => it.lineItemId)));
+        const stamps = g.pickupItems
+          .map((it) => (it.fulfilledAt ? new Date(it.fulfilledAt).getTime() : null))
+          .filter((t): t is number => t !== null);
+        const last = stamps.length > 0 ? new Date(Math.max(...stamps)) : null;
         return settle(
           verdictFor({
-            kind: "already",
-            flow: "gate",
-            at: g.admittedAt ? formatVenueTime(new Date(g.admittedAt)) : null,
+            kind: "pickup",
+            pending: pending.length,
+            collected: g.pickupItems.length - pending.length,
+            items: pending.map((it) => it.name).join(" · ") || null,
+            at: last ? formatVenueTime(last) : null,
           }),
-          "resolved",
+          event,
         );
       }
-      if (!g.isPaid) {
-        return settle(
-          verdictFor({ kind: "unpaid", owed: formatCents(g.amountOwedCents) }),
-          "resolved",
-        );
-      }
-      setPhase(INITIAL_PHASE);
-    });
+      return settle(verdictFor({ kind: "notATicket" }), event);
+    }
+    if (g.alreadyAdmitted) {
+      return settle(
+        verdictFor({
+          kind: "already",
+          flow: "gate",
+          at: g.admittedAt ? formatVenueTime(new Date(g.admittedAt)) : null,
+        }),
+        event,
+      );
+    }
+    if (!g.isPaid) {
+      return settle(
+        verdictFor({ kind: "unpaid", owed: formatCents(g.amountOwedCents) }),
+        event,
+      );
+    }
+    // Paid and waiting for the tap. A scan releases the reading phase; a
+    // search tap was never in it.
+    if (event === "resolved") setPhase(INITIAL_PHASE);
   }
 
   async function refresh(campId: string | null) {
@@ -498,13 +550,17 @@ export function GateMode({
         // Paid AND admitted, in one server round trip. Clearing the sale
         // first means the verdict lands on a clean screen.
         setCardSale(null);
+        // A basket that admits nobody — carnival wristbands, sticks — was
+        // paid and handed over by the poll; party(0, 0) would read "Already in".
         settle(
-          verdictFor({
-            kind: "party",
-            admitted: res.data.admitted,
-            already: 0,
-            at: null,
-          }),
+          cardSale.admits === 0
+            ? handedOver("Paid — handed over", cardSale.items)
+            : verdictFor({
+                kind: "party",
+                admitted: res.data.admitted,
+                already: 0,
+                at: null,
+              }),
         );
         resetWalkUp();
         closeTask();
@@ -579,6 +635,11 @@ export function GateMode({
         label: `Take cash ${formatCents(basketTotal(catalog.merch, buySel))} & hand over`,
         onClick: doBuyMore,
       };
+    // A receipt admits nobody: never offer "Admit & wristband" (the server
+    // refuses it after the tap) nor "Take cash & admit" (which took the cash,
+    // confirmed, and THEN threw NOT_A_TICKET before the goods were stamped).
+    // Hand-over and buy-more above are the only actions it has.
+    if (view.admitsNobody) return null;
     if (view.party.length > 1 && pendingParty.length > 0 && view.isPaid)
       return {
         label: partial
@@ -685,7 +746,7 @@ export function GateMode({
                tapping Admit, and nothing would record it. */
             <span className="inline-flex h-7 items-center rounded-full bg-black px-2.5 text-xs font-extrabold tracking-wide text-white">
               {held
-                ? TONE_WORD[phase.verdict.tone]
+                ? OUTCOME_WORD[phase.verdict.outcome] ?? TONE_WORD[phase.verdict.tone]
                 : view?.isPaid
                   ? PENDING_WORD.paid
                   : PENDING_WORD.owes}
@@ -1116,7 +1177,11 @@ export function GateMode({
                 if (!res.ok)
                   return settle(verdictFor(signalForError(res.error)));
                 setCardWaited(0);
-                setCardSale(res.data);
+                setCardSale({
+                  ...res.data,
+                  admits: admitsCountFor(catalog.admission, basketOf(items)),
+                  items: describeBasket(catalog, items),
+                });
               })
             }
             onCancel={closeTask}
@@ -1126,7 +1191,15 @@ export function GateMode({
                 if (!res.ok) return settle(verdictFor(signalForError(res.error)));
                 void (res.data);
                 closeTask();
-                settle(verdictFor({ kind: "admitted", name: name || "Walk-up" }));
+                // A basket that admits nobody was sold AND handed over by
+                // sellAndAdmit (fulfillOrder runs inside it). "Admitted ·
+                // Give wristband" would be the wrong sentence twice over.
+                const admits = admitsCountFor(catalog.admission, basketOf(items));
+                settle(
+                  admits === 0
+                    ? handedOver("Sold and handed over", describeBasket(catalog, items))
+                    : verdictFor({ kind: "admitted", name: name || "Walk-up" }),
+                );
                 resetWalkUp();
               })
             }
@@ -1518,6 +1591,7 @@ function WalkUpForm({
   const [basket, setBasket] = useState<Basket>(new Map());
   const all = [...catalog.admission, ...catalog.merch, ...catalog.fees];
   const total = basketTotal(all, basket);
+  const admits = admitsCountFor(catalog.admission, basket);
 
   return (
     <div className="space-y-3">
@@ -1580,8 +1654,8 @@ function WalkUpForm({
             onClick={() => onSubmit(basketItems(basket), name)}
             className="min-h-tap w-full rounded-lg bg-brand font-semibold text-brand-fg disabled:opacity-50"
           >
-            Take cash {formatCents(total)} &amp; admit{" "}
-            {admitsCountFor(catalog.admission, basket)}
+            Take cash {formatCents(total)}{" "}
+            {admits === 0 ? "& hand over" : `& admit ${admits}`}
           </button>
         )}
         <button

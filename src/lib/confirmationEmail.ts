@@ -64,6 +64,15 @@ export type ConfirmationEmail = {
     /** The capability URL for managing the entry and sending the track. */
     entryUrl: string;
   } | null;
+  /**
+   * A MERCH-only order: goods to collect, nothing that admits. Diwali's
+   * carnival sells wristbands and tokens on a free-entry festival, so every
+   * carnival order is this shape, and the registration wording ("this email
+   * admits N guests", "Your ticket") would promise floor access nobody
+   * bought. Optional so older callers still compile; absent means the
+   * registration wording, byte for byte.
+   */
+  pickupOnly?: boolean;
 };
 
 // ── Design tokens. The email copies them rather than importing the Tailwind
@@ -126,6 +135,18 @@ export function confirmationText(msg: ConfirmationEmail): string {
         : `Manage your entry: ${entry.entryUrl}`,
     ].join("\n");
   }
+  // A pickup receipt gets its own text for the same reason the entry does:
+  // "Camp ID" and "QR badge" are the wrong words for a wristband order.
+  if (msg.pickupOnly) {
+    return [
+      `Hi ${msg.registrantName},`,
+      `Your order for ${msg.eventName} is confirmed.`,
+      `Pickup code: ${msg.campIds.join(", ")}`,
+      `Show it at the booth to collect: ${msg.merch.map((m) => `${m.description} ×${m.quantity}`).join(", ")}`,
+      `It is a pickup receipt, not an entry ticket.`,
+      `View it online: ${msg.confirmUrl}`,
+    ].join("\n");
+  }
   return [
     `Hi ${msg.registrantName},`,
     `Your registration for ${msg.eventName} is confirmed.`,
@@ -136,6 +157,7 @@ export function confirmationText(msg: ConfirmationEmail): string {
 
 export function confirmationSubject(msg: ConfirmationEmail): string {
   if (msg.performanceEntry) return `${msg.eventName} — entry confirmed`;
+  if (msg.pickupOnly) return `${msg.eventName} — order confirmed`;
   return `${msg.eventName} — registration confirmed`;
 }
 
@@ -163,9 +185,11 @@ function ticketBlock(
   index: number,
   total: number,
   walletUrl: string,
+  /** The single-code label and where to show it: a pickup receipt is not a ticket. */
+  copy: { single: string; where: string } = { single: "Your ticket", where: "gate" },
 ): string {
   const cid = qrCid(campId, index);
-  const ordinal = total > 1 ? `Ticket ${index + 1} of ${total}` : "Your ticket";
+  const ordinal = total > 1 ? `Ticket ${index + 1} of ${total}` : copy.single;
   // Isolation only needs to come BETWEEN tickets, so the last one does not
   // leave a stretch of blank paper under it.
   const spacer =
@@ -181,7 +205,7 @@ function ticketBlock(
     <td align="center" style="padding:16px;">
       <div style="font:600 13px/1.4 ${FONT};letter-spacing:.06em;text-transform:uppercase;color:${MUTED};padding:0 0 10px 0;">${esc(ordinal)}</div>
       <img src="cid:${esc(cid)}" width="220" height="220" alt="QR code for ticket ${esc(campId)}" style="display:block;width:220px;height:220px;border:0;outline:none;" />
-      <div style="font:400 13px/1.5 ${FONT};color:${MUTED};padding:10px 0 0 0;">Show this at the gate. It works with no signal.</div>
+      <div style="font:400 13px/1.5 ${FONT};color:${MUTED};padding:10px 0 0 0;">Show this at the ${esc(copy.where)}. It works with no signal.</div>
       <div style="font:400 13px/1.5 ${FONT};padding:6px 0 0 0;"><a href="${esc(walletUrl)}" style="color:${NAVY};">Open just this ticket</a></div>
     </td>
   </tr>
@@ -233,8 +257,19 @@ export function confirmationHtml(msg: ConfirmationEmail): string {
   const headcount = msg.campIds.length;
   const entry = msg.performanceEntry;
   const wallet = (id: string) => `${msg.walletBaseUrl}/t/${encodeURIComponent(id)}`;
+  // A pickup receipt: MERCH only, nothing that admits. The entry branch wins
+  // if both are somehow set, because an entry has its own page to point at.
+  const pickup = msg.pickupOnly === true && !entry;
   const tickets = msg.campIds
-    .map((id, i) => ticketBlock(id, i, msg.campIds.length, wallet(id)))
+    .map((id, i) =>
+      ticketBlock(
+        id,
+        i,
+        msg.campIds.length,
+        wallet(id),
+        pickup ? { single: "Your pickup code", where: "booth" } : undefined,
+      ),
+    )
     .join("");
   // The venue timezone helper, not a bare Intl call: an email that states a
   // different time from the website is the defect Task G4 just fixed, coming
@@ -246,7 +281,7 @@ export function confirmationHtml(msg: ConfirmationEmail): string {
 
   <tr><td style="background:${NAVY};padding:20px 24px;">
     <div style="font:700 20px/1.3 ${FONT};color:#ffffff;">${esc(msg.eventName)}</div>
-    <div style="font:400 14px/1.5 ${FONT};color:#cfe0dd;padding:4px 0 0 0;">Registration confirmed</div>
+    <div style="font:400 14px/1.5 ${FONT};color:#cfe0dd;padding:4px 0 0 0;">${pickup ? "Order confirmed" : "Registration confirmed"}</div>
   </td></tr>
 
   <tr><td style="padding:24px 24px 0 24px;">
@@ -254,20 +289,28 @@ export function confirmationHtml(msg: ConfirmationEmail): string {
     <div style="font:400 16px/1.6 ${FONT};color:${NAVY};padding:8px 0 0 0;">${
       entry
         ? `Your entry is confirmed for <strong>${esc(entry.groupName)}</strong>, dancing to ${esc(entry.songTitle)}.`
-        : `Your registration is confirmed. This email admits <strong>${headcount} ${headcount === 1 ? "guest" : "guests"}</strong> — one code below per guest.`
+        : pickup
+          ? `Your order is confirmed. Show the code below at the collection booth to pick up what you bought &mdash; it is a pickup receipt, not an entry ticket.`
+          : `Your registration is confirmed. This email admits <strong>${headcount} ${headcount === 1 ? "guest" : "guests"}</strong> — one code below per guest.`
     }</div>
   </td></tr>
 
   <tr><td style="padding:20px 24px 0 24px;">
     ${heading(
-      entry ? "Your entry code" : headcount === 1 ? "Your ticket" : `Your ${headcount} tickets`,
+      entry
+        ? "Your entry code"
+        : pickup
+          ? "Your pickup code"
+          : headcount === 1
+            ? "Your ticket"
+            : `Your ${headcount} tickets`,
     )}
     ${
       msg.campIds.length > 0
         ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;margin:0 0 16px 0;">
   <tr><td align="center" style="background:${NAVY};padding:14px 16px;">
-    <a href="${esc(wallet(msg.campIds[0]))}" style="font:700 16px/1.3 ${FONT};color:#ffffff;text-decoration:none;display:block;">Open your tickets &rarr;</a>
-    <div style="font:400 13px/1.5 ${FONT};color:#cfe0dd;padding:4px 0 0 0;">One at a time, and it shows which have been used.</div>
+    <a href="${esc(wallet(msg.campIds[0]))}" style="font:700 16px/1.3 ${FONT};color:#ffffff;text-decoration:none;display:block;">${pickup ? "Open your code" : "Open your tickets"} &rarr;</a>
+    <div style="font:400 13px/1.5 ${FONT};color:#cfe0dd;padding:4px 0 0 0;">${pickup ? "It shows what has been collected." : "One at a time, and it shows which have been used."}</div>
   </td></tr>
 </table>`
         : ""
@@ -303,7 +346,7 @@ ${merchBlock(msg)}
 
   <tr><td style="padding:20px 24px 24px 24px;">
     <div style="font:400 14px/1.6 ${FONT};color:${MUTED};border-top:1px solid ${RULE};padding:16px 0 0 0;">${esc(refundLine(msg.allowsRefunds))}</div>
-    <div style="font:400 14px/1.6 ${FONT};color:${MUTED};padding:8px 0 0 0;">Got signal? <a href="${esc(msg.confirmUrl)}" style="color:${NAVY};">View your QR badge online</a>.</div>
+    <div style="font:400 14px/1.6 ${FONT};color:${MUTED};padding:8px 0 0 0;">Got signal? <a href="${esc(msg.confirmUrl)}" style="color:${NAVY};">${pickup ? "View your pickup code online" : "View your QR badge online"}</a>.</div>
   </td></tr>
 
 </table>

@@ -1,4 +1,4 @@
-import type { ScanTone } from "./scanVerdict";
+import type { ScanOutcome, ScanTone } from "./scanVerdict";
 
 /**
  * How the three scan tones LOOK, in one place.
@@ -59,4 +59,21 @@ export const TONE_WORD: Record<ScanTone, string> = {
   go: "LET IN",
   hold: "STOP · ASK",
   stop: "DO NOT ADMIT",
+};
+
+/**
+ * The one outcome whose word is not its tone's word.
+ *
+ * PICKUP is a hold -- the scan stamped nothing, read the list first -- and
+ * the hold word is "STOP · ASK". Above a headline of "Hand over" that is a
+ * contradiction a volunteer has to resolve under queue pressure, with a
+ * parent and four kids at the booth. The word is what they say out loud, so
+ * for this outcome it says the action. ALREADY_COLLECTED keeps "STOP · ASK":
+ * nothing more is handed over, and that IS the conversation.
+ *
+ * Read as `OUTCOME_WORD[outcome] ?? TONE_WORD[tone]`; the tone still owns
+ * the colour, the glyph and the sound.
+ */
+export const OUTCOME_WORD: Partial<Record<ScanOutcome, string>> = {
+  PICKUP: "READ · HAND OVER",
 };
