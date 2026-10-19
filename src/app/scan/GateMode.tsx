@@ -8,7 +8,7 @@ import { GATE_MAX_QTY_PER_LINE, type GateSaleItem } from "@/lib/ticketMinting";
 import Link from "next/link";
 
 import { QrScanner } from "@/app/_components/QrScanner";
-import { PENDING_WORD, TONE_BAND, TONE_WORD } from "@/lib/scanToneStyles";
+import { OUTCOME_WORD, PENDING_WORD, TONE_BAND, TONE_WORD } from "@/lib/scanToneStyles";
 import {
   verdictFor,
   signalForError,
@@ -746,7 +746,7 @@ export function GateMode({
                tapping Admit, and nothing would record it. */
             <span className="inline-flex h-7 items-center rounded-full bg-black px-2.5 text-xs font-extrabold tracking-wide text-white">
               {held
-                ? TONE_WORD[phase.verdict.tone]
+                ? OUTCOME_WORD[phase.verdict.outcome] ?? TONE_WORD[phase.verdict.tone]
                 : view?.isPaid
                   ? PENDING_WORD.paid
                   : PENDING_WORD.owes}

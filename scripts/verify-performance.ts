@@ -377,6 +377,11 @@ async function main() {
   const paymentsSrc = readFileSync(join(process.cwd(), "src/server/payments.ts"), "utf8");
   check("confirmOrderPaid derives pickupOnly from the line kinds",
     /pickupOnly:[\s\S]{0,600}kind === "MERCH"[\s\S]{0,300}kind === "ADMISSION"/.test(paymentsSrc));
+  // The row above still matches with the "!" deleted — and that mutation
+  // would tell every Dandiya family (a ticket plus sticks) that their own
+  // confirmation is "a pickup receipt, not an entry ticket". Pin the negation.
+  check("...and NEGATES the admission test — a ticket plus sticks is not a pickup receipt",
+    /!order\.lineItems\.some\(\(li\) => li\.serviceType\?\.kind === "ADMISSION"\)/.test(paymentsSrc));
   const walletSrc = readFileSync(join(process.cwd(), "src/app/t/[campId]/page.tsx"), "utf8");
   check("the wallet says collect, not gate, for a pickup-only order",
     /pickupOnly[\s\S]{0,900}collect your items/.test(walletSrc));

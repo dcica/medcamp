@@ -30,6 +30,7 @@ import { join } from "node:path";
 import * as v from "../src/lib/scanVerdict";
 import * as latch from "../src/lib/scanLatch";
 import * as tones from "../src/lib/scanTones";
+import * as words from "../src/lib/scanToneStyles";
 
 let failures = 0;
 
@@ -371,6 +372,17 @@ async function main(): Promise<void> {
   // The tone also reaches the volunteer as WORDS. Colour fails in a bright
   // doorway, the glyph fails on a cracked screen; "LET IN" fails in neither.
   check("the tone is also stated in words", gateMode.includes("TONE_WORD"));
+  // THE WORD IS WHAT THE VOLUNTEER SAYS OUT LOUD. PICKUP is a hold (the scan
+  // stamped nothing), and the hold word is "STOP · ASK" -- which, above a
+  // headline of "Hand over", is a contradiction a volunteer has to resolve
+  // under queue pressure. The word for that one outcome says the action.
+  // ALREADY_COLLECTED keeps the tone's word: nothing more is handed over.
+  eq("a pickup's word says the action, not the tone's STOP · ASK",
+    words.OUTCOME_WORD.PICKUP, "READ · HAND OVER");
+  eq("...and an all-collected re-scan keeps STOP · ASK",
+    words.OUTCOME_WORD.ALREADY_COLLECTED, undefined);
+  check("...and the station reads the outcome's word before the tone's",
+    /OUTCOME_WORD\[phase\.verdict\.outcome\] \?\? TONE_WORD\[phase\.verdict\.tone\]/.test(gateMode));
   check("the station hard-codes no border colour of its own",
     !/border-(green|amber|red)-[0-9]/.test(gateMode),
     (gateMode.match(/border-(green|amber|red)-[0-9]+/g) ?? []).join(" "));
