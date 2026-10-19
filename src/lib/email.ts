@@ -12,6 +12,12 @@ import {
   confirmationText,
   type ConfirmationEmail,
 } from "@/lib/confirmationEmail";
+import {
+  buildDonationReceiptMime,
+  donationReceiptSubject,
+  donationReceiptText,
+  type DonationReceipt,
+} from "@/lib/donationReceiptEmail";
 
 /**
  * Pluggable email (Platform-Mandate §6). When no provider is configured the
@@ -280,6 +286,35 @@ export async function sendConfirmationEmail(
   await dispatch(sender, msg.to, confirmationSubject(msg), confirmationText(msg), () =>
     buildConfirmationMime(msg, sender.from, sender.replyTo),
   );
+}
+
+/**
+ * The donation receipt. Unlike the ticket email this REPORTS delivery, because
+ * the caller stamps `Order.receiptSentAt` from it: the console path (no
+ * provider) is not a receipt in anyone's inbox and must not be recorded as
+ * one. Never throws — a receipt that fails to send is logged, and the money
+ * is already received either way.
+ */
+export async function sendDonationReceiptEmail(
+  msg: DonationReceipt,
+  sender: Sender = defaultSender(),
+): Promise<{ delivered: boolean }> {
+  if (isUndeliverableAddress(msg.to)) {
+    log.info("email skipped: reserved address", { to: msg.to, subject: donationReceiptSubject(msg) });
+    return { delivered: false };
+  }
+  try {
+    return await send(
+      sender,
+      msg.to,
+      donationReceiptSubject(msg),
+      donationReceiptText(msg),
+      buildDonationReceiptMime(msg, sender.from, sender.replyTo),
+    );
+  } catch (err) {
+    log.error("donation receipt send failed", { provider: env.EMAIL_PROVIDER, to: msg.to, err });
+    return { delivered: false };
+  }
 }
 
 // ── Volunteer module emails ──────────────────────────────────────────────────

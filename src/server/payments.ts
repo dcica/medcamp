@@ -7,7 +7,7 @@ import {
   type CheckoutRoutes,
 } from "@/lib/checkoutReturn";
 import { signResumeProof, verifyResumeProof } from "@/lib/checkoutResume";
-import { sendConfirmationEmail } from "@/lib/email";
+import { sendConfirmationEmail, sendDonationReceiptEmail } from "@/lib/email";
 import { newCampId } from "@/lib/campId";
 import { log } from "@/lib/logger";
 import { eventSlug } from "@/lib/seo";
@@ -477,7 +477,8 @@ async function openCheckoutSession(
   order: {
     id: string;
     orgId: string;
-    eventId: string;
+    /** Null for a general-fund donation; buildCheckoutReturn already handles it. */
+    eventId: string | null;
     registrantEmail: string;
     coverProcessingFee: boolean;
     lineItems: FeeableLineItem[];
@@ -785,6 +786,11 @@ export async function confirmOrderPaid(
       }
     }
     for (const [serviceTypeId, qty] of counts) {
+      // A service line on an order with no event cannot exist (the donate
+      // page writes one donation line and nothing else), so this is a type
+      // narrowing with a loud failure, never a branch anyone takes.
+      const eventId = order.eventId;
+      if (!eventId) throw new Error(`Order ${order.id} has a service line but no event`);
       const serviceKey =
         order.lineItems.find((li) => li.serviceTypeId === serviceTypeId)
           ?.serviceType?.key ?? serviceTypeId;
@@ -803,7 +809,7 @@ export async function confirmOrderPaid(
       // (UPDATE "test"."service_caps"), so the schema comes from the datasource
       // and cannot be lost. That is the entire point of this block.
       const cap = await tx.serviceCap.findUnique({
-        where: { eventId_serviceTypeId: { eventId: order.eventId, serviceTypeId } },
+        where: { eventId_serviceTypeId: { eventId, serviceTypeId } },
         select: { capacity: true },
       });
       // No row at all ⇒ misconfigured event, not a sold-out service.
@@ -829,7 +835,7 @@ export async function confirmOrderPaid(
       // task — and it is NOT a licence to go back to $executeRaw (see above).
       const claimed = await tx.serviceCap.updateMany({
         where: {
-          eventId: order.eventId,
+          eventId,
           serviceTypeId,
           // capacity null = UNCAPPED, so there is no ceiling to test and every
           // claim succeeds. This is the reason capacity became nullable: it used
@@ -861,14 +867,21 @@ export async function confirmOrderPaid(
     // Stripe webhook, which retries, and confirmOrderPaid is idempotent — so
     // the retry re-runs with fresh tokens and succeeds. Nobody loses a paid
     // order, and no id is ever quietly reused.
-    const ev = await tx.event.findUniqueOrThrow({
-      where: { id: order.eventId },
-      select: { code: true },
-    });
+    // Null for a general-fund donation, which mints no code: it has no
+    // attendees, so the loop below never asks for the prefix.
+    const ev = order.eventId
+      ? await tx.event.findUniqueOrThrow({
+          where: { id: order.eventId },
+          select: { code: true },
+        })
+      : null;
 
     const campIds: string[] = [];
     const claimed = new Set<string>();
     for (const att of order.attendees) {
+      // An attendee on an order with no event cannot exist (see `ev` above);
+      // the throw is a type narrowing with a loud failure.
+      if (!ev) throw new Error(`Order ${order.id} has an attendee but no event`);
       let campId = newCampId(ev.code);
       for (let attempt = 0; attempt < 5; attempt++) {
         const taken =
@@ -888,7 +901,9 @@ export async function confirmOrderPaid(
       });
 
       // ── One stored route per attendee (decision #5) ──
-      for (const station of order.event.stations) {
+      // A general-fund donation has no event and no attendees, so this loop
+      // body never runs for one; the optional chain is for the type.
+      for (const station of order.event?.stations ?? []) {
         await tx.stationVisit.create({
           data: {
             attendeeId: att.id,
@@ -1061,6 +1076,35 @@ export async function confirmOrderPaid(
       });
       const base = orgBaseUrl(order.org);
       const profile = resolveOrgProfile(order.org.settings);
+      const sender = { from: senderFor(profile, env.EMAIL_FROM), replyTo: profile.contactEmail };
+      if (!order.event) {
+        // ── A general-fund donation: a receipt, not a ticket ──
+        // The amount is the organisation's receipts (the platform's fee
+        // excluded; the cover included — it is the organisation's). The
+        // stamp records DELIVERY: the no-provider console path is not a
+        // receipt in anyone's inbox, so it leaves receiptSentAt null.
+        const { delivered } = await sendDonationReceiptEmail(
+          {
+            to: order.registrantEmail,
+            donorName: order.registrantName,
+            orgName: order.org.name,
+            legalName: profile.legalName,
+            ein: profile.ein,
+            receiptStatement: profile.receiptStatement,
+            paidAt: new Date(),
+            amountCents: receiptLines(order.lineItems).reduce(
+              (s, li) => s + li.amountCents * li.quantity,
+              0,
+            ),
+            honoreeName: order.honoreeName,
+            theme: emailThemeOf(order.org.settings),
+          },
+          sender,
+        );
+        if (delivered) {
+          await db.order.update({ where: { id: order.id }, data: { receiptSentAt: new Date() } });
+        }
+      } else {
       await sendConfirmationEmail({
         to: order.registrantEmail,
         registrantName: order.registrantName,
@@ -1104,7 +1148,8 @@ export async function confirmOrderPaid(
         // The Pub 1771 statement, from the values snapshotted on the lines at
         // creation; null (nothing said) unless an offering carried one.
         contribution: contributionOf(order.lineItems),
-      }, { from: senderFor(profile, env.EMAIL_FROM), replyTo: profile.contactEmail });
+      }, sender);
+      }
 
       // ── GA4 `purchase`, same guard, same side of the transaction ──
       //
@@ -1133,10 +1178,11 @@ export async function confirmOrderPaid(
         clientId: order.gaClientId,
         site: resolveOrgSite(order.org.settings),
         orderId: order.id,
-        eventType: order.event.type,
+        // A general-fund donation reports as its own kind, with no landing page.
+        eventType: order.event?.type ?? "DONATION",
         // The same slug the /e/<slug> page_view carries, so a landing page can
         // be joined to the sale it produced.
-        eventSlug: eventSlug(order.event),
+        eventSlug: order.event ? eventSlug(order.event) : null,
         paymentMethod: input.method,
         // The ORGANISATION's receipts: the platform's fee is not its revenue
         // and must not inflate its purchase value in analytics. The cover

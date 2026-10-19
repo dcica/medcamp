@@ -594,6 +594,13 @@ async function main() {
         fail(`${e.email}: order ${order.id} is ${order.status}, not CONFIRMED — mint it first`);
         continue;
       }
+      // A ticket email needs an event; a general-fund donation (eventId null)
+      // gets a receipt from confirmOrderPaid, never a resend from here.
+      const ev = order.event;
+      if (!ev) {
+        fail(`${e.email}: order ${order.id} has no event — not a ticket order`);
+        continue;
+      }
       const campIds = order.attendees
         .map((a) => a.campId)
         .filter((c): c is string => Boolean(c));
@@ -602,7 +609,7 @@ async function main() {
         sendConfirmationEmail({
           to: order.registrantEmail,
           registrantName: order.registrantName,
-          eventName: order.event.name,
+          eventName: ev.name,
           confirmUrl: `${orgBaseUrl(event.org)}/confirm/${order.id}`,
           walletBaseUrl: orgBaseUrl(event.org),
           campIds,
@@ -629,10 +636,10 @@ async function main() {
             (s, li) => s + li.amountCents * li.quantity,
             0,
           ),
-          venue: order.event.location,
-          startsAt: order.event.startsAt,
-          endsAt: order.event.endsAt,
-          allowsRefunds: order.event.allowsRefunds,
+          venue: ev.location,
+          startsAt: ev.startsAt,
+          endsAt: ev.endsAt,
+          allowsRefunds: ev.allowsRefunds,
           theme: emailThemeOf(event.org.settings),
         }, {
           from: senderFor(resolveOrgProfile(event.org.settings), env.EMAIL_FROM),

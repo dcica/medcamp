@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { getActiveOrg } from "@/lib/tenant";
 import { requireCoordinator } from "@/server/admin";
 import { readStoredTheme, themeWithBrand } from "@/lib/branding";
-import { PROFILE_LABELS, legalSchema, profileSchema, siteSchema } from "@/lib/orgSettings";
+import { PROFILE_LABELS, donationsSchema, legalSchema, profileSchema, siteSchema } from "@/lib/orgSettings";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -145,6 +145,60 @@ export async function updateOrgSite(input: SiteInput): Promise<ActionResult> {
   await db.organization.update({ where: { id: org.id }, data: { settings } });
   revalidatePath("/admin/settings");
   revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export type DonationsInput = {
+  enabled: boolean;
+  /** Dollars, comma-separated, as typed. */
+  suggestedAmounts: string;
+  /** Dollars, as typed. */
+  minDollars: string;
+  allowFeeCover: boolean;
+};
+
+/** Dollars as typed → whole cents, or null when it is not a usable amount. */
+function dollarsToCentsOrNull(raw: string): number | null {
+  const v = raw.trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(v)) return null;
+  return Math.round(Number(v) * 100);
+}
+
+export async function updateOrgDonations(input: DonationsInput): Promise<ActionResult> {
+  await requireCoordinator();
+  const org = await getActiveOrg();
+  if (!org) return { ok: false, error: "No active org." };
+
+  const amounts = input.suggestedAmounts
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s !== "")
+    .map(dollarsToCentsOrNull);
+  if (amounts.some((a) => a === null)) {
+    return { ok: false, error: "Suggested amounts: dollars, separated by commas (e.g. 25, 50, 100)." };
+  }
+  const minCents = dollarsToCentsOrNull(input.minDollars);
+  if (minCents === null) return { ok: false, error: "Minimum gift: a dollar amount (e.g. 5)." };
+
+  const parsed = donationsSchema.safeParse({
+    enabled: Boolean(input.enabled),
+    suggestedAmountsCents: amounts,
+    allowFeeCover: Boolean(input.allowFeeCover),
+    minCents,
+  });
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    return { ok: false, error: `${issue?.path.join(".") || "donations"}: ${issue?.message ?? "invalid"}` };
+  }
+
+  const settings = {
+    ...(org.settings as Record<string, unknown>),
+    donations: parsed.data,
+  };
+  await db.organization.update({ where: { id: org.id }, data: { settings } });
+  revalidatePath("/admin/settings");
+  revalidatePath("/", "layout");
+  revalidatePath("/donate");
   return { ok: true };
 }
 

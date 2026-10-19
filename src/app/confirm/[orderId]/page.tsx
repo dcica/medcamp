@@ -98,7 +98,7 @@ export default async function ConfirmPage({
         title={
           isConfirmed ? (entry ? "You're entered!" : "You're registered!") : "Almost there"
         }
-        subtitle={order.event.name}
+        subtitle={order.event?.name ?? "Donation"}
         items={
           entry
             ? [

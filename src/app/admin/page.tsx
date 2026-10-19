@@ -66,6 +66,7 @@ export default async function AdminOverview() {
     { href: "/admin/camps", name: "Camps & events", detail: `${events.length} · create, dates, status` },
     { href: "/admin/members", name: "Members", detail: `${memberCount} · everyone with a role here` },
     { href: "/admin/membership", name: "Membership", detail: `${planCount} plans · family comps` },
+    { href: "/admin/donations", name: "Donations", detail: "gifts received · year-end list" },
     { href: "/admin/email", name: "Email", detail: "sender & test send" },
     { href: "/admin/settings", name: "Settings", detail: "org, brand, timezone" },
     { href: "/volunteers", name: "Volunteers", detail: `${volunteerCount} · roster, sign-in, certs` },

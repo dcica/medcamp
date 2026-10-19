@@ -7,6 +7,8 @@ import { ProfileForm } from "./ProfileForm";
 import { SiteForm } from "./SiteForm";
 import { LegalForm } from "./LegalForm";
 import { StripeCard } from "./StripeCard";
+import { DonationsForm } from "./DonationsForm";
+import { resolveOrgDonations } from "@/lib/orgSettings";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +44,10 @@ export default async function SettingsPage() {
             body: "The contact address appears in the footer and as the reply-to on every email. The sender address is the From line and must be a verified identity with the email provider. Legal name, EIN, tax status and the receipt sentence are printed on receipts and certificates exactly as entered — the platform never asserts a tax status for you.",
           },
           {
+            label: "Donations",
+            body: "Turn on the donate page, pick the suggested amounts and the minimum, and whether donors may cover your processing cost. Gifts carry no platform fee; a receipt with your legal name, EIN and receipt sentence is emailed when each gift clears. The year-end list is under Admin → Donations.",
+          },
+          {
             label: "Analytics and search",
             body: "Your own Google Analytics property and Search Console token. Blank means no analytics script on your pages; staff screens are never reported either way.",
           },
@@ -72,6 +78,7 @@ export default async function SettingsPage() {
         achEnabled={org?.stripeAchEnabled ?? false}
       />
       <ProfileForm initial={profile} />
+      <DonationsForm initial={resolveOrgDonations(org?.settings)} />
       <SiteForm initial={site} />
       <LegalForm initial={legal} />
     </div>

@@ -118,6 +118,7 @@ export const STAFF_DESTINATIONS: StaffDestination[] = [
   { href: "/admin/camps", name: "Camps & events", roles: ["COMMITTEE_ADMIN"], group: "admin" },
   { href: "/admin/performances", name: "Performance entries", roles: ["COMMITTEE_ADMIN"], group: "admin" },
   { href: "/admin/services", name: "Service catalogue", roles: ["COMMITTEE_ADMIN"], group: "admin" },
+  { href: "/admin/donations", name: "Donations", roles: ["COMMITTEE_ADMIN"], group: "admin" },
   // roles: [] = coordinator only. These four use requireCoordinator, not
   // requireAdmin, so a committee admin must not be offered them.
   { href: "/admin/members", name: "Members", roles: [], group: "admin" },

@@ -242,8 +242,12 @@ export async function getDailySales(
       createdAt: { gte: since },
       order: {
         orgId,
-        // Current trade only — see FINISHED_EVENT_STATUSES.
-        event: { status: { notIn: [...FINISHED_EVENT_STATUSES] } },
+        // Current trade only — see FINISHED_EVENT_STATUSES. A general-fund
+        // donation has no event and is always current trade.
+        OR: [
+          { eventId: null },
+          { event: { status: { notIn: [...FINISHED_EVENT_STATUSES] } } },
+        ],
       },
     },
     include: { order: { include: { lineItems: true } } },

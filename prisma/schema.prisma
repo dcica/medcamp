@@ -578,8 +578,11 @@ model Order {
   id      String       @id @default(cuid())
   orgId   String
   org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  eventId String
-  event   Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  /// Null for a general-fund donation (the /donate page): an order that sells
+  /// nothing, admits nobody and belongs to the organisation, not to an event
+  /// — so no event purge ever touches it. Every ticket order has one.
+  eventId String?
+  event   Event?       @relation(fields: [eventId], references: [id], onDelete: Cascade)
   status  OrderStatus  @default(PENDING)
 
   // Registrant (contact only)
@@ -616,6 +619,14 @@ model Order {
   /// The buyer ticked "cover the processing cost" on the form. Persisted so a
   /// resumed Checkout recomputes the same FEE_COVER line. Never a tip.
   coverProcessingFee Boolean @default(false)
+
+  /// A general-fund donation: who it honours and the donor's note, as typed.
+  /// Donor-entered, optional, organisation-level — kept with the gift.
+  honoreeName String?
+  donorNote   String?
+  /// When the donation receipt email was delivered. Null = not yet, or the
+  /// deployment has no mail provider (the console path is not delivery).
+  receiptSentAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

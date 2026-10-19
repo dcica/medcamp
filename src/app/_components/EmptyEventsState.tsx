@@ -36,10 +36,13 @@ function mailto(contactEmail: string, subject: string): string {
 export function EmptyEventsState({
   orgName,
   contactEmail,
+  donateHref = null,
 }: {
   orgName: string;
   /** From the organisation's profile; null hides the two email asks. */
   contactEmail: string | null;
+  /** The donate page, when the organisation has opened it; null hides the ask. */
+  donateHref?: string | null;
 }) {
   const CONTACT_HREF = contactEmail ? mailto(contactEmail, `Contact ${orgName}`) : null;
   const MEMBERSHIP_HREF = contactEmail ? mailto(contactEmail, `Becoming a ${orgName} member`) : null;
@@ -76,6 +79,14 @@ export function EmptyEventsState({
           Meanwhile
         </h3>
         <div className="mt-2 grid grid-cols-1 gap-2">
+          {donateHref && (
+            <Link
+              href={donateHref}
+              className="flex min-h-tap items-center justify-center rounded-lg border border-brand px-4 text-center text-sm font-medium text-brand"
+            >
+              Make a gift to {orgName}
+            </Link>
+          )}
           {MEMBERSHIP_HREF && (
             <a
               href={MEMBERSHIP_HREF}

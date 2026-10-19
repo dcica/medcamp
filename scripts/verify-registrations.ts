@@ -657,6 +657,74 @@ async function main() {
   check("...but the heads still carry their line and seat",
     (await db.attendee.findMany({ where: { orderId: unnamed.orderId }, orderBy: { seat: "asc" } })).map((a) => a.seat).join(",") === "0,1");
 
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§12 a donation is an order with no event: it confirms, it is counted, receipted and listed");
+  // The donate page sells nothing and admits nobody. Its order has no event
+  // (the organisation's general fund), one donation line, no heads, and it
+  // goes through the same confirmation as a ticket — the money chart must
+  // count it, the donor list must show it beside the donations made on a
+  // ticket order, and a receipt (not a ticket) is what gets emailed.
+  const { createDonationOrder, getDonorRows, DONORS_REPORT_HEADER } = await import("../src/server/donations");
+  const { resolveOrgDonations } = await import("../src/lib/orgSettings");
+  check("donations are off until the organisation turns them on", resolveOrgDonations({}).enabled === false);
+  check("...and a stored policy round-trips, defaults filled",
+    JSON.stringify(resolveOrgDonations({ donations: { enabled: true, suggestedAmountsCents: [2500, 5000], minCents: 500 } }))
+      === JSON.stringify({ enabled: true, suggestedAmountsCents: [2500, 5000], allowFeeCover: true, minCents: 500 }));
+  const donor = { name: "Giver", email: "verify-regs-donor@example.org" };
+  const gift = await createDonationOrder(org.id, {
+    donor, amountCents: 2500, coverFee: false, honoreeName: "Grandma", donorNote: "In memory", marketingConsent: false,
+  }, { enabled: true, suggestedAmountsCents: [2500], allowFeeCover: true, minCents: 100 });
+  const giftOrder = await db.order.findUniqueOrThrow({ where: { id: gift.orderId }, include: { lineItems: true, attendees: true } });
+  check("an eventless order with ONE donation line and no heads",
+    giftOrder.eventId === null && giftOrder.lineItems.length === 1 && giftOrder.lineItems[0]?.isDonation === true && giftOrder.attendees.length === 0,
+    `event ${giftOrder.eventId} lines ${giftOrder.lineItems.length} heads ${giftOrder.attendees.length}`);
+  check("...carrying the honoree and the note", giftOrder.honoreeName === "Grandma" && giftOrder.donorNote === "In memory");
+  check("...worth exactly the gift", gift.totalCents === 2500 && giftOrder.lineItems[0]?.amountCents === 2500);
+  const centsOf = (s: { cents: number }[]) => s.reduce((n, d) => n + d.cents, 0);
+  const seriesBeforeGift = await dash.getDailySales(org.id, 7);
+  await confirmOrderPaid(gift.orderId, { method: "ZELLE", idempotencyKey: `verify-regs-gift-${gift.orderId}` });
+  check("it confirms with no event, no ticket and no capacity to claim",
+    (await db.order.findUniqueOrThrow({ where: { id: gift.orderId } })).status === "CONFIRMED");
+  const seriesAfterGift = await dash.getDailySales(org.id, 7);
+  check("the sales chart counts the money (the eventless arm) and no units",
+    centsOf(seriesAfterGift) === centsOf(seriesBeforeGift) + 2500 && unitsOf(seriesAfterGift) === unitsOf(seriesBeforeGift),
+    `+${centsOf(seriesAfterGift) - centsOf(seriesBeforeGift)} cents, +${unitsOf(seriesAfterGift) - unitsOf(seriesBeforeGift)} units`);
+  // A second gift, left unpaid: a donor list is money received, never intent.
+  const unpaidGift = await createDonationOrder(org.id, { donor, amountCents: 9900, coverFee: false, marketingConsent: false },
+    { enabled: true, suggestedAmountsCents: [2500], allowFeeCover: true, minCents: 100 });
+  const donors = await getDonorRows(org.id, { year: new Date().getFullYear() });
+  check("the donor list has the general-fund gift as 'general'",
+    donors.some((r) => r.order === gift.orderId && r.event === "general" && r.amount_usd === "25.00" && r.donor === "Giver" && r.honoree === "Grandma"),
+    JSON.stringify(donors.find((r) => r.order === gift.orderId)));
+  check("...and the donation made on the paid ticket order, under its event code",
+    donors.some((r) => r.order === paidOrder.id && r.event === CODE && r.amount_usd === "10.00"));
+  check("...and not the unpaid gift", !donors.some((r) => r.order === unpaidGift.orderId));
+  check("...with the header exactly these columns", DONORS_REPORT_HEADER.join(",") === "date,donor,email,amount_usd,event,honoree,order");
+  check("...and nothing from another year", (await getDonorRows(org.id, { year: 1999 })).length === 0);
+  // THE YEAR IS THE VENUE'S. 11:30pm on New Year's Eve in Flower Mound is
+  // 05:30 UTC on 1 January: a UTC year would move that gift into the new
+  // year's list, and a year-end letter would thank the donor for a gift they
+  // made last year. Not expressed via venueDayKey on both sides — a fixed
+  // instant with a known answer is the only version that can fail.
+  await db.order.create({
+    data: {
+      orgId: org.id, eventId: null, status: "CONFIRMED", method: "STRIPE",
+      registrantName: "Midnight Giver", registrantEmail: "verify-regs-donor@example.org", registrantPhone: "",
+      lineItems: { create: [{ orgId: org.id, description: "Donation", amountCents: 1500, quantity: 1, isDonation: true, status: "PAID" }] },
+      payments: { create: [{ orgId: org.id, method: "STRIPE", status: "SUCCEEDED", amountCents: 1500, createdAt: new Date("2026-01-01T05:30:00Z") }] },
+    },
+  });
+  const in2026 = await getDonorRows(org.id, { year: 2026 });
+  const in2025 = await getDonorRows(org.id, { year: 2025 });
+  check("a gift at 11:30pm on New Year's Eve, venue time, belongs to the old year",
+    !in2026.some((r) => r.donor === "Midnight Giver") && in2025.some((r) => r.donor === "Midnight Giver" && r.date === "2025-12-31"),
+    `2026: ${in2026.filter((r) => r.donor === "Midnight Giver").length}, 2025: ${in2025.filter((r) => r.donor === "Midnight Giver").map((r) => r.date).join(",")}`);
+  // The receipt path, read as text: an eventless order gets a receipt, never
+  // a ticket email, from the one block that sends both.
+  const paySrc = readFileSync(join(process.cwd(), "src/server/payments.ts"), "utf8");
+  check("confirmOrderPaid sends a donation receipt for an eventless order", /sendDonationReceiptEmail\(/.test(paySrc));
+  check("...and stamps receiptSentAt only when it was delivered", /receiptSentAt/.test(paySrc) && /delivered/.test(paySrc));
+
   await cleanup(org.id);
 }
 
@@ -682,6 +750,16 @@ async function cleanup(orgId: string): Promise<void> {
   await db.serviceType.deleteMany({
     where: { orgId, key: { in: [ADMIT_KEY, MERCH_KEY, DOUBLES_KEY] } },
   });
+  // Eventless (general-fund) orders are not under any event's cascade.
+  const gifts = await db.order.findMany({
+    where: { orgId, eventId: null, registrantEmail: "verify-regs-donor@example.org" },
+    select: { id: true },
+  });
+  const giftIds = gifts.map((g) => g.id);
+  const giftPayments = await db.payment.findMany({ where: { orderId: { in: giftIds } }, select: { id: true } });
+  await db.ledgerEntry.deleteMany({ where: { paymentId: { in: giftPayments.map((p) => p.id) } } });
+  await db.payment.deleteMany({ where: { orderId: { in: giftIds } } });
+  await db.order.deleteMany({ where: { id: { in: giftIds } } });
 }
 
 main()

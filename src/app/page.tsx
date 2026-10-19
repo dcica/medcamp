@@ -3,7 +3,9 @@ import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { offeringKindsByEvent } from "@/server/performance";
 import { saleSummaryByEvent } from "@/server/eventSales";
+import Link from "next/link";
 import { getActiveOrg, getActiveOrigin, getActiveProfile } from "@/lib/tenant";
+import { resolveOrgDonations } from "@/lib/orgSettings";
 import { organizationLd, primaryLocality, resolveTenantSeo } from "@/lib/seo";
 import { formatVenueMonthDay } from "@/lib/eventTime";
 import { JsonLd } from "@/app/_components/JsonLd";
@@ -136,6 +138,9 @@ export default async function Home() {
   const orgName = org?.name ?? "Community events";
   const profile = await getActiveProfile();
   const local = primaryLocality(events.map((e) => e.location));
+  // The one flag /donate reads: the door is offered exactly when it exists.
+  const donations = resolveOrgDonations(org.settings);
+  const donateHref = donations.enabled ? "/donate" : null;
 
   return (
     <main className="mx-auto max-w-screen-md px-4 py-4">
@@ -183,6 +188,23 @@ export default async function Home() {
 
           <EventExtras events={events} kinds={offeringKinds} />
 
+          {donateHref && (
+            // Under the rail, not in it: a gift is not an event. One line and
+            // one tap, so it never competes with the posters above it.
+            <section className="mt-6 rounded-xl border border-gray-200 bg-white p-4 text-sm">
+              <p className="text-gray-700">
+                Can&apos;t make it, or want to give more? Gifts go to {orgName} directly, with a
+                receipt by email.
+              </p>
+              <Link
+                href={donateHref}
+                className="mt-3 flex min-h-tap items-center justify-center rounded-lg border border-brand px-4 text-center font-medium text-brand"
+              >
+                Make a gift
+              </Link>
+            </section>
+          )}
+
           {/* TODO: a "Find my ticket" link belongs here, but there is no lookup
               route yet and a dead link is worse than none. */}
         </>
@@ -190,7 +212,7 @@ export default async function Home() {
         // The empty state, and nothing more. The front door does not get a
         // past-events section: a landing page leading with events that are over
         // is worse than one leading with nothing.
-        <EmptyEventsState orgName={orgName} contactEmail={profile.contactEmail} />
+        <EmptyEventsState orgName={orgName} contactEmail={profile.contactEmail} donateHref={donateHref} />
       )}
     </main>
   );

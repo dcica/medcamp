@@ -643,6 +643,30 @@ async function main(): Promise<void> {
   );
   await db.event.update({ where: { id: event.id }, data: { namesAttendees: false } });
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // 16. A donation has its own door and its own refusals, in the buyer's words.
+  // createDonationOrder is the authority (the action translates nothing); it
+  // reads the organisation's policy, so "closed" is refused before anything
+  // about the donor is looked at.
+  console.log("\n16. A donation: its own door, its own refusals");
+  const { createDonationOrder } = await import("../src/server/donations");
+  const openPolicy = { enabled: true, suggestedAmountsCents: [2500], allowFeeCover: true, minCents: 500 };
+  const closedPolicy = { ...openPolicy, enabled: false };
+  const give = (input: Record<string, unknown>, policy = openPolicy) =>
+    createDonationOrder(org.id, input as never, policy).then(() => "ACCEPTED", (e: Error) => e.message);
+  check("donations closed → refused first", await give({ donor: { name: "A", email: EMAIL }, amountCents: 2500 }, closedPolicy), "Donations are not open right now.");
+  check("below the organisation's minimum", await give({ donor: { name: "A", email: EMAIL }, amountCents: 100 }), "The minimum donation is $5.00.");
+  check("a blank name", await give({ donor: { name: "  ", email: EMAIL }, amountCents: 2500 }), "Name is required");
+  check("a bad email", await give({ donor: { name: "A", email: "nope" }, amountCents: 2500 }), "Valid email required");
+  check("a fractional amount", await give({ donor: { name: "A", email: EMAIL }, amountCents: 25.5 }), "Enter a whole-dollar amount");
+  check("a note past the cap", await give({ donor: { name: "A", email: EMAIL }, amountCents: 2500, donorNote: "x".repeat(301) }), "Keep the note under 300 characters");
+  check("an honoree past the cap", await give({ donor: { name: "A", email: EMAIL }, amountCents: 2500, honoreeName: "x".repeat(121) }), "Keep the honoree's name under 120 characters");
+  // The action is the public entry point: read as text, since it needs a request.
+  const donateSrc = readFileSync(join(process.cwd(), "src/app/donate/actions.ts"), "utf8");
+  check("the donate action is rate-limited like /register", /guard\("donate"/.test(donateSrc), true);
+  check("...and hands the order to the ONE checkout path", /createCheckoutForOrder\(/.test(donateSrc), true);
+  check("...with the resume cookie set on the same response", /setResumeCookie\(/.test(donateSrc), true);
+
   await cleanup(org.id);
 }
 
@@ -1024,6 +1048,15 @@ async function cleanup(orgId: string): Promise<void> {
   await db.member.deleteMany({ where: { orgId, email: EMAIL } });
   await db.membershipPlan.deleteMany({ where: { orgId, key: PLAN_KEY } });
   await db.serviceType.deleteMany({ where: { orgId, key: { in: KEYS } } });
+  // Eventless (general-fund) orders sit under no event's cascade. §16 expects
+  // every case refused, so a row here is itself a finding.
+  const gifts = await db.order.findMany({ where: { orgId, eventId: null, registrantEmail: EMAIL }, select: { id: true } });
+  if (gifts.length > 0) console.log(`  NOTE  cleanup removed ${gifts.length} eventless order(s) — every §16 case should have been refused`);
+  const giftIds = gifts.map((g) => g.id);
+  const giftPayments = await db.payment.findMany({ where: { orderId: { in: giftIds } }, select: { id: true } });
+  await db.ledgerEntry.deleteMany({ where: { paymentId: { in: giftPayments.map((p) => p.id) } } });
+  await db.payment.deleteMany({ where: { orderId: { in: giftIds } } });
+  await db.order.deleteMany({ where: { id: { in: giftIds } } });
 }
 
 main()

@@ -421,6 +421,37 @@ async function main() {
     ["$250.00", "$75.00", "$175.00"].every((s) => confirmationHtml(qpq).includes(s)) && /fair market value/i.test(confirmationHtml(qpq)));
   check("...absent from the HTML when there is nothing to say", !/fair market value/i.test(confirmationHtml(baseMail)));
 
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§9d the donation receipt says what the organisation says, and nothing the platform cannot");
+  // A receipt is the organisation's document. It carries its legal name, EIN
+  // and its OWN sentence when set; when not set it carries the amount, the
+  // organisation and the date — and says nothing about deductibility, because
+  // the platform never asserts a tax status. It never mentions a fee.
+  const rc = await import("../src/lib/donationReceiptEmail");
+  const receipt = {
+    to: "d@x.org", donorName: "Giver", orgName: "Infinite Minds",
+    legalName: null, ein: null, receiptStatement: null,
+    paidAt: new Date("2026-10-18T15:00:00Z"), amountCents: 2500, honoreeName: null,
+    theme: baseMail.theme,
+  };
+  const bare = rc.donationReceiptText(receipt);
+  check("names the amount, the organisation and the venue-calendar date",
+    bare.includes("$25.00") && bare.includes("Infinite Minds") && bare.includes("Oct 18, 2026"), bare);
+  check("says NOTHING about deductibility or tax when the organisation has not", !/deduct|tax/i.test(bare));
+  check("never mentions a fee", !/\bfees?\b/i.test(bare));
+  const fullReceipt = {
+    ...receipt, legalName: "Infinite Minds Inc", ein: "12-3456789", honoreeName: "Grandma",
+    receiptStatement: "No goods or services were provided in exchange for this contribution.",
+  };
+  const stated = rc.donationReceiptText(fullReceipt);
+  check("prints the legal name, the EIN and the organisation's own sentence when set",
+    stated.includes("Infinite Minds Inc") && stated.includes("EIN 12-3456789") && stated.includes("No goods or services were provided"), stated);
+  check("...and the honoree", /in honou?r of Grandma/i.test(stated));
+  const statedHtml = rc.donationReceiptHtml(fullReceipt);
+  check("the HTML carries the same", ["$25.00", "EIN 12-3456789", "Grandma", "No goods or services"].every((s) => statedHtml.includes(s)));
+  check("the bare HTML is as silent as the bare text", !/deduct|tax|\bfees?\b/i.test(rc.donationReceiptHtml(receipt)));
+  check("the subject thanks them by organisation", rc.donationReceiptSubject(receipt) === "Thank you for your gift to Infinite Minds", rc.donationReceiptSubject(receipt));
+
 
 
   console.log("\n§10 the music split classifies every combination");

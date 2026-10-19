@@ -102,3 +102,38 @@ export type OrgLegal = Nullable<z.infer<typeof legalSchema>>;
 export function resolveOrgLegal(settings: unknown): OrgLegal {
   return resolveEach(legalSchema.shape, blob(settings, "legal"));
 }
+
+/**
+ * The organisation's donations door (`settings.donations`). OFF until the
+ * organisation turns it on; every entry point (/donate, the footer, the
+ * empty calendar, the home rail) reads this one flag. Unlike the profile,
+ * this resolves to a complete policy — a missing or hostile field is the
+ * default, never null — because the donate page needs every value to render.
+ */
+export const donationsSchema = z.object({
+  enabled: z.boolean(),
+  /** Whole-cent amounts offered as one-tap buttons; the donor may type any other. */
+  suggestedAmountsCents: z.array(z.number().int().min(100).max(10_000_000)).min(1).max(8),
+  /** Whether the "cover the processing cost" box is offered on a gift. */
+  allowFeeCover: z.boolean(),
+  minCents: z.number().int().min(100).max(10_000_000),
+});
+export type OrgDonations = z.infer<typeof donationsSchema>;
+
+export const DEFAULT_DONATIONS: OrgDonations = {
+  enabled: false,
+  suggestedAmountsCents: [2500, 5000, 10000, 25000],
+  allowFeeCover: true,
+  minCents: 100,
+};
+
+export function resolveOrgDonations(settings: unknown): OrgDonations {
+  const raw = blob(settings, "donations");
+  const out: OrgDonations = { ...DEFAULT_DONATIONS };
+  if (!raw) return out;
+  for (const key of Object.keys(donationsSchema.shape) as (keyof OrgDonations)[]) {
+    const parsed = donationsSchema.shape[key].safeParse(raw[key]);
+    if (parsed.success) (out as Record<string, unknown>)[key] = parsed.data;
+  }
+  return out;
+}

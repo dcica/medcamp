@@ -752,8 +752,13 @@ async function main(): Promise<void> {
   await ticket(org.id, event.id, `${CODE}-BVAAAAAAA`, "Bee Vee One", "CONFIRMED", adm);
   await ticket(org.id, event.id, `${CODE}-BVBBBBBBB`, "Bee Vee Two", "CONFIRMED", adm);
   const bvHits = await hits("BV");
+  // Pinned to the two SEEDED tokens, not to "every token starting with BV":
+  // this suite mints dozens of random 8-character tokens on the same event,
+  // and about once in fifty runs one of them begins with BV too. The property
+  // is that a two-character fragment brings the seeded pair back — a third,
+  // random hit is the search doing exactly what it should.
   eq("two characters bring back every token starting with them",
-    bvHits.filter((h) => h.campId?.startsWith(`${CODE}-BV`)).length, 2);
+    ["BVAAAAAAA", "BVBBBBBBB"].filter((t) => bvHits.some((h) => h.campId === `${CODE}-${t}`)).length, 2);
   // Anchored to THIS event's code, so a fragment cannot match inside the
   // prefix every ticket already shares.
   // THE ROW THE ANCHOR EXISTS FOR. Every campId contains the event code, so an

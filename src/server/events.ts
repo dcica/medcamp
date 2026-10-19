@@ -210,7 +210,8 @@ export async function getTrackedEvents(
   const revenueByEvent = new Map<string, number>();
   for (const o of paidOrders) {
     const sum = o.payments.reduce((n, p) => n + p.amountCents, 0);
-    if (sum === 0) continue;
+    // A general-fund donation has no event to credit.
+    if (sum === 0 || !o.eventId) continue;
     revenueByEvent.set(o.eventId, (revenueByEvent.get(o.eventId) ?? 0) + sum);
   }
 

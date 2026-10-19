@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { getActiveBranding, getActiveLegal, getActiveProfile } from "@/lib/tenant";
+import { getActiveBranding, getActiveLegal, getActiveOrg, getActiveProfile } from "@/lib/tenant";
+import { resolveOrgDonations } from "@/lib/orgSettings";
 import { PLATFORM_REPO_URL } from "@/lib/platform";
 
 /**
@@ -19,11 +20,14 @@ import { PLATFORM_REPO_URL } from "@/lib/platform";
  */
 export async function SiteFooter() {
   const year = new Date().getFullYear();
-  const [branding, profile, legal] = await Promise.all([
+  const [branding, profile, legal, org] = await Promise.all([
     getActiveBranding(),
     getActiveProfile(),
     getActiveLegal(),
+    getActiveOrg(),
   ]);
+  // The same flag /donate itself reads: the link exists exactly when the page does.
+  const donations = resolveOrgDonations(org?.settings);
   return (
     // Flag-green band mirrors dcica.org's footer.
     <footer className="no-print bg-accent2 px-4 py-6 text-center text-xs text-accent2-fg">
@@ -42,6 +46,11 @@ export async function SiteFooter() {
         >
           Open source (AGPL-3.0)
         </a>
+        {donations.enabled && (
+          <Link href="/donate" className="inline-flex min-h-tap items-center underline">
+            Donate
+          </Link>
+        )}
         {profile.contactEmail && (
           <a
             href={`mailto:${profile.contactEmail}`}

@@ -820,6 +820,31 @@ async function cleanup(): Promise<void> {
   await db.organization.deleteMany({ where: org });
 }
 
+/**
+ * §14 — donations are the organisation's own door: off until it says so, and
+ * every entry point to it (the page, the footer, the empty calendar, the home
+ * rail) is gated on that one setting. Read as text: these are render-time
+ * conditions, and the property is that they all read the SAME flag.
+ */
+async function section14(): Promise<void> {
+  const src = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
+  console.log("\n§14 donations are the organisation's own door");
+  const page = src("src/app/donate/page.tsx");
+  check("/donate 404s unless the organisation has enabled donations", /notFound\(\)/.test(page) && /donations\.enabled/.test(page), true);
+  const footer = src("src/app/_components/SiteFooter.tsx");
+  check("the footer links to /donate only when enabled", /donations\.enabled &&/.test(footer) && /href="\/donate"/.test(footer), true);
+  const empty = src("src/app/_components/EmptyEventsState.tsx");
+  check("the empty calendar offers a donation only when handed a door", /donateHref &&/.test(empty), true);
+  const home = src("src/app/page.tsx");
+  check("the home page hands that door down, and shows the callout under the rail, from the same flag", /donateHref=/.test(home) && /donations\.enabled/.test(home), true);
+  const settings = src("src/app/admin/settings/page.tsx");
+  check("the settings page saves the donations policy through its own action", /DonationsForm/.test(settings) && /updateOrgDonations/.test(src("src/app/admin/settings/DonationsForm.tsx")), true);
+  const hub = src("src/app/admin/page.tsx");
+  check("the admin hub lists the donor list", /\/admin\/donations/.test(hub), true);
+  const route = src("src/app/api/reports/donations/route.ts");
+  check("the donor CSV route re-scopes to the organisation and gates on the admin roles", /ADMIN_ROLES/.test(route) && /getActiveOrg\(\)/.test(route) && /toCsv\(/.test(route), true);
+}
+
 async function main(): Promise<void> {
   await section1();
   await section2();
@@ -832,6 +857,7 @@ async function main(): Promise<void> {
   await section11();
   await section12();
   await section13();
+  await section14();
   await cleanup();
 }
 

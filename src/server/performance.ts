@@ -301,7 +301,9 @@ export async function getEntryByCode(orgId: string, rawCode: string): Promise<En
   return {
     entryId: e.id,
     orderId: order.id,
-    eventName: order.event.name,
+    // An entry is always sold on an event; the optional chain is for the type
+    // (orders.eventId is nullable for general-fund donations).
+    eventName: order.event?.name ?? "",
     groupName: e.groupName,
     choreographerName: e.choreographerName,
     participantCount: e.participantCount,
