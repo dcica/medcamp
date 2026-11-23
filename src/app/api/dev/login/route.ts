@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import type { Role } from "@prisma/client";
 import { db } from "@/lib/db";
-import { getActiveOrg } from "@/lib/tenant";
+import { getActiveOrg, tenantLookup } from "@/lib/tenant";
 
 /**
  * DEV-ONLY: sign in as a member without OIDC, for local testing of the authz
@@ -21,9 +21,10 @@ export async function POST(req: NextRequest) {
   const role: Role = body.role ?? "COORDINATOR";
   const canHoldTill: boolean = body.canHoldTill ?? role === "COORDINATOR";
 
-  const org = await getActiveOrg();
+  const orgSlug: string | undefined = body.orgSlug;
+  const org = orgSlug ? await tenantLookup.bySlug(orgSlug) : await getActiveOrg();
   if (!org) {
-    return NextResponse.json({ error: "no active org (seed first)" }, { status: 400 });
+    return NextResponse.json({ error: "no active org (seed first, or pass orgSlug)" }, { status: 400 });
   }
 
   const user = await db.user.upsert({

@@ -1,16 +1,37 @@
 import { db } from "@/lib/db";
-import { stripe } from "@/lib/stripe";
+import type { Prisma } from "@prisma/client";
+import { stripe, stripeRequestOptions } from "@/lib/stripe";
 import { env } from "@/lib/env";
+import { orgBaseUrl } from "@/lib/orgUrl";
 import {
   buildCheckoutReturn,
   type CheckoutRoutes,
 } from "@/lib/checkoutReturn";
 import { signResumeProof, verifyResumeProof } from "@/lib/checkoutResume";
-import { sendConfirmationEmail } from "@/lib/email";
+import {
+  sendConfirmationEmail,
+  sendDonationReceiptEmail,
+  sendPaymentFailedEmail,
+  sendPaymentProcessingEmail,
+} from "@/lib/email";
 import { newCampId } from "@/lib/campId";
 import { log } from "@/lib/logger";
 import { eventSlug } from "@/lib/seo";
 import { parseGaCookie, sendPurchaseEvent } from "@/lib/ga";
+import { resolveOrgProfile, resolveOrgSite, senderFor } from "@/lib/orgSettings";
+import { emailThemeOf } from "@/lib/branding";
+import {
+  ACH_PROCESSING,
+  allowedMethodsFor,
+  computeOrderFees,
+  readFeePolicy,
+  receiptLines,
+  type FeeLineKind,
+  type FeePolicy,
+  type OrderFees,
+} from "@/lib/fees";
+import { resolveOrgPayments } from "@/lib/orgSettings";
+import { contributionOf } from "@/lib/contribution";
 
 /**
  * The single PaymentService (locked decision #6). Every billable thing is a
@@ -55,6 +76,8 @@ export class MissingCapError extends Error {
  */
 export type CheckoutHandoff = {
   url: string;
+  /** What Checkout will charge, fee lines included — the only total a screen may show. */
+  totalCents: number;
   resumeProof: string | null;
 };
 
@@ -81,22 +104,22 @@ export async function createCheckoutForOrder(
 ): Promise<CheckoutHandoff> {
   const order = await db.order.findUniqueOrThrow({
     where: { id: orderId },
-    include: { lineItems: true, event: true },
+    include: { lineItems: true, event: true, org: { include: { domains: true } } },
   });
 
-  // Quantity-aware: a qty-5 merch line costs 5 × the unit price. Must match the
-  // total confirmOrderPaid records, or Stripe under-collects and the ledger and
-  // the charge disagree (only bites quantity-mode events — camps are all qty 1).
-  const totalCents = orderTotalCents(order.lineItems);
-  if (totalCents === 0) {
+  // Quantity-aware: a qty-5 merch line costs 5 × the unit price. GOODS only:
+  // any fee lines an earlier session left behind are recomputed inside
+  // openCheckoutSession, and a $0 order never had any to begin with.
+  const goodsCents = orderTotalCents(order.lineItems.filter((li) => !li.feeKind));
+  if (goodsCents === 0) {
     throw new Error("Order total is $0 — confirm directly, no checkout needed.");
   }
   if (!stripe) {
     throw new Error("Stripe is not configured (STRIPE_SECRET_KEY missing).");
   }
 
-  const session = await openCheckoutSession(order, totalCents, routes);
-  return { url: session.url, resumeProof: signResumeProof(order.id) };
+  const session = await openCheckoutSession(order, routes);
+  return { url: session.url, totalCents: session.totalCents, resumeProof: signResumeProof(order.id) };
 }
 
 export type ResumeOutcome =
@@ -124,6 +147,8 @@ export async function resumeCheckoutForOrder(
   orderId: string,
   proof: string | null | undefined,
   routes?: CheckoutRoutes,
+  /** The organisation the request resolved to; a foreign order reads as not-authorised. */
+  opts?: { orgId?: string },
 ): Promise<ResumeOutcome> {
   // Authorisation BEFORE any database read. This ordering is the whole defence
   // against ?cancelled= becoming a PII oracle: an unauthorised caller must not
@@ -133,15 +158,15 @@ export async function resumeCheckoutForOrder(
     return { ok: false, reason: "not-authorised" };
   }
 
-  const order = await db.order.findUnique({
-    where: { id: orderId },
-    include: { lineItems: true, event: true },
+  const order = await db.order.findFirst({
+    where: { id: orderId, ...(opts?.orgId ? { orgId: opts.orgId } : {}) },
+    include: { lineItems: true, event: true, org: { include: { domains: true } } },
   });
   // A valid MAC for an id that no longer exists is still nothing this caller
   // may learn about, so it gets the same answer as a bad MAC.
   if (!order) return { ok: false, reason: "not-authorised" };
 
-  const { successUrl } = buildCheckoutReturn(order, env.NEXT_PUBLIC_APP_URL, routes);
+  const { successUrl } = buildCheckoutReturn(order, orgBaseUrl(order.org), routes);
 
   // Confirmed while they were away. The sequence is ordinary: back out of
   // Checkout, pay in the tab that is still open, come back, tap "finish
@@ -160,11 +185,17 @@ export async function resumeCheckoutForOrder(
     return { ok: false, reason: "not-resumable" };
   }
 
-  const totalCents = orderTotalCents(order.lineItems);
-  if (totalCents === 0) return { ok: false, reason: "not-resumable" };
+  // A bank debit in flight: the order is spoken for until Stripe reports the
+  // outcome. Opening a second session now would be the double-pay window
+  // confirmOrderPaid cannot close.
+  const inFlight = await db.payment.count({ where: { orderId: order.id, status: "PROCESSING" } });
+  if (inFlight > 0) return { ok: false, reason: "not-resumable" };
+
+  const goodsCents = orderTotalCents(order.lineItems.filter((li) => !li.feeKind));
+  if (goodsCents === 0) return { ok: false, reason: "not-resumable" };
   if (!stripe) return { ok: false, reason: "not-resumable" };
 
-  const session = await openCheckoutSession(order, totalCents, routes);
+  const session = await openCheckoutSession(order, routes);
 
   // ── ORDERING IS LOAD-BEARING: create the new session, THEN expire the old ──
   //
@@ -182,7 +213,7 @@ export async function resumeCheckoutForOrder(
   // The window is small and this is the better trade — the reverse ordering
   // turns a rare double charge into a routine dead order — but it is real and
   // it is not closed. Do not describe it as fixed.
-  await expireOtherPendingSessions(order.id, session.id);
+  await expireOtherPendingSessions(order.id, session.id, order.org);
 
   return {
     ok: true,
@@ -206,14 +237,15 @@ export async function resumeCheckoutForOrder(
  * stale one would misprice a payment button.
  */
 export async function getResumableCheckout(
+  orgId: string,
   orderId: string | undefined,
   proof: string | null | undefined,
 ): Promise<{ orderId: string; amountCents: number } | null> {
   if (!orderId) return null;
   if (!verifyResumeProof(orderId, proof)) return null;
 
-  const order = await db.order.findUnique({
-    where: { id: orderId },
+  const order = await db.order.findFirst({
+    where: { id: orderId, orgId },
     select: {
       id: true,
       status: true,
@@ -262,8 +294,9 @@ export async function reapExpiredCheckout(
     });
 
     // 2. Anything else still payable on this order? A resumed order has one.
+    // A bank debit in flight (PROCESSING) is as live as an open session.
     const live = await tx.payment.count({
-      where: { orderId, status: "PENDING" },
+      where: { orderId, status: { in: ["PENDING", "PROCESSING"] } },
     });
     if (live > 0) return false;
 
@@ -289,6 +322,135 @@ export async function reapExpiredCheckout(
 }
 
 /**
+ * A Checkout session completed UNPAID: a bank debit is in flight. Hold the
+ * order's capacity now (the same atomic claim confirmation makes, stamped on
+ * the order so confirmation does not make it twice), mark the payment
+ * PROCESSING with its intent, and tell the buyer. NO ticket: codes are minted
+ * only at confirmation, so nothing scans until the money is real. Idempotent:
+ * a retried event finds the stamp and holds nothing more.
+ */
+export async function markPaymentProcessing(
+  orderId: string,
+  session: { id: string; payment_intent: string | null },
+): Promise<{ reserved: boolean }> {
+  const reserved = await db.$transaction(
+    async (tx) => {
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        include: { lineItems: { include: { serviceType: true } } },
+      });
+      if (!order || order.status !== "PENDING") return false;
+      const marked = await tx.payment.updateMany({
+        where: { orderId, stripeCheckoutId: session.id, status: { in: ["PENDING", "PROCESSING"] } },
+        data: {
+          status: "PROCESSING",
+          ...(session.payment_intent ? { stripePaymentIntentId: session.payment_intent } : {}),
+        },
+      });
+      // Stripe does not order events: a FAILURE that landed before this
+      // completion already marked the payment FAILED, and a late completion
+      // must then hold nothing — there would be no path to release it.
+      if (marked.count === 0) return false;
+      if (order.capsReservedAt) return false;
+      await claimCapacity(tx, order);
+      await tx.order.update({ where: { id: order.id }, data: { capsReservedAt: new Date() } });
+      return true;
+    },
+    { timeout: 20_000, maxWait: 10_000 },
+  );
+
+  if (reserved) {
+    // Outside the transaction, like every email on the money path. A gift
+    // has no event: the organisation's name stands where the event's would.
+    const order = await db.order.findUnique({
+      where: { id: orderId },
+      include: { event: true, org: true },
+    });
+    if (order) {
+      const profile = resolveOrgProfile(order.org.settings);
+      await sendPaymentProcessingEmail(
+        {
+          to: order.registrantEmail,
+          registrantName: order.registrantName,
+          eventName: order.event?.name ?? `your gift to ${order.org.name}`,
+          orgName: order.org.name,
+        },
+        { from: senderFor(profile, env.EMAIL_FROM), replyTo: profile.contactEmail },
+      );
+    }
+  }
+  return { reserved };
+}
+
+/**
+ * The bank declined the debit, days after the session completed. Give back
+ * exactly what the reservation held (guarded, so `sold` can never go below
+ * zero), mark the payment FAILED, leave the order PENDING — payable again by
+ * card — and tell the buyer. Idempotent: the stamp is cleared, so a second
+ * release gives nothing back twice.
+ */
+export async function releaseProcessingPayment(
+  orderId: string,
+  sessionId: string,
+): Promise<{ released: boolean }> {
+  const released = await db.$transaction(async (tx) => {
+    const order = await tx.order.findUnique({
+      where: { id: orderId },
+      include: { lineItems: true },
+    });
+    if (!order) return false;
+    // PENDING too, not only PROCESSING: a failure that arrives before the
+    // completion (Stripe does not order events) must still retire that
+    // session's payment, so the late completion finds nothing to mark and
+    // holds nothing.
+    await tx.payment.updateMany({
+      where: { orderId, stripeCheckoutId: sessionId, status: { in: ["PENDING", "PROCESSING"] } },
+      data: { status: "FAILED" },
+    });
+    if (!order.capsReservedAt || order.status !== "PENDING") return false;
+    if (!order.eventId) {
+      // A gift held nothing; only the stamp is cleared.
+      await tx.order.update({ where: { id: order.id }, data: { capsReservedAt: null } });
+      return true;
+    }
+    const counts = new Map<string, number>();
+    for (const li of order.lineItems) {
+      if (li.serviceTypeId) {
+        counts.set(li.serviceTypeId, (counts.get(li.serviceTypeId) ?? 0) + li.quantity);
+      }
+    }
+    for (const [serviceTypeId, qty] of counts) {
+      await tx.serviceCap.updateMany({
+        where: { eventId: order.eventId, serviceTypeId, sold: { gte: qty } },
+        data: { sold: { decrement: qty } },
+      });
+    }
+    await tx.order.update({ where: { id: order.id }, data: { capsReservedAt: null } });
+    return true;
+  });
+
+  if (released) {
+    const order = await db.order.findUnique({
+      where: { id: orderId },
+      include: { event: true, org: true },
+    });
+    if (order) {
+      const profile = resolveOrgProfile(order.org.settings);
+      await sendPaymentFailedEmail(
+        {
+          to: order.registrantEmail,
+          registrantName: order.registrantName,
+          eventName: order.event?.name ?? `your gift to ${order.org.name}`,
+          orgName: order.org.name,
+        },
+        { from: senderFor(profile, env.EMAIL_FROM), replyTo: profile.contactEmail },
+      );
+    }
+  }
+  return { released };
+}
+
+/**
  * Does this deployment know this order at all?
  *
  * WHY THIS EXISTS. test.dcica.org and events.dcica.org have a webhook endpoint
@@ -305,12 +467,225 @@ export async function reapExpiredCheckout(
  * webhook lands. An id we minted that is absent here belongs to the other
  * deployment, and no number of retries will conjure it up.
  */
+/**
+ * Is this Stripe event MINE to act on? Mine means the order exists in this
+ * deployment AND the account the event came from is the order's
+ * organisation's: none at all on the platform path (`stripeAccountId` null,
+ * platform endpoint), or exactly the connected account on the Connect path.
+ * The platform key is shared by every deployment and the Connect endpoint
+ * receives every connected account's events, so the endpoint cannot tell —
+ * only this can. Anything else is acknowledged with a 200 and ignored.
+ */
+export async function resolveOwnedOrder(
+  orderId: string,
+  eventAccount: string | undefined,
+  scope: "platform" | "connect",
+  /** The Checkout session the event is about, when it has one. */
+  sessionId?: string,
+): Promise<{ id: string } | null> {
+  const order = await db.order.findUnique({
+    where: { id: orderId },
+    select: { id: true, org: { select: { stripeAccountId: true } } },
+  });
+  if (!order) return null;
+  // The PAYMENT's account when the event names a session, not the
+  // organisation's current one: a session opened on the platform key before
+  // the organisation connected Stripe — a bank debit in flight for four
+  // days, say — reports to the platform endpoint after it did, and a captured
+  // charge must never be answered "not mine". Payment.stripeAccountId was
+  // denormalised at session creation for exactly this.
+  const payment = sessionId
+    ? await db.payment.findUnique({
+        where: { stripeCheckoutId: sessionId },
+        select: { orderId: true, stripeAccountId: true },
+      })
+    : null;
+  const owned =
+    payment && payment.orderId === order.id ? payment.stripeAccountId : order.org.stripeAccountId;
+  if (scope === "platform") return !owned && !eventAccount ? { id: order.id } : null;
+  return owned && eventAccount === owned ? { id: order.id } : null;
+}
+
 export async function isKnownOrder(orderId: string): Promise<boolean> {
   const hit = await db.order.findUnique({
     where: { id: orderId },
     select: { id: true },
   });
   return hit !== null;
+}
+
+/**
+ * The organisation's fee policy as it applies RIGHT NOW, or null for zero: no
+ * connected account (the platform-key path — the first tenant's — carries no
+ * fee and stays byte-identical to before), no policy stored, or a policy that
+ * does not parse. Unreadable is logged at error, because it is an operator
+ * mistake that silently costs the platform its fee; it is never the buyer's
+ * problem, so it is never thrown.
+ */
+export function activeFeePolicy(org: {
+  name: string;
+  settings: unknown;
+  stripeAccountId: string | null;
+}): FeePolicy | null {
+  if (!org.stripeAccountId) return null;
+  const stored = readFeePolicy(org.settings);
+  if (stored.kind === "ok") return stored.policy;
+  if (stored.kind === "unreadable") {
+    void log.error("fee policy unreadable; charging no fee", { org: org.name, reason: stored.reason });
+  }
+  return null;
+}
+
+type FeeableLineItem = {
+  id: string;
+  description: string;
+  amountCents: number;
+  quantity: number;
+  isDonation: boolean;
+  membershipPlanId: string | null;
+  serviceTypeId: string | null;
+  feeKind: FeeLineKind | null;
+};
+
+/**
+ * Make the order's fee lines match its goods lines and the organisation's
+ * policy, and return the fee-inclusive total Checkout will charge.
+ *
+ * Called from openCheckoutSession and NOWHERE ELSE (verify-checkout §14 pins
+ * it): the fee exists only on a Stripe Checkout, so cash, Zelle, check, COMP,
+ * $0 and the mint script never carry one. Idempotent: the lines are
+ * recomputed from the goods every time, so a resume after a policy change
+ * reprices rather than stacking, and a stale fee line on an organisation
+ * that has since disconnected is removed rather than charged.
+ *
+ * The write is one transaction (delete, then create) and is skipped when the
+ * stored lines already match — the common case on a resume, and the ONLY
+ * case on the platform-key path, where nothing is ever written.
+ */
+export async function ensureFeeLines(order: {
+  id: string;
+  orgId: string;
+  coverProcessingFee: boolean;
+  lineItems: FeeableLineItem[];
+  org: { name: string; settings: unknown; stripeAccountId: string | null };
+}, processing?: { percentBps: number; fixedCents: number; capCents?: number | null }): Promise<OrderFees> {
+  const fees = computeOrderFees(order.lineItems, activeFeePolicy(order.org), {
+    coverProcessing: order.coverProcessingFee,
+    orgName: order.org.name,
+    // The bank rate when the order can only be paid by bank debit.
+    processing,
+  });
+
+  const existing = order.lineItems.filter((li) => li.feeKind !== null);
+  const same =
+    existing.length === fees.lines.length &&
+    fees.lines.every((want) =>
+      existing.some(
+        (have) =>
+          have.feeKind === want.feeKind &&
+          have.amountCents === want.amountCents &&
+          have.quantity === want.quantity &&
+          have.description === want.description,
+      ),
+    );
+  if (!same) {
+    await db.$transaction([
+      db.lineItem.deleteMany({ where: { orderId: order.id, feeKind: { not: null } } }),
+      ...(fees.lines.length > 0
+        ? [
+            db.lineItem.createMany({
+              data: fees.lines.map((l) => ({
+                orgId: order.orgId,
+                orderId: order.id,
+                feeKind: l.feeKind,
+                description: l.description,
+                amountCents: l.amountCents,
+                quantity: l.quantity,
+              })),
+            }),
+          ]
+        : []),
+    ]);
+  }
+  return fees;
+}
+
+/**
+ * Build and send the ticket email for a CONFIRMED order — the ONE builder,
+ * called from confirmOrderPaid's post-transaction block (the webhook path),
+ * from the registrations page's resend button, and from the offline script's
+ * --resend. Reports delivery (the no-provider console path is not delivery)
+ * so a desk can tell whether the guest has their pass. Never throws: email is
+ * best-effort and the order is already confirmed.
+ *
+ * Returns `{ delivered: false }` without sending for an order that is not
+ * CONFIRMED or has no event (a general-fund donation gets a receipt, not a
+ * ticket — see confirmOrderPaid).
+ */
+export async function sendTicketEmailFor(orderId: string): Promise<{ delivered: boolean }> {
+  const order = await db.order.findUnique({
+    where: { id: orderId },
+    // Line items (with their service type) drive the PAID block and the
+    // will-call list; the event carries venue, times and the refund policy.
+    // Every link is built from the organisation's own host — this runs from
+    // the webhook too, where no request is in scope.
+    include: {
+      event: true,
+      lineItems: { include: { serviceType: true } },
+      performanceEntry: true,
+      attendees: { select: { campId: true }, orderBy: { seat: "asc" } },
+      org: { include: { domains: true } },
+    },
+  });
+  if (!order || !order.event || order.status !== "CONFIRMED") return { delivered: false };
+
+  const base = orgBaseUrl(order.org);
+  const profile = resolveOrgProfile(order.org.settings);
+  const campIds = order.attendees.map((a) => a.campId).filter((c): c is string => Boolean(c));
+  return sendConfirmationEmail(
+    {
+      to: order.registrantEmail,
+      registrantName: order.registrantName,
+      eventName: order.event.name,
+      confirmUrl: `${base}/confirm/${order.id}`,
+      walletBaseUrl: base,
+      campIds,
+      // A FEE-kind entry admits nobody, so the wording must not call the
+      // code a ticket or promise it admits anyone. The entry URL is keyed on
+      // the receipt code, which only exists once the order is confirmed.
+      performanceEntry: order.performanceEntry
+        ? {
+            groupName: order.performanceEntry.groupName,
+            songTitle: order.performanceEntry.songTitle,
+            songNeeded: order.performanceEntry.songObjectPath === null,
+            entryUrl: `${base}/perform/${campIds[0] ?? ""}`,
+          }
+        : null,
+      lineItems: order.lineItems.map((li) => ({
+        description: li.serviceType?.name ?? li.description,
+        quantity: li.quantity,
+        amountCents: li.amountCents,
+      })),
+      // Only MERCH service types are physical goods handed over at the gate —
+      // admission and fee lines have nothing to collect.
+      merch: order.lineItems
+        .filter((li) => li.serviceType?.kind === "MERCH")
+        .map((li) => ({
+          description: li.serviceType?.name ?? li.description,
+          quantity: li.quantity,
+        })),
+      totalPaidCents: order.lineItems.reduce((s, li) => s + li.amountCents * li.quantity, 0),
+      venue: order.event.location,
+      startsAt: order.event.startsAt,
+      endsAt: order.event.endsAt,
+      allowsRefunds: order.event.allowsRefunds,
+      theme: emailThemeOf(order.org.settings),
+      // The Pub 1771 statement, from the values snapshotted on the lines at
+      // creation; null (nothing said) unless an offering carried one.
+      contribution: contributionOf(order.lineItems),
+    },
+    { from: senderFor(profile, env.EMAIL_FROM), replyTo: profile.contactEmail },
+  );
 }
 
 /**
@@ -343,20 +718,82 @@ async function openCheckoutSession(
   order: {
     id: string;
     orgId: string;
-    eventId: string;
+    /** Null for a general-fund donation; buildCheckoutReturn already handles it. */
+    eventId: string | null;
+    /** For the bank-debit cutoff; null for a gift. */
+    event: { startsAt: Date } | null;
     registrantEmail: string;
-    lineItems: { description: string; amountCents: number; quantity: number }[];
+    coverProcessingFee: boolean;
+    lineItems: FeeableLineItem[];
+    /** The organisation: return URLs (orgBaseUrl), the Stripe account the session is created on, the fee and bank-debit policies. */
+    org: {
+      name: string;
+      slug: string;
+      settings: unknown;
+      domains: { hostname: string; isPrimary: boolean }[];
+      stripeAccountId: string | null;
+      stripeChargesEnabled: boolean;
+      stripeAchEnabled: boolean;
+    };
   },
-  totalCents: number,
   routes?: CheckoutRoutes,
-): Promise<{ id: string; url: string }> {
+): Promise<{ id: string; url: string; totalCents: number }> {
   if (!stripe) {
     throw new Error("Stripe is not configured (STRIPE_SECRET_KEY missing).");
   }
+  // A connected organisation whose onboarding is not finished: Stripe would
+  // answer session-create with a 400 nobody can act on. The buyer gets a
+  // sentence instead, and no Payment row is minted for a session never opened.
+  if (order.org.stripeAccountId && !order.org.stripeChargesEnabled) {
+    throw new Error(
+      "Online payments are not enabled yet for this organisation. Please try again later, or contact the organisers.",
+    );
+  }
+
+  const goods = order.lineItems.filter((li) => !li.feeKind);
+
+  // ── Which methods Checkout may offer ──
+  // Every line's rule (an offering may be card-only or bank-only), the
+  // organisation's bank-debit policy and cutoff, and the connected account's
+  // capability, intersected — src/lib/fees.ts allowedMethodsFor. An empty
+  // intersection is a sentence to the buyer, BEFORE any Stripe call.
+  const serviceIds = goods.map((li) => li.serviceTypeId).filter((id): id is string => Boolean(id));
+  const caps =
+    order.eventId && serviceIds.length > 0
+      ? await db.serviceCap.findMany({
+          where: { eventId: order.eventId, serviceTypeId: { in: serviceIds } },
+          select: { serviceTypeId: true, onlineMethods: true },
+        })
+      : [];
+  const methodOf = new Map(caps.map((c) => [c.serviceTypeId, c.onlineMethods]));
+  const allowed = allowedMethodsFor({
+    lines: goods.map((li) => ({
+      onlineMethods: (li.serviceTypeId ? methodOf.get(li.serviceTypeId) : undefined) ?? "ANY",
+    })),
+    totalCents: orderTotalCents(goods),
+    eventStartsAt: order.event?.startsAt ?? null,
+    now: new Date(),
+    policy: resolveOrgPayments(order.org.settings).ach,
+    // On the platform key the policy alone decides; a connected account must
+    // also have the capability Stripe reported.
+    orgAchCapable: order.org.stripeAccountId ? order.org.stripeAchEnabled : true,
+  });
+  if (allowed.methods.length === 0) {
+    throw new Error(allowed.refusal ?? "This order cannot be paid online. Contact the organizer.");
+  }
+  const bankOnly = allowed.methods.length === 1 && allowed.methods[0] === "us_bank_account";
+
+  // ── The fee lines, HERE and only here ──
+  // Every online payment and every resume funnels through this function, so
+  // this is the one place the organisation's policy becomes money on an order.
+  // `fees.lines` is what was just written (or confirmed already present);
+  // `goods` is the order as the buyer built it. A bank-only order's cover is
+  // grossed up at the bank rate.
+  const fees = await ensureFeeLines(order, bankOnly ? ACH_PROCESSING : undefined);
 
   const { successUrl, cancelUrl, expiresAt } = buildCheckoutReturn(
     order,
-    env.NEXT_PUBLIC_APP_URL,
+    orgBaseUrl(order.org),
     routes,
   );
 
@@ -372,10 +809,17 @@ async function openCheckoutSession(
     customer_email: order.registrantEmail,
     // Webhook reads this to confirm the right order (decision #2).
     metadata: { orderId: order.id, orgId: order.orgId },
+    // Which methods, from the shared rule — never a hardcoded list — and
+    // instant bank verification: microdeposits add one to two days the
+    // cutoff cannot absorb.
+    payment_method_types: allowed.methods,
+    ...(allowed.methods.includes("us_bank_account")
+      ? { payment_method_options: { us_bank_account: { verification_method: "instant" as const } } }
+      : {}),
     // Comped ($0) lines are omitted — Stripe's hosted page is the payment
     // receipt, and our own /confirm page shows the full breakdown including
     // comps. Sending them would also risk a zero-amount line-item rejection.
-    line_items: order.lineItems
+    line_items: [...goods, ...fees.lines]
       .filter((li) => li.amountCents > 0)
       .map((li) => ({
         quantity: li.quantity,
@@ -385,7 +829,14 @@ async function openCheckoutSession(
           product_data: { name: li.description },
         },
       })),
-  });
+    // The platform's fee, moved by Stripe at charge time (direct charge on
+    // the connected account). ONLY when there is one: the key is refused on a
+    // platform-key session, so sending a zero fee unconditionally would 500
+    // the first tenant's every checkout.
+    ...(fees.platformFeeCents > 0
+      ? { payment_intent_data: { application_fee_amount: fees.platformFeeCents } }
+      : {}),
+  }, stripeRequestOptions(order.org));
 
   await db.payment.create({
     data: {
@@ -393,8 +844,10 @@ async function openCheckoutSession(
       orderId: order.id,
       method: "STRIPE",
       status: "PENDING",
-      amountCents: totalCents,
+      amountCents: fees.totalCents,
       stripeCheckoutId: session.id,
+      stripeAccountId: order.org.stripeAccountId,
+      applicationFeeCents: fees.platformFeeCents > 0 ? fees.platformFeeCents : null,
     },
   });
 
@@ -423,7 +876,7 @@ async function openCheckoutSession(
   }
 
   if (!session.url) throw new Error("Stripe did not return a checkout URL.");
-  return { id: session.id, url: session.url };
+  return { id: session.id, url: session.url, totalCents: fees.totalCents };
 }
 
 /**
@@ -441,6 +894,7 @@ async function openCheckoutSession(
 async function expireOtherPendingSessions(
   orderId: string,
   keepSessionId: string,
+  org: { stripeAccountId: string | null },
 ): Promise<void> {
   const stale = await db.payment.findMany({
     where: {
@@ -456,7 +910,7 @@ async function expireOtherPendingSessions(
   for (const payment of stale) {
     try {
       if (stripe && payment.stripeCheckoutId) {
-        await stripe.checkout.sessions.expire(payment.stripeCheckoutId);
+        await stripe.checkout.sessions.expire(payment.stripeCheckoutId, stripeRequestOptions(org));
       }
     } catch (err) {
       log.warn("resume: could not expire superseded checkout session", {
@@ -493,14 +947,14 @@ export async function confirmFromCheckoutSession(
 ): Promise<boolean> {
   const order = await db.order.findUnique({
     where: { id: orderId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, org: { select: { stripeAccountId: true } } },
   });
   if (!order) return false;
   if (order.status === "CONFIRMED") return true;
   if (!sessionId || !stripe) return false;
 
   try {
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const session = await stripe.checkout.sessions.retrieve(sessionId, stripeRequestOptions(order.org));
     // The session must actually be paid AND belong to THIS order
     // (metadata.orderId is set when we create it) — never confirm an order from
     // a session id pasted in from elsewhere.
@@ -538,6 +992,96 @@ export async function confirmFromCheckoutSession(
   }
 }
 
+/**
+ * The atomic capacity claim, shared by confirmation and by a bank debit's
+ * reservation (markPaymentProcessing) so the two cannot drift. Runs inside
+ * the caller's transaction; throws OverCapacityError or MissingCapError, which
+ * the caller maps to the webhook's answers.
+ */
+async function claimCapacity(
+  tx: Prisma.TransactionClient,
+  order: {
+    id: string;
+    eventId: string | null;
+    lineItems: { serviceTypeId: string | null; quantity: number; serviceType: { key: string } | null }[];
+  },
+): Promise<void> {
+  // ── Atomic capacity decrement (DB-enforced, not app-layer) ──
+  const counts = new Map<string, number>(); // serviceTypeId -> qty
+  for (const li of order.lineItems) {
+    if (li.serviceTypeId) {
+      // quantity-aware: a qty-3 admission line consumes 3 cap units.
+      counts.set(li.serviceTypeId, (counts.get(li.serviceTypeId) ?? 0) + li.quantity);
+    }
+  }
+  for (const [serviceTypeId, qty] of counts) {
+    // A service line on an order with no event cannot exist (the donate
+    // page writes one donation line and nothing else), so this is a type
+    // narrowing with a loud failure, never a branch anyone takes.
+    const eventId = order.eventId;
+    if (!eventId) throw new Error(`Order ${order.id} has a service line but no event`);
+    const serviceKey =
+      order.lineItems.find((li) => li.serviceTypeId === serviceTypeId)
+        ?.serviceType?.key ?? serviceTypeId;
+
+    // NEVER express this as $executeRaw / $queryRaw. An unqualified table name
+    // in raw SQL resolves through the session's `search_path`, and Supabase's
+    // transaction pooler does NOT reliably apply the connection string's
+    // `?schema=` to every pooled backend: measured on the deployed test DB,
+    // 5 of 24 pooled sessions reported `search_path = pg_catalog, public,
+    // extensions` with no `test` in it. A raw `UPDATE service_caps` then hit
+    // `public.service_caps`, matched nothing, and threw OverCapacityError on a
+    // cap that was 23/40 — rolling back the whole confirmation, so a PAID
+    // order silently reverted to PENDING (~1 in 5 confirmations). `prod` is a
+    // named schema too, so the same coin flip applied to real money. Prisma
+    // model operations always emit the schema explicitly
+    // (UPDATE "test"."service_caps"), so the schema comes from the datasource
+    // and cannot be lost. That is the entire point of this block.
+    const cap = await tx.serviceCap.findUnique({
+      where: { eventId_serviceTypeId: { eventId, serviceTypeId } },
+      select: { capacity: true },
+    });
+    // No row at all ⇒ misconfigured event, not a sold-out service.
+    if (!cap) throw new MissingCapError(serviceKey);
+
+    // GUARANTEED: two concurrent confirmations cannot oversell. updateMany
+    // compiles to ONE conditional UPDATE, so under READ COMMITTED Postgres
+    // re-evaluates `sold <= capacity - qty` against the committed row version
+    // after any concurrent writer commits, and two claims on the last seat
+    // cannot both match. That is the property the old raw statement had, and
+    // it is preserved.
+    //
+    // NOT guaranteed: `capacity` is read one statement earlier (Prisma cannot
+    // compare column-to-column with arithmetic), so a coordinator LOWERING the
+    // cap inside that window lets one already in-flight order commit against
+    // the pre-edit limit — measured sold=33 against capacity=25. Accepted
+    // deliberately: the same end state is already reachable through the admin
+    // action's own unlocked read-then-write of `sold`
+    // (src/app/admin/camps/[id]/services/actions.ts), nothing enforces
+    // sold <= capacity at the DB, and one extra paid seat beats rejecting a
+    // paid order. The durable fix is a CHECK ("sold" <= "capacity") constraint
+    // plus catching the violation; that needs a migration, so it is a later
+    // task — and it is NOT a licence to go back to $executeRaw (see above).
+    const claimed = await tx.serviceCap.updateMany({
+      where: {
+        eventId,
+        serviceTypeId,
+        // capacity null = UNCAPPED, so there is no ceiling to test and every
+        // claim succeeds. This is the reason capacity became nullable: it used
+        // to be a plain Int where 0 meant "cannot sell", and an offered
+        // service left at 0 charged the buyer and then failed right here
+        // (`sold <= 0 - 1` matches nothing). A DB CHECK now refuses 0, so the
+        // only two states left are "uncapped" and "a real ceiling".
+        ...(cap.capacity === null ? {} : { sold: { lte: cap.capacity - qty } }),
+      },
+      data: { sold: { increment: qty } },
+    });
+    // With the schema no longer in play, count === 0 has exactly one honest
+    // meaning left: the cap is genuinely full.
+    if (claimed.count === 0) throw new OverCapacityError(serviceKey);
+  }
+}
+
 type ConfirmInput = {
   method: "STRIPE" | "CASH" | "ZELLE" | "CHECK";
   stripePaymentIntentId?: string;
@@ -545,6 +1089,29 @@ type ConfirmInput = {
   /** Guards against double-processing on webhook retries (decision #2). */
   idempotencyKey: string;
   cashTenderedCents?: number;
+  /**
+   * This is a RECONSTRUCTION of a sale that already happened, not a live one.
+   * Exactly one caller sets it: scripts/mint-offline-order.ts --historical,
+   * recording money taken at a finished event on a rail the app could not see
+   * (a card terminal, cash never rung up).
+   *
+   * Suppresses both post-sale side effects, and both for the same reason —
+   * they describe something happening NOW:
+   *   - the confirmation email: those people attended, so mailing them a QR
+   *     pass for a night that is over is worse than sending nothing;
+   *   - the GA4 `purchase`: it would book last night's revenue against today's
+   *     date and pollute acquisition attribution.
+   *
+   * Everything that makes the record true still runs, because it is inside the
+   * transaction and is the whole point: atomic cap decrement, campId
+   * assignment, line items PAID, Payment{SUCCEEDED}, LedgerEntry{CREDIT}.
+   *
+   * NEVER set this on a live sale. The email IS the ticket on every other path,
+   * and the mint script's three delivery safeguards exist precisely because
+   * dispatch() swallows provider errors. The script gates it on the event
+   * having ended.
+   */
+  historical?: boolean;
 };
 
 /**
@@ -585,74 +1152,10 @@ export async function confirmOrderPaid(
     }
 
     // ── Atomic capacity decrement (DB-enforced, not app-layer) ──
-    const counts = new Map<string, number>(); // serviceTypeId -> qty
-    for (const li of order.lineItems) {
-      if (li.serviceTypeId) {
-        // quantity-aware: a qty-3 admission line consumes 3 cap units.
-        counts.set(li.serviceTypeId, (counts.get(li.serviceTypeId) ?? 0) + li.quantity);
-      }
-    }
-    for (const [serviceTypeId, qty] of counts) {
-      const serviceKey =
-        order.lineItems.find((li) => li.serviceTypeId === serviceTypeId)
-          ?.serviceType?.key ?? serviceTypeId;
-
-      // NEVER express this as $executeRaw / $queryRaw. An unqualified table name
-      // in raw SQL resolves through the session's `search_path`, and Supabase's
-      // transaction pooler does NOT reliably apply the connection string's
-      // `?schema=` to every pooled backend: measured on the deployed test DB,
-      // 5 of 24 pooled sessions reported `search_path = pg_catalog, public,
-      // extensions` with no `test` in it. A raw `UPDATE service_caps` then hit
-      // `public.service_caps`, matched nothing, and threw OverCapacityError on a
-      // cap that was 23/40 — rolling back the whole confirmation, so a PAID
-      // order silently reverted to PENDING (~1 in 5 confirmations). `prod` is a
-      // named schema too, so the same coin flip applied to real money. Prisma
-      // model operations always emit the schema explicitly
-      // (UPDATE "test"."service_caps"), so the schema comes from the datasource
-      // and cannot be lost. That is the entire point of this block.
-      const cap = await tx.serviceCap.findUnique({
-        where: { eventId_serviceTypeId: { eventId: order.eventId, serviceTypeId } },
-        select: { capacity: true },
-      });
-      // No row at all ⇒ misconfigured event, not a sold-out service.
-      if (!cap) throw new MissingCapError(serviceKey);
-
-      // GUARANTEED: two concurrent confirmations cannot oversell. updateMany
-      // compiles to ONE conditional UPDATE, so under READ COMMITTED Postgres
-      // re-evaluates `sold <= capacity - qty` against the committed row version
-      // after any concurrent writer commits, and two claims on the last seat
-      // cannot both match. That is the property the old raw statement had, and
-      // it is preserved.
-      //
-      // NOT guaranteed: `capacity` is read one statement earlier (Prisma cannot
-      // compare column-to-column with arithmetic), so a coordinator LOWERING the
-      // cap inside that window lets one already in-flight order commit against
-      // the pre-edit limit — measured sold=33 against capacity=25. Accepted
-      // deliberately: the same end state is already reachable through the admin
-      // action's own unlocked read-then-write of `sold`
-      // (src/app/admin/camps/[id]/services/actions.ts), nothing enforces
-      // sold <= capacity at the DB, and one extra paid seat beats rejecting a
-      // paid order. The durable fix is a CHECK ("sold" <= "capacity") constraint
-      // plus catching the violation; that needs a migration, so it is a later
-      // task — and it is NOT a licence to go back to $executeRaw (see above).
-      const claimed = await tx.serviceCap.updateMany({
-        where: {
-          eventId: order.eventId,
-          serviceTypeId,
-          // capacity null = UNCAPPED, so there is no ceiling to test and every
-          // claim succeeds. This is the reason capacity became nullable: it used
-          // to be a plain Int where 0 meant "cannot sell", and an offered
-          // service left at 0 charged the buyer and then failed right here
-          // (`sold <= 0 - 1` matches nothing). A DB CHECK now refuses 0, so the
-          // only two states left are "uncapped" and "a real ceiling".
-          ...(cap.capacity === null ? {} : { sold: { lte: cap.capacity - qty } }),
-        },
-        data: { sold: { increment: qty } },
-      });
-      // With the schema no longer in play, count === 0 has exactly one honest
-      // meaning left: the cap is genuinely full.
-      if (claimed.count === 0) throw new OverCapacityError(serviceKey);
-    }
+    // Shared with a bank debit's reservation (claimCapacity). Skipped here when
+    // the reservation already made the claim: the stamp is what says so, and
+    // making it twice would sell the same seat to the same buyer twice.
+    if (!order.capsReservedAt) await claimCapacity(tx, order);
 
     // ── Assign campIds (random tokens, not a sequence) ──
     // Event.nextCampSeq is deliberately no longer incremented: the sequence was
@@ -669,14 +1172,21 @@ export async function confirmOrderPaid(
     // Stripe webhook, which retries, and confirmOrderPaid is idempotent — so
     // the retry re-runs with fresh tokens and succeeds. Nobody loses a paid
     // order, and no id is ever quietly reused.
-    const ev = await tx.event.findUniqueOrThrow({
-      where: { id: order.eventId },
-      select: { code: true },
-    });
+    // Null for a general-fund donation, which mints no code: it has no
+    // attendees, so the loop below never asks for the prefix.
+    const ev = order.eventId
+      ? await tx.event.findUniqueOrThrow({
+          where: { id: order.eventId },
+          select: { code: true },
+        })
+      : null;
 
     const campIds: string[] = [];
     const claimed = new Set<string>();
     for (const att of order.attendees) {
+      // An attendee on an order with no event cannot exist (see `ev` above);
+      // the throw is a type narrowing with a loud failure.
+      if (!ev) throw new Error(`Order ${order.id} has an attendee but no event`);
       let campId = newCampId(ev.code);
       for (let attempt = 0; attempt < 5; attempt++) {
         const taken =
@@ -696,7 +1206,9 @@ export async function confirmOrderPaid(
       });
 
       // ── One stored route per attendee (decision #5) ──
-      for (const station of order.event.stations) {
+      // A general-fund donation has no event and no attendees, so this loop
+      // body never runs for one; the optional chain is for the type.
+      for (const station of order.event?.stations ?? []) {
         await tx.stationVisit.create({
           data: {
             attendeeId: att.id,
@@ -806,6 +1318,23 @@ export async function confirmOrderPaid(
       },
     });
 
+    // The platform's fee, booked OUT of the organisation's receipts: Stripe
+    // moved it at charge time, so the CREDIT above overstates what the
+    // organisation keeps by exactly this. Only ever present on a Checkout
+    // opened on a connected account — see ensureFeeLines.
+    if ((payment.applicationFeeCents ?? 0) > 0) {
+      await tx.ledgerEntry.create({
+        data: {
+          orgId: order.orgId,
+          paymentId: payment.id,
+          direction: "DEBIT",
+          method: input.method,
+          amountCents: payment.applicationFeeCents ?? 0,
+          memo: "Platform service fee",
+        },
+      });
+    }
+
     return { alreadyConfirmed: false, campIds };
   }, {
     /**
@@ -834,7 +1363,7 @@ export async function confirmOrderPaid(
   }).then(async (result) => {
     // Side-effect (email) outside the transaction so a slow provider can't hold
     // a DB lock. Re-read the confirmed order for the message.
-    if (!result.alreadyConfirmed) {
+    if (!result.alreadyConfirmed && !input.historical) {
       const order = await db.order.findUniqueOrThrow({
         where: { id: orderId },
         // Line items (with their service type) drive the PAID block and the
@@ -845,48 +1374,45 @@ export async function confirmOrderPaid(
           lineItems: { include: { serviceType: true } },
           // Decides whether this email is a ticket or an entry receipt.
           performanceEntry: true,
+          // Every link in the email is built from the organisation's own host.
+          // This block runs from the webhook, where no request is in scope.
+          org: { include: { domains: true } },
         },
       });
-      await sendConfirmationEmail({
-        to: order.registrantEmail,
-        registrantName: order.registrantName,
-        eventName: order.event.name,
-        confirmUrl: `${env.NEXT_PUBLIC_APP_URL}/confirm/${order.id}`,
-        walletBaseUrl: env.NEXT_PUBLIC_APP_URL,
-        campIds: result.campIds,
-        // A FEE-kind entry admits nobody, so the wording must not call the
-        // code a ticket or promise it admits anyone. The entry URL is keyed on
-        // the receipt code, which only exists now that the order is confirmed.
-        performanceEntry: order.performanceEntry
-          ? {
-              groupName: order.performanceEntry.groupName,
-              songTitle: order.performanceEntry.songTitle,
-              songNeeded: order.performanceEntry.songObjectPath === null,
-              entryUrl: `${env.NEXT_PUBLIC_APP_URL}/perform/${result.campIds[0] ?? ""}`,
-            }
-          : null,
-        lineItems: order.lineItems.map((li) => ({
-          description: li.serviceType?.name ?? li.description,
-          quantity: li.quantity,
-          amountCents: li.amountCents,
-        })),
-        // Only MERCH service types are physical goods handed over at
-        // the gate — admission and fee lines have nothing to collect.
-        merch: order.lineItems
-          .filter((li) => li.serviceType?.kind === "MERCH")
-          .map((li) => ({
-            description: li.serviceType?.name ?? li.description,
-            quantity: li.quantity,
-          })),
-        totalPaidCents: order.lineItems.reduce(
-          (s, li) => s + li.amountCents * li.quantity,
-          0,
-        ),
-        venue: order.event.location,
-        startsAt: order.event.startsAt,
-        endsAt: order.event.endsAt,
-        allowsRefunds: order.event.allowsRefunds,
-      });
+      const profile = resolveOrgProfile(order.org.settings);
+      const sender = { from: senderFor(profile, env.EMAIL_FROM), replyTo: profile.contactEmail };
+      if (!order.event) {
+        // ── A general-fund donation: a receipt, not a ticket ──
+        // The amount is the organisation's receipts (the platform's fee
+        // excluded; the cover included — it is the organisation's). The
+        // stamp records DELIVERY: the no-provider console path is not a
+        // receipt in anyone's inbox, so it leaves receiptSentAt null.
+        const { delivered } = await sendDonationReceiptEmail(
+          {
+            to: order.registrantEmail,
+            donorName: order.registrantName,
+            orgName: order.org.name,
+            legalName: profile.legalName,
+            ein: profile.ein,
+            receiptStatement: profile.receiptStatement,
+            paidAt: new Date(),
+            amountCents: receiptLines(order.lineItems).reduce(
+              (s, li) => s + li.amountCents * li.quantity,
+              0,
+            ),
+            honoreeName: order.honoreeName,
+            theme: emailThemeOf(order.org.settings),
+          },
+          sender,
+        );
+        if (delivered) {
+          await db.order.update({ where: { id: order.id }, data: { receiptSentAt: new Date() } });
+        }
+      } else {
+        // The ONE ticket-email builder, shared with the resend button and the
+        // offline script, so the three can never drift.
+        await sendTicketEmailFor(order.id);
+      }
 
       // ── GA4 `purchase`, same guard, same side of the transaction ──
       //
@@ -913,13 +1439,18 @@ export async function confirmOrderPaid(
         // buyer's — which suppresses the event rather than inventing a session.
         // See buildPurchasePayload for why that is the right trade.
         clientId: order.gaClientId,
+        site: resolveOrgSite(order.org.settings),
         orderId: order.id,
-        eventType: order.event.type,
+        // A general-fund donation reports as its own kind, with no landing page.
+        eventType: order.event?.type ?? "DONATION",
         // The same slug the /e/<slug> page_view carries, so a landing page can
         // be joined to the sale it produced.
-        eventSlug: eventSlug(order.event),
+        eventSlug: order.event ? eventSlug(order.event) : null,
         paymentMethod: input.method,
-        lineItems: order.lineItems.map((li) => ({
+        // The ORGANISATION's receipts: the platform's fee is not its revenue
+        // and must not inflate its purchase value in analytics. The cover
+        // stays — that is the organisation's money.
+        lineItems: receiptLines(order.lineItems).map((li) => ({
           name: li.serviceType?.name ?? li.description,
           key: li.serviceType?.key ?? null,
           amountCents: li.amountCents,

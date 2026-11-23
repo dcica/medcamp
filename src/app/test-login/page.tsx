@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { testLoginEnabled, TEST_ACCOUNTS } from "@/lib/testAccounts";
 import { TestLoginForm } from "./TestLoginForm";
 import { PRIVATE_PAGE_METADATA } from "@/lib/seo";
+import { getActiveOrg } from "@/lib/tenant";
+import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +23,12 @@ export default async function TestLoginPage({
 }) {
   if (!testLoginEnabled) notFound();
   const { callbackUrl } = await searchParams;
+  // On a tenant host the organisation is the host's; on the platform host the
+  // tester picks one. The list is the whole table — this is a QA screen.
+  const org = await getActiveOrg();
+  const orgs = org
+    ? []
+    : await db.organization.findMany({ select: { slug: true, name: true }, orderBy: { name: "asc" } });
 
   return (
     <main className="mx-auto flex min-h-[80vh] max-w-screen-sm flex-col justify-center px-4">
@@ -43,6 +51,7 @@ export default async function TestLoginPage({
         // default, "/dashboard", 403s every role except coordinator and
         // committee admin. See src/app/staff/page.tsx.
         callbackUrl={callbackUrl || "/staff"}
+        orgs={orgs}
       />
     </main>
   );

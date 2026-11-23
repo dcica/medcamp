@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { getActiveOrg } from "@/lib/tenant";
+import { findTicket } from "@/server/public";
 import QRCode from "qrcode";
 import { notFound } from "next/navigation";
-import { db } from "@/lib/db";
 import { normalizeCampId } from "@/lib/campId";
 import { formatWhen, formatVenueDate, formatVenueTime } from "@/lib/eventTime";
 import { formatCents } from "@/lib/money";
@@ -43,8 +44,10 @@ export default async function TicketPage({
   const { campId: raw } = await params;
   const campId = normalizeCampId(decodeURIComponent(raw));
 
-  const attendee = await db.attendee.findFirst({
-    where: { campId },
+  const org = await getActiveOrg();
+  if (!org) notFound();
+
+  const attendee = await findTicket(org.id, campId, {
     include: {
       event: true,
       order: {

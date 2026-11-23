@@ -38,6 +38,8 @@ export type InlineImage = {
 
 export type RelatedMessage = {
   from: string;
+  /** Where a reply goes when it should not go to the sender (the org's contact address). */
+  replyTo?: string | null;
   to: string;
   subject: string;
   text: string;
@@ -84,6 +86,7 @@ export function buildRelatedMessage(msg: RelatedMessage): Buffer {
   const altBoundary = boundary("alt");
   const lines: string[] = [
     `From: ${msg.from}`,
+    ...(msg.replyTo ? [`Reply-To: ${msg.replyTo}`] : []),
     `To: ${msg.to}`,
     `Subject: ${encodeHeaderValue(msg.subject)}`,
     `Date: ${(msg.date ?? new Date()).toUTCString()}`,

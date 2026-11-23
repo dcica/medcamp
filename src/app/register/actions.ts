@@ -7,6 +7,7 @@ import {
 } from "@/server/registration";
 import { createCheckoutForOrder, confirmOrderPaid } from "@/server/payments";
 import { setResumeCookie } from "@/server/resumeCookie";
+import { getActiveOrg } from "@/lib/tenant";
 
 export type SubmitResult =
   /** `orderId` is echoed back so the form can key its draft to this attempt —
@@ -52,7 +53,9 @@ export async function submitRegistration(
   input: RegistrationInput,
 ): Promise<SubmitResult> {
   try {
-    const { orderId, totalCents } = await createRegistration(input);
+    const org = await getActiveOrg();
+    if (!org) throw new Error("That event could not be found.");
+    const { orderId, totalCents } = await createRegistration(input, { orgId: org.id });
 
     if (totalCents === 0) {
       await confirmOrderPaid(orderId, {

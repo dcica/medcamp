@@ -12,6 +12,12 @@ import {
   confirmationText,
   type ConfirmationEmail,
 } from "@/lib/confirmationEmail";
+import {
+  buildDonationReceiptMime,
+  donationReceiptSubject,
+  donationReceiptText,
+  type DonationReceipt,
+} from "@/lib/donationReceiptEmail";
 
 /**
  * Pluggable email (Platform-Mandate §6). When no provider is configured the
@@ -101,7 +107,16 @@ export function emailConfig(): EmailConfig {
  * still the plain-text part inside that MIME; it is also what the no-provider
  * console path logs, so that path never dumps base64.
  */
+/** Who a message is from, and where a reply goes. Per organisation, never a global. */
+export type Sender = { from: string; replyTo?: string | null };
+
+/** The deployment's own identity (EMAIL_FROM): the fallback when an organisation has no sender. */
+export function defaultSender(): Sender {
+  return { from: env.EMAIL_FROM };
+}
+
 async function send(
+  sender: Sender,
   to: string,
   subject: string,
   body: string,
@@ -110,7 +125,8 @@ async function send(
   if (env.EMAIL_PROVIDER === "ses" && env.AWS_REGION) {
     await getSes().send(
       new SendEmailCommand({
-        FromEmailAddress: env.EMAIL_FROM,
+        FromEmailAddress: sender.from,
+        ReplyToAddresses: sender.replyTo ? [sender.replyTo] : undefined,
         Destination: { ToAddresses: [to] },
         Content: raw
           ? { Raw: { Data: raw } }
@@ -141,7 +157,7 @@ async function send(
 
   log.info("email logged to console (no provider configured)", {
     to,
-    from: env.EMAIL_FROM,
+    from: sender.from,
     subject,
     body,
   });
@@ -156,6 +172,7 @@ async function send(
  * confirmation is idempotent) the retry would skip the email entirely.
  */
 async function dispatch(
+  sender: Sender,
   to: string,
   subject: string,
   body: string,
@@ -166,7 +183,7 @@ async function dispatch(
    * cannot roll back an already-paid, already-confirmed order.
    */
   buildRaw?: () => Promise<Buffer>,
-): Promise<void> {
+): Promise<{ delivered: boolean }> {
   // ONE chokepoint, before anything else. Every walk-up cash sale is recorded
   // against gate@gate.local, a reserved TLD (RFC 6762) that never resolves --
   // so today each one is a silent hard bounce, and SES suspends an account over
@@ -175,7 +192,7 @@ async function dispatch(
   // it until sending stopped working for real guests.
   if (isUndeliverableAddress(to)) {
     log.info("email skipped: reserved address", { to, subject });
-    return;
+    return { delivered: false };
   }
   try {
     let raw: Buffer | undefined;
@@ -193,7 +210,7 @@ async function dispatch(
         });
       }
     }
-    await send(to, subject, body, raw);
+    return await send(sender, to, subject, body, raw);
   } catch (err) {
     log.error("email send failed", {
       provider: env.EMAIL_PROVIDER,
@@ -201,6 +218,7 @@ async function dispatch(
       subject,
       err,
     });
+    return { delivered: false };
   }
 }
 
@@ -210,15 +228,18 @@ async function dispatch(
  */
 export async function sendTestEmail(
   to: string,
+  orgName: string,
+  sender: Sender = defaultSender(),
 ): Promise<{ delivered: boolean }> {
   return send(
+    sender,
     to,
-    "Test email — DCICA",
+    `Test email — ${orgName}`,
     [
-      "This is a test email from the DCICA admin console.",
+      `This is a test email from the ${orgName} admin console.`,
       "If you received this, your email provider is configured correctly.",
       `Provider: ${env.EMAIL_PROVIDER}`,
-      `From: ${env.EMAIL_FROM}`,
+      `From: ${sender.from}`,
     ].join("\n"),
   );
 }
@@ -259,9 +280,87 @@ export async function getSesAccountStatus(): Promise<SesAccountStatus | null> {
  *
  * The other senders in this file are deliberately still plain text.
  */
-export async function sendConfirmationEmail(msg: ConfirmationEmail): Promise<void> {
-  await dispatch(msg.to, confirmationSubject(msg), confirmationText(msg), () =>
-    buildConfirmationMime(msg, env.EMAIL_FROM),
+export async function sendConfirmationEmail(
+  msg: ConfirmationEmail,
+  sender: Sender = defaultSender(),
+): Promise<{ delivered: boolean }> {
+  return dispatch(sender, msg.to, confirmationSubject(msg), confirmationText(msg), () =>
+    buildConfirmationMime(msg, sender.from, sender.replyTo),
+  );
+}
+
+/**
+ * The donation receipt. Unlike the ticket email this REPORTS delivery, because
+ * the caller stamps `Order.receiptSentAt` from it: the console path (no
+ * provider) is not a receipt in anyone's inbox and must not be recorded as
+ * one. Never throws — a receipt that fails to send is logged, and the money
+ * is already received either way.
+ */
+export async function sendDonationReceiptEmail(
+  msg: DonationReceipt,
+  sender: Sender = defaultSender(),
+): Promise<{ delivered: boolean }> {
+  if (isUndeliverableAddress(msg.to)) {
+    log.info("email skipped: reserved address", { to: msg.to, subject: donationReceiptSubject(msg) });
+    return { delivered: false };
+  }
+  try {
+    return await send(
+      sender,
+      msg.to,
+      donationReceiptSubject(msg),
+      donationReceiptText(msg),
+      buildDonationReceiptMime(msg, sender.from, sender.replyTo),
+    );
+  } catch (err) {
+    log.error("donation receipt send failed", { provider: env.EMAIL_PROVIDER, to: msg.to, err });
+    return { delivered: false };
+  }
+}
+
+// ── Bank debit (ACH) notices ─────────────────────────────────────────────────
+
+export type PaymentProcessingEmail = {
+  to: string;
+  registrantName: string;
+  eventName: string;
+  orgName: string;
+};
+
+/** The session completed by bank debit: nothing is confirmed yet, and nothing scans. Plain text. */
+export async function sendPaymentProcessingEmail(
+  msg: PaymentProcessingEmail,
+  sender: Sender = defaultSender(),
+): Promise<{ delivered: boolean }> {
+  return dispatch(
+    sender,
+    msg.to,
+    `${msg.eventName} — your bank payment is processing`,
+    [
+      `Hi ${msg.registrantName},`,
+      `Your bank payment for ${msg.eventName} is on its way. A bank debit takes up to 4 business days to clear.`,
+      `Your place is held meanwhile. Your tickets are emailed the moment the payment clears — there is nothing to show at the door until then.`,
+      `If the bank declines it, we will let you know so you can pay another way.`,
+      `— ${msg.orgName}`,
+    ].join("\n"),
+  );
+}
+
+/** The bank declined the debit: the seats are released and the buyer may pay by card. Plain text. */
+export async function sendPaymentFailedEmail(
+  msg: PaymentProcessingEmail,
+  sender: Sender = defaultSender(),
+): Promise<{ delivered: boolean }> {
+  return dispatch(
+    sender,
+    msg.to,
+    `${msg.eventName} — your bank payment did not go through`,
+    [
+      `Hi ${msg.registrantName},`,
+      `Your bank was unable to complete the payment for ${msg.eventName}, so your place has been released and nothing has been charged.`,
+      `To attend, please register again and pay by card; it confirms immediately.`,
+      `— ${msg.orgName}`,
+    ].join("\n"),
   );
 }
 
@@ -279,6 +378,7 @@ export type VolunteerSignupEmail = {
 /** Immediate acknowledgement when a volunteer signs up (Volunteer-Module §2). */
 export async function sendVolunteerSignupEmail(
   msg: VolunteerSignupEmail,
+  sender: Sender = defaultSender(),
 ): Promise<void> {
   const body = [
     `Hi ${msg.volunteerName},`,
@@ -287,7 +387,7 @@ export async function sendVolunteerSignupEmail(
     `Your confirmation + day-of QR sign-in code: ${msg.confirmUrl}`,
     `We'll send a reminder with arrival details before the event.`,
   ].join("\n");
-  await dispatch(msg.to, `You're signed up for ${msg.eventName}`, body);
+  await dispatch(sender, msg.to, `You're signed up for ${msg.eventName}`, body);
 }
 
 export type VolunteerReminderEmail = {
@@ -303,6 +403,7 @@ export type VolunteerReminderEmail = {
 /** 24–48h reminder with QR + instructions (Volunteer-Module §4). */
 export async function sendVolunteerReminderEmail(
   msg: VolunteerReminderEmail,
+  sender: Sender = defaultSender(),
 ): Promise<void> {
   const body = [
     `Hi ${msg.volunteerName},`,
@@ -314,7 +415,7 @@ export async function sendVolunteerReminderEmail(
   ]
     .filter(Boolean)
     .join("\n");
-  await dispatch(msg.to, `Reminder: ${msg.eventName} is almost here`, body);
+  await dispatch(sender, msg.to, `Reminder: ${msg.eventName} is almost here`, body);
 }
 
 export type VolunteerThankYouEmail = {
@@ -328,6 +429,7 @@ export type VolunteerThankYouEmail = {
 /** Post-event thank-you carrying the certificate link (Volunteer-Module §7). */
 export async function sendVolunteerThankYouEmail(
   msg: VolunteerThankYouEmail,
+  sender: Sender = defaultSender(),
 ): Promise<void> {
   const hours =
     msg.hoursServed != null ? `${msg.hoursServed.toFixed(1)} hours` : "your time";
@@ -338,5 +440,5 @@ export async function sendVolunteerThankYouEmail(
     `Download your certificate of appreciation: ${msg.certUrl}`,
     `Hope to see you at the next one!`,
   ].join("\n");
-  await dispatch(msg.to, `Thank you for volunteering at ${msg.eventName}`, body);
+  await dispatch(sender, msg.to, `Thank you for volunteering at ${msg.eventName}`, body);
 }

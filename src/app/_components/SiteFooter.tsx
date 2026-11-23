@@ -1,5 +1,7 @@
-import { CONTACT_EMAIL } from "@/lib/contact";
-import { getActiveBranding } from "@/lib/tenant";
+import Link from "next/link";
+import { getActiveBranding, getActiveLegal, getActiveOrg, getActiveProfile } from "@/lib/tenant";
+import { resolveOrgDonations } from "@/lib/orgSettings";
+import { PLATFORM_REPO_URL } from "@/lib/platform";
 
 /**
  * Global footer. Carries the open-source (AGPL-3.0) notice and contact the
@@ -18,7 +20,14 @@ import { getActiveBranding } from "@/lib/tenant";
  */
 export async function SiteFooter() {
   const year = new Date().getFullYear();
-  const branding = await getActiveBranding();
+  const [branding, profile, legal, org] = await Promise.all([
+    getActiveBranding(),
+    getActiveProfile(),
+    getActiveLegal(),
+    getActiveOrg(),
+  ]);
+  // The same flag /donate itself reads: the link exists exactly when the page does.
+  const donations = resolveOrgDonations(org?.settings);
   return (
     // Flag-green band mirrors dcica.org's footer.
     <footer className="no-print bg-accent2 px-4 py-6 text-center text-xs text-accent2-fg">
@@ -30,19 +39,36 @@ export async function SiteFooter() {
           targets on the site. */}
       <p className="mt-1 flex flex-wrap items-center justify-center gap-x-6">
         <a
-          href="https://github.com/dcica/medcamp"
+          href={PLATFORM_REPO_URL}
           target="_blank"
           rel="noreferrer"
           className="inline-flex min-h-tap items-center underline"
         >
           Open source (AGPL-3.0)
         </a>
-        <a
-          href={`mailto:${CONTACT_EMAIL}`}
-          className="inline-flex min-h-tap items-center underline"
-        >
-          Contact
-        </a>
+        {donations.enabled && (
+          <Link href="/donate" className="inline-flex min-h-tap items-center underline">
+            Donate
+          </Link>
+        )}
+        {profile.contactEmail && (
+          <a
+            href={`mailto:${profile.contactEmail}`}
+            className="inline-flex min-h-tap items-center underline"
+          >
+            Contact
+          </a>
+        )}
+        {legal.privacy && (
+          <Link href="/privacy" className="inline-flex min-h-tap items-center underline">
+            Privacy
+          </Link>
+        )}
+        {legal.terms && (
+          <Link href="/terms" className="inline-flex min-h-tap items-center underline">
+            Terms
+          </Link>
+        )}
       </p>
     </footer>
   );

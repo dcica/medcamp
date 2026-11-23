@@ -131,6 +131,6 @@ export function hasEdits(baseline: string | null, values: unknown): boolean {
 
 /** One key per flow, so /register and /perform never overwrite each other. */
 export const DRAFT_KEY = {
-  register: "dcica.draft.register",
-  perform: "dcica.draft.perform",
+  register: "medcamp.draft.register",
+  perform: "medcamp.draft.perform",
 } as const;

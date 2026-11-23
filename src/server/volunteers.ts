@@ -6,10 +6,13 @@ import type {
   EventStatus,
 } from "@prisma/client";
 import { db } from "@/lib/db";
-import { env } from "@/lib/env";
+import { orgBaseUrl } from "@/lib/orgUrl";
 import { log } from "@/lib/logger";
 import { getActiveOrg } from "@/lib/tenant";
 import { newVolCode, normalizeVolCode } from "@/lib/volunteerId";
+import { resolveOrgProfile, senderFor } from "@/lib/orgSettings";
+import { env } from "@/lib/env";
+import type { Sender } from "@/lib/email";
 import {
   bandMeetsMinAge,
   counselorPairRequired,
@@ -43,11 +46,20 @@ const OCCUPYING: SignupStatus[] = [
   "NO_SHOW",
 ];
 
-function confirmUrl(signupId: string): string {
-  return `${env.NEXT_PUBLIC_APP_URL}/volunteer/confirm/${signupId}`;
+
+/** The organisation's sender and reply-to for every volunteer email. */
+function volunteerSender(org: { settings: unknown }): Sender {
+  const profile = resolveOrgProfile(org.settings);
+  return { from: senderFor(profile, env.EMAIL_FROM), replyTo: profile.contactEmail };
 }
-function certUrl(signupId: string): string {
-  return `${env.NEXT_PUBLIC_APP_URL}/volunteer/cert/${signupId}`;
+
+// `base` is the organisation's own origin (orgBaseUrl) — every caller has
+// the org in scope, and these mails must carry the tenant's host, not a global.
+function confirmUrl(base: string, signupId: string): string {
+  return `${base}/volunteer/confirm/${signupId}`;
+}
+function certUrl(base: string, signupId: string): string {
+  return `${base}/volunteer/cert/${signupId}`;
 }
 
 /** Hours between sign-in and sign-out, to 0.1h, never negative. */
@@ -579,8 +591,8 @@ export async function createVolunteerSignup(
       eventName: event.name,
       roleName: role.name,
       shift: role.shift,
-      confirmUrl: confirmUrl(signup.id),
-    });
+      confirmUrl: confirmUrl(orgBaseUrl(org), signup.id),
+    }, volunteerSender(org));
   } catch (err) {
     log.error("volunteer signup email failed", { err });
   }
@@ -614,17 +626,20 @@ export type ConfirmationView = {
   checkedOutAt: Date | null;
 };
 
-async function loadSignup(signupId: string) {
-  return db.volunteerSignup.findUnique({
-    where: { id: signupId },
+async function loadSignup(orgId: string, signupId: string) {
+  // Scoped through the event: a signup id is a capability, and one tenant's
+  // must not resolve on another tenant's host.
+  return db.volunteerSignup.findFirst({
+    where: { id: signupId, event: { orgId } },
     include: { volunteer: true, role: true, event: { include: { org: true } } },
   });
 }
 
 export async function getVolunteerConfirmation(
+  orgId: string,
   signupId: string,
 ): Promise<ConfirmationView | null> {
-  const s = await loadSignup(signupId);
+  const s = await loadSignup(orgId, signupId);
   if (!s || !s.code) return null;
   return {
     signupId: s.id,
@@ -646,8 +661,8 @@ export async function getVolunteerConfirmation(
 }
 
 /** Volunteer cancels their slot; the oldest waitlister for the role is promoted. */
-export async function cancelSignup(signupId: string): Promise<void> {
-  const s = await loadSignup(signupId);
+export async function cancelSignup(orgId: string, signupId: string): Promise<void> {
+  const s = await loadSignup(orgId, signupId);
   if (!s) throw new Error("Signup not found.");
   if (s.status === "CANCELLED") return;
 
@@ -951,8 +966,8 @@ export async function sendReminders(eventId?: string): Promise<number> {
         roleName: s.role.name,
         shift: s.shift ?? s.role.shift,
         instructions: s.role.instructions,
-        confirmUrl: confirmUrl(s.id),
-      });
+        confirmUrl: confirmUrl(orgBaseUrl(active.org), s.id),
+      }, volunteerSender(active.org));
     } catch (err) {
       log.error("volunteer reminder email failed", { err });
     }
@@ -984,8 +999,8 @@ export async function issueCertificates(eventId?: string): Promise<number> {
         volunteerName: s.volunteer.name,
         eventName: event.name,
         hoursServed: s.hoursServed,
-        certUrl: certUrl(s.id),
-      });
+        certUrl: certUrl(orgBaseUrl(active.org), s.id),
+      }, volunteerSender(active.org));
     } catch (err) {
       log.error("volunteer thank-you email failed", { err });
     }

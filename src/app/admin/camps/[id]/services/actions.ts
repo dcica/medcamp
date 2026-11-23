@@ -27,6 +27,18 @@ type OfferingInput = {
   /** "m:ss" exactly as typed; parsed here so the rule lives server-side. */
   minDuration: string | null;
   maxDuration: string | null;
+  /**
+   * Per-unit fair market value of what the guest RECEIVES (IRS Pub 1771) —
+   * the comparable dinner, not the cost to host it. Null = nothing to
+   * disclose. Copied onto each line at creation; see src/lib/contribution.ts.
+   */
+  fairMarketValueDollars: number | null;
+  /**
+   * Which online methods may buy it: any; card only; or bank debit only — for
+   * the large items (a booth fee, a sponsorship, a table package) where 0.8%
+   * capped at $5 beats 2.9%. The door never sells a bank-only item.
+   */
+  onlineMethods: "ANY" | "CARD_ONLY" | "ACH_ONLY";
 };
 
 /** Blank/absent door price means "same as online" — stored as NULL, not 0. */
@@ -274,6 +286,13 @@ export async function saveOffering(
       maxParticipants: maxParticipants.value,
       minDurationSeconds: minDuration.seconds,
       maxDurationSeconds: maxDuration.seconds,
+      // Same blank-is-null rule as the door price: nothing typed means
+      // nothing to disclose, never a $0 value.
+      fairMarketValueCents: onsiteCents(input.fairMarketValueDollars),
+      onlineMethods:
+        input.onlineMethods === "CARD_ONLY" || input.onlineMethods === "ACH_ONLY"
+          ? input.onlineMethods
+          : "ANY",
     },
   });
   revalidatePath(`/admin/camps/${eventId}/services`);

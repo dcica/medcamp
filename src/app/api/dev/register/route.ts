@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getActiveOrg } from "@/lib/tenant";
 import { createRegistration } from "@/server/registration";
 
 /**
@@ -12,7 +13,9 @@ export async function POST(req: NextRequest) {
   }
   try {
     const body = await req.json();
-    const result = await createRegistration(body);
+    const org = await getActiveOrg();
+    if (!org) return NextResponse.json({ ok: false, error: "no organisation" }, { status: 400 });
+    const result = await createRegistration(body, { orgId: org.id });
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     return NextResponse.json(

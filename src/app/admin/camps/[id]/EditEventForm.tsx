@@ -8,11 +8,15 @@ import {
 } from "@/app/_components/ValidatedInput";
 import { VENUE_TIME_ZONE } from "@/lib/eventTime";
 import {
+  DESCRIPTION_MAX,
   INTERNAL_NOTES_MAX,
+  validateDescription,
+  validateDisplayOrder,
+  validateExternalUrl,
   validateInternalNotes,
   validateVenueCapacity,
 } from "@/lib/eventSetup";
-import { updateCamp } from "../actions";
+import { updateCamp, type CreatableEventType } from "../actions";
 
 // Same field styling as CreateCampForm and as every ValidatedInput — the forms
 // are siblings and a coordinator who has used one should recognise the other.
@@ -23,6 +27,7 @@ const inputCls = INPUT_CLASS;
 export function EditEventForm({
   id,
   initial,
+  canChangeType,
 }: {
   id: string;
   /**
@@ -46,7 +51,18 @@ export function EditEventForm({
     venueCapacity: string;
     /** Coordinator notes; empty string when the column is null. */
     internalNotes: string;
+    /** Public blurb; empty string when the column is null. */
+    description: string;
+    /** Rail position as a STRING, empty when null (sort by date). "0" is first. */
+    displayOrder: string;
+    externallyHosted: boolean;
+    hostedByName: string;
+    externalUrl: string;
+    /** The kind as stored. MEMBERSHIP_DRIVE is seeded and shown read-only. */
+    type: "CAMP" | "GENERAL" | "MEMBERSHIP_DRIVE";
   };
+  /** DRAFT with nobody paid — the only state in which the kind may change. */
+  canChangeType: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -56,6 +72,14 @@ export function EditEventForm({
   const [location, setLocation] = useState(initial.location);
   const [venueCapacity, setVenueCapacity] = useState(initial.venueCapacity);
   const [internalNotes, setInternalNotes] = useState(initial.internalNotes);
+  const [description, setDescription] = useState(initial.description);
+  const [displayOrder, setDisplayOrder] = useState(initial.displayOrder);
+  const [externallyHosted, setExternallyHosted] = useState(initial.externallyHosted);
+  const [hostedByName, setHostedByName] = useState(initial.hostedByName);
+  const [externalUrl, setExternalUrl] = useState(initial.externalUrl);
+  const [type, setType] = useState<CreatableEventType | null>(
+    initial.type === "CAMP" || initial.type === "GENERAL" ? initial.type : null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -63,7 +87,10 @@ export function EditEventForm({
   // it is crossed, unlike "required", which would nag a field nobody has
   // engaged with yet. Same rule the server runs — never a stricter one.
   const notesIssue = validateInternalNotes(internalNotes);
-  const notesErrorId = `${useId()}-notes-error`;
+  const descriptionIssue = validateDescription(description);
+  const baseId = useId();
+  const notesErrorId = `${baseId}-notes-error`;
+  const descriptionErrorId = `${baseId}-description-error`;
 
   function submit() {
     setError(null);
@@ -75,6 +102,14 @@ export function EditEventForm({
         location,
         venueCapacity,
         internalNotes,
+        description,
+        displayOrder,
+        externallyHosted,
+        hostedByName,
+        externalUrl,
+        // Only offered while it may change; otherwise the current kind is
+        // sent back unchanged, which the action treats as "leave it".
+        ...(canChangeType && type ? { type } : {}),
       });
       if (res.ok) {
         setOpen(false);
@@ -92,7 +127,7 @@ export function EditEventForm({
         onClick={() => setOpen(true)}
         className="min-h-tap w-full rounded-lg border border-dashed border-gray-300 text-sm font-medium text-brand"
       >
-        Edit name, dates &amp; location
+        Edit details, dates &amp; location
       </button>
     );
   }
@@ -108,6 +143,66 @@ export function EditEventForm({
           onChange={(e) => setName(e.target.value)}
         />
       </label>
+
+      {/* The kind. Offered only while it can still change — DRAFT, nobody
+          paid — because it decides the register form's shape and an order
+          minted under one shape cannot be re-read under the other. */}
+      {canChangeType && type ? (
+        <fieldset className="space-y-1">
+          <legend className="text-sm text-gray-600">Kind of event</legend>
+          <label className="flex min-h-tap items-center gap-3 text-sm">
+            <input
+              type="radio"
+              name="edit-event-type"
+              className="h-5 w-5"
+              checked={type === "GENERAL"}
+              onChange={() => setType("GENERAL")}
+            />
+            General event — sold by quantity
+          </label>
+          <label className="flex min-h-tap items-center gap-3 text-sm">
+            <input
+              type="radio"
+              name="edit-event-type"
+              className="h-5 w-5"
+              checked={type === "CAMP"}
+              onChange={() => setType("CAMP")}
+            />
+            Medical camp — one row per patient
+          </label>
+          <p className="text-xs text-gray-500">
+            Changing the kind resets the registration mode below. It locks once the
+            event opens or anyone pays.
+          </p>
+        </fieldset>
+      ) : (
+        <p className="text-xs text-gray-500">
+          Kind: {initial.type === "CAMP" ? "medical camp" : initial.type === "GENERAL" ? "general event" : "membership drive"}
+          {initial.type !== "MEMBERSHIP_DRIVE" && " — locked once the event opens or anyone has paid."}
+        </p>
+      )}
+
+      <label className="block text-sm text-gray-600">
+        Description
+        <textarea
+          className={`${inputCls} min-h-[5rem]`}
+          placeholder="One short paragraph for the public event page"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          aria-label="Description"
+          aria-invalid={descriptionIssue ? true : undefined}
+          aria-describedby={descriptionIssue ? descriptionErrorId : undefined}
+        />
+      </label>
+      {descriptionIssue ? (
+        <p id={descriptionErrorId} role="alert" className="text-xs text-red-700">
+          {descriptionIssue}
+        </p>
+      ) : (
+        description.length > DESCRIPTION_MAX - 100 && (
+          <p className="text-xs text-gray-500">{DESCRIPTION_MAX - description.length} characters left.</p>
+        )
+      )}
       <label className="block text-sm text-gray-600">
         Starts
         <input
@@ -164,6 +259,56 @@ export function EditEventForm({
       </p>
 
       <label className="block text-sm text-gray-600">
+        Position on the home page
+        <ValidatedInput
+          value={displayOrder}
+          onChange={setDisplayOrder}
+          validate={validateDisplayOrder}
+          inputMode="numeric"
+          placeholder="blank = by date"
+          aria-label="Position on the home page"
+        />
+      </label>
+      <p className="text-xs text-gray-500">
+        Lower numbers come first; 0 is the top. Leave it blank to let the date
+        decide.
+      </p>
+
+      {/* An event this organisation attends rather than runs: the public page
+          names the host and links out to their page. The link is https-only
+          and never fetched by us. */}
+      <label className="flex min-h-tap items-center gap-3 text-sm">
+        <input
+          type="checkbox"
+          className="h-5 w-5"
+          checked={externallyHosted}
+          onChange={(e) => setExternallyHosted(e.target.checked)}
+        />
+        Hosted by someone else (we have a booth or a slot at their event)
+      </label>
+      {externallyHosted && (
+        <label className="block text-sm text-gray-600">
+          Host&apos;s name
+          <input
+            className={inputCls}
+            placeholder="As it should read publicly"
+            value={hostedByName}
+            onChange={(e) => setHostedByName(e.target.value)}
+          />
+        </label>
+      )}
+      <label className="block text-sm text-gray-600">
+        Link to the event&apos;s own page (optional)
+        <ValidatedInput
+          value={externalUrl}
+          onChange={setExternalUrl}
+          validate={validateExternalUrl}
+          placeholder="https://…"
+          aria-label="Link to the event's own page"
+        />
+      </label>
+
+      <label className="block text-sm text-gray-600">
         Notes for the team
         <textarea
           className={`${inputCls} min-h-[7rem]`}
@@ -217,6 +362,12 @@ export function EditEventForm({
             setLocation(initial.location);
             setVenueCapacity(initial.venueCapacity);
             setInternalNotes(initial.internalNotes);
+            setDescription(initial.description);
+            setDisplayOrder(initial.displayOrder);
+            setExternallyHosted(initial.externallyHosted);
+            setHostedByName(initial.hostedByName);
+            setExternalUrl(initial.externalUrl);
+            setType(initial.type === "CAMP" || initial.type === "GENERAL" ? initial.type : null);
             setError(null);
             setOpen(false);
           }}

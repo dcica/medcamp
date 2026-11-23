@@ -595,7 +595,7 @@ function main() {
   check("a null name falls back rather than rendering 'null'",
     !resolveBranding({}, null).orgName.includes("null"));
   check("a whitespace-only org name falls back",
-    resolveBranding({}, "   ").orgName === "DCICA");
+    resolveBranding({}, "   ").orgName === "Events");
 
   // ── §10 ───────────────────────────────────────────────────────────────────
   console.log("\n§10 a stored theme reaches the emitted style block");
@@ -614,8 +614,10 @@ function main() {
     themed.wordmark === OTHER_THEME.wordmark, themed.wordmark);
   check("the footer uses the full org name, not the wordmark",
     themed.orgName === "Other Org", themed.orgName);
-  check("the wordmark falls back to the org name when the theme omits one",
-    resolveBranding({}, "Other Org").wordmark === "Other Org");
+  // First word, cut to the schema's eight characters — a header slot, not a
+  // footer line. The full name is `orgName`, asserted on the row above.
+  check("the wordmark falls back to the org name's first word when the theme omits one",
+    resolveBranding({}, "Other Org").wordmark === "Other");
 
   console.log("\n§11 the coordinator's single colour field writes a real theme");
   const dark = themeWithBrand(NO_THEME, "#4B1D6B");
@@ -787,15 +789,17 @@ function main() {
   const envSrc = readRepoFile("src/lib/env.ts");
   // The regex must be attached to THIS field. A future edit that widens it to a
   // plain string would leave every check above passing while the guard is gone.
-  check("lib/env.ts gates NEXT_PUBLIC_GA_MEASUREMENT_ID on the regex",
-    /NEXT_PUBLIC_GA_MEASUREMENT_ID:\s*z\s*\.string\(\)\s*\.regex\(GA_MEASUREMENT_ID_RE/.test(envSrc));
+  check("lib/orgSettings.ts gates gaMeasurementId on the regex",
+    /gaMeasurementId:\s*z\s*\.string\(\)\s*\.trim\(\)\s*\.regex\(GA_MEASUREMENT_ID_RE/.test(
+      readRepoFile("src/lib/orgSettings.ts"),
+    ));
   const analyticsSrc = readRepoFile("src/app/_components/Analytics.tsx");
   // Default-off is a privacy claim the Privacy Policy makes in writing, and the
   // reason a self-hoster does not silently report to a tenant's GA property.
   check("Analytics renders nothing without an id",
     /if\s*\(!measurementId\)\s*return null;/.test(analyticsSrc));
-  check("Analytics reads the id from validated env, not process.env",
-    /env\.NEXT_PUBLIC_GA_MEASUREMENT_ID/.test(analyticsSrc) &&
+  check("Analytics reads the id from the validated site resolver, not process.env",
+    /getActiveSite\(\)/.test(analyticsSrc) &&
       !/process\.env/.test(analyticsSrc));
   // Nothing else may be interpolated into the inline snippet.
   const inline = analyticsSrc.slice(analyticsSrc.indexOf("window.dataLayer"));

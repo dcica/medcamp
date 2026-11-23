@@ -109,7 +109,7 @@ src/     — application code (Next.js project root goes here)
 
 ## Key External Integrations
 
-- **Stripe:** **hosted Checkout** for online purchase and for card at the door (the gate shows a QR; the guest pays on their own phone and the webhook admits them). *Not* Payment Element, and *not* Terminal / Tap to Pay — both were planned, neither is built, and the stack line above records why. Payment must succeed before registration is confirmed, and **only the webhook may confirm it**: no gate action calls `confirmOrderPaid`, because a door screen that could mark an order paid would be a way to admit a party with no charge (`scripts/verify-gate.ts` pins this). **Budget standard rates (2.9% + $0.30 online).** The 501(c)(3) non-profit rate is *not* available: Stripe requires >80% tax-deductible donation volume and excludes tickets, memberships, and registration fees — dcica is <10% donations. Investigated and closed 2026-08-20; see `docs/Payment-Gateway.md`. Do not reopen. Refunds are staff-initiated only (no self-serve refund flow for patients).
+- **Stripe:** **hosted Checkout** for online purchase and for card at the door (the gate shows a QR; the guest pays on their own phone and the webhook admits them). *Not* Payment Element, and *not* Terminal / Tap to Pay — both were planned, neither is built, and the stack line above records why. Payment must succeed before registration is confirmed, and **only the webhook may confirm it**: no gate action calls `confirmOrderPaid`, because a door screen that could mark an order paid would be a way to admit a party with no charge (`scripts/verify-gate.ts` pins this). **Budget standard rates (2.9% + $0.30 online).** The 501(c)(3) non-profit rate is *not* available: Stripe requires >80% tax-deductible donation volume and excludes tickets, memberships, and registration fees — dcica is <10% donations. Investigated and closed 2026-08-20; see `docs/Payment-Gateway.md`. Do not reopen. Refunds are staff-initiated only (no self-serve refund flow for patients). **The platform service fee** (`src/lib/fees.ts`, 2026-10-18): per unit, 1.5% + 49¢ capped at $5 on tickets, 0% on donations, buyer-pays or absorbed, written as a `PLATFORM_FEE` line by `ensureFeeLines` inside `openCheckoutSession` and NOWHERE else, so cash, Zelle, check, COMP and $0 orders never carry one; sent to Stripe as `application_fee_amount` only when non-zero. "Cover the processing cost" is the organisation's own gross-up (a `FEE_COVER` line), one checkbox that names its amount and recipient. **No tips, ever**, and never a card surcharge. No stored policy = no fee; `scripts/set-fee-policy.ts` switches it on. `docs/Payment-Gateway.md` has the worked example.
   - **There is no publishable key.** Checkout is Stripe-**hosted** (decision #7
     at `src/server/payments.ts`), so the browser is redirected to
     checkout.stripe.com and never mounts Stripe's own elements.
@@ -172,16 +172,22 @@ and are safe. The forbidding comment at `src/server/payments.ts:242-260` stays.
 
 ### Verification
 
-- `npx tsc --noEmit` after every task, then `npm run verify`. Baseline as of 2026-10-04,
-  re-counted from the runner rather than carried forward: **17 suites, 1759 assertions,
-  all green** — schema 54, pricing 42, validation 62, storage 31, branding 323,
-  performance 140, gate 234, scan 174, logging 62, readiness 91, checkout 127, csv 26,
-  testlogin 35, home 76, seo 100, registrations 56, analytics 126. (`pricing` and `validation` print
-  `PASS`; the rest print `ok` — count both when reporting totals. Four suites also
-  print a third status, `..`, for a row a Central-time box or a local-disk adapter
-  cannot distinguish: storage, performance, gate and home have one each. A `..` is
-  a SKIP and is excluded from the counts above — include them and every one of
+- `npx tsc --noEmit` after every task, then `npm run verify`. Baseline as of 2026-10-18,
+  re-counted from the runner rather than carried forward: **18 suites, 2221 assertions,
+  all green** — schema 56, pricing 90, validation 107, storage 31, branding 323,
+  performance 152, gate 238, scan 174, logging 62, readiness 91, checkout 203, csv 37,
+  testlogin 35, home 76, seo 100, registrations 127, analytics 126, tenant 193. (`pricing` and
+  `validation` print `PASS`; the rest print `ok` — count both when reporting totals. Four
+  suites also print a third status, `..`, for a row a Central-time box or a local-disk
+  adapter cannot distinguish: storage, performance, gate and home have one each. A `..`
+  is a SKIP and is excluded from the counts above — include them and every one of
   those four reads one higher.)
+  `verify:tenant` is the two-organisation isolation suite (there is no RLS): the
+  host/path/cookie resolver, `orgBaseUrl`, every public lookup refused across the
+  boundary with the same words as "missing", the sweep for one tenant's name in
+  `src/**`, the settings resolvers, the legal routes and the donations gate. A new
+  public route that bypasses `src/server/public.ts` is unprotected until it is added
+  to that suite's file list.
   `verify:registrations` pins what "N registered" is allowed to mean — an
   abandoned cart is not a registration, collected money is `SUCCEEDED` payments
   and not `Payment` rows, and a line total is `amountCents × quantity`.

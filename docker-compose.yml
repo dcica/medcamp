@@ -38,8 +38,6 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/dcica
       DIRECT_URL: postgresql://postgres:postgres@db:5432/dcica
       NEXT_PUBLIC_APP_URL: http://localhost:3100
-      NEXT_PUBLIC_ROOT_DOMAIN: localhost:3100
-      TENANT_ROUTING: path
       DEFAULT_ORG_SLUG: dcica
       NEXTAUTH_URL: http://localhost:3100
       NEXTAUTH_SECRET: docker-local-not-a-real-secret

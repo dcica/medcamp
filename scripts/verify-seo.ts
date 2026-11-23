@@ -232,6 +232,7 @@ async function main(): Promise<void> {
   );
 
   const ld = seo.eventLd({
+      organizerUrl: "https://x.test",
     name: "Dandiya Night",
     url: "https://events.example.org/e/dandiya-night-dn-2026",
     description: "An evening of dandiya.",
@@ -270,6 +271,7 @@ async function main(): Promise<void> {
     "a sold-out offering says so",
     (
       seo.eventLd({
+      organizerUrl: "https://x.test",
         name: "x", url: "u", description: null,
         startDate: "2026-10-10T19:00:00-05:00", endDate: "2026-10-11T00:00:00-05:00",
         location: "Hall, Coppell, TX", imageUrl: null, status: "OPEN", organizerName: "o",
@@ -281,6 +283,7 @@ async function main(): Promise<void> {
   // An unparseable venue must still produce the REQUIRED address property,
   // as plain text — weaker, but present and true.
   const vague = seo.eventLd({
+      organizerUrl: "https://x.test",
     name: "x", url: "u", description: null,
     startDate: "2026-10-10T19:00:00-05:00", endDate: "2026-10-11T00:00:00-05:00",
     location: "the usual place", imageUrl: null, status: "OPEN", organizerName: "o", offer: null,
@@ -297,6 +300,7 @@ async function main(): Promise<void> {
     "a CLOSED event is still EventScheduled, never EventCancelled",
     (
       seo.eventLd({
+      organizerUrl: "https://x.test",
         name: "x", url: "u", description: null,
         startDate: "2026-10-10T19:00:00-05:00", endDate: "2026-10-11T00:00:00-05:00",
         location: null, imageUrl: null, status: "CLOSED", organizerName: "o", offer: null,
@@ -306,6 +310,7 @@ async function main(): Promise<void> {
   );
 
   const orgLd = seo.organizationLd({
+      origin: "https://x.test", contactEmail: null,
     orgName: "DCICA",
     seo: {},
     locality: { locality: "Flower Mound", region: "TX" },
@@ -321,7 +326,7 @@ async function main(): Promise<void> {
   check(
     "an org with no locatable events emits no address",
     (
-      seo.organizationLd({ orgName: "X", seo: {}, locality: null, logoUrl: null }) as Record<
+      seo.organizationLd({ origin: "https://x.test", contactEmail: null, orgName: "X", seo: {}, locality: null, logoUrl: null }) as Record<
         string,
         unknown
       >
@@ -332,6 +337,7 @@ async function main(): Promise<void> {
     "tenant settings override the derived locality",
     (
       seo.organizationLd({
+      origin: "https://x.test", contactEmail: null,
         orgName: "X",
         seo: seo.resolveTenantSeo({ seo: { locality: "Edison", region: "NJ" } }),
         locality: { locality: "Flower Mound", region: "TX" },
@@ -343,7 +349,7 @@ async function main(): Promise<void> {
   // A tax-status claim is the org's to make, never the platform's on its behalf.
   check(
     "no nonprofit tax status is claimed unless the tenant declared one",
-    (seo.organizationLd({ orgName: "X", seo: {}, locality: null, logoUrl: null }) as Record<string, unknown>)
+    (seo.organizationLd({ origin: "https://x.test", contactEmail: null, orgName: "X", seo: {}, locality: null, logoUrl: null }) as Record<string, unknown>)
       .nonprofitStatus === undefined,
     "a 501(c)(3) claim was published for an org that never made it",
   );
@@ -351,6 +357,7 @@ async function main(): Promise<void> {
     "…and it is emitted once declared",
     (
       seo.organizationLd({
+      origin: "https://x.test", contactEmail: null,
         orgName: "X",
         seo: seo.resolveTenantSeo({ seo: { nonprofitStatus: "Nonprofit501c3" } }),
         locality: null,
@@ -408,7 +415,7 @@ async function main(): Promise<void> {
   );
   check(
     "robots.txt advertises the sitemap",
-    /sitemap: absoluteUrl\("\/sitemap\.xml"\)/.test(robotsSrc),
+    /absoluteUrl\(origin, "\/sitemap\.xml"\)/.test(robotsSrc) && /\/o\/\$\{o\.slug\}\/sitemap\.xml/.test(robotsSrc),
     "Search Console has no sitemap to fetch",
   );
 
@@ -426,7 +433,7 @@ async function main(): Promise<void> {
   const layoutSrc = code(readFileSync("src/app/layout.tsx", "utf8"));
   check(
     "the root layout sets metadataBase",
-    /metadataBase: new URL\(siteUrl\(\)\)/.test(layoutSrc),
+    /metadataBase: new URL\(await getActiveOrigin\(\)\)/.test(layoutSrc),
     "without it every canonical and OG url is emitted as a useless relative path",
   );
   check(
@@ -576,6 +583,55 @@ async function main(): Promise<void> {
       await db.$disconnect();
     }
   }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§9  marketing QR links (pure)");
+  /*
+   * A printed QR cannot be recalled. These pin the two ways it goes stale: a
+   * code for a door the site does not open, and a code whose URL the event
+   * page will not resolve.
+   */
+  const { marketingLinks } = await import("../src/lib/marketingQr");
+  const base = {
+    id: "evt1",
+    name: "Christmas Parade",
+    code: "XMAS-2026",
+    type: "GENERAL",
+    offersRegistration: true,
+    offersVolunteers: true,
+    offersVendors: false,
+  };
+  const feeOnly = { hasFee: true, hasOther: false };
+  const keys = (l: { key: string }[]) => l.map((x) => x.key);
+
+  eq(
+    "one code per public door, in button order, page first",
+    keys(marketingLinks("https://x.org", base, feeOnly)),
+    ["page", "perform", "volunteer"],
+  );
+  eq(
+    "a door switched off has no code",
+    keys(marketingLinks("https://x.org", { ...base, offersRegistration: false }, feeOnly)),
+    ["page", "volunteer"],
+  );
+  const links = marketingLinks("https://x.org/o/harit", base, feeOnly);
+  const page = new URL(links[0].url);
+  check(
+    "the event-page code resolves to its own page, under the tenant path",
+    page.pathname.startsWith("/o/harit/e/") &&
+      seo.resolveEventSlug([base], page.pathname.split("/e/")[1])?.exact === true,
+    links[0].url,
+  );
+  const perform = new URL(links[1].url);
+  check(
+    "a door code keeps its own query and carries the utm tags",
+    perform.pathname === "/o/harit/perform" &&
+      perform.searchParams.get("event") === "evt1" &&
+      perform.searchParams.get("utm_source") === "qr" &&
+      perform.searchParams.get("utm_campaign") === "xmas-2026" &&
+      perform.searchParams.get("utm_content") === "perform",
+    links[1].url,
+  );
 }
 
 main()

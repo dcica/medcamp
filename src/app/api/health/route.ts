@@ -20,14 +20,16 @@ import { log } from "@/lib/logger";
  */
 export async function GET() {
   try {
-    const [organizations, events] = await Promise.all([
+    // Service types, not events: a freshly provisioned tenant has a catalogue
+    // and no calendar yet, and that is a seeded database.
+    const [organizations, serviceTypes] = await Promise.all([
       db.organization.count(),
-      db.event.count(),
+      db.serviceType.count(),
     ]);
     return NextResponse.json({
       ok: true,
       db: "connected",
-      seeded: organizations > 0 && events > 0,
+      seeded: organizations > 0 && serviceTypes > 0,
     });
   } catch (err) {
     // Logged, not returned: see the note above.

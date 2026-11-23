@@ -51,7 +51,11 @@ async function main(): Promise<void> {
   const { confirmOrderPaid } = await import("../src/server/payments");
   const { resolvePrice } = await import("../src/lib/pricing");
 
-  const org = await db.organization.findFirstOrThrow();
+  const org = await db.organization.findUniqueOrThrow({
+    // Pin the org getActiveOrg() resolves in script scope — DEFAULT_ORG_SLUG — so
+    // fixtures land where the code under test looks, not in "the oldest row".
+    where: { slug: process.env.DEFAULT_ORG_SLUG ?? "dcica" },
+  });
   await cleanup(org.id);
 
   // ── Scratch event: quantity mode, honors membership ──
@@ -524,6 +528,163 @@ async function main(): Promise<void> {
     isRegistrationOpen({ status: "DRAFT", walkInOpensAt: null, endsAt: future }, now),
     false,
   );
+
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 9. The platform service fee. Computed per UNIT (a qty-2 line is two fees,
+  // and the cap binds per ticket, not per order), never on a $0 line, never on
+  // a gift, buyer-pays unless the organisation absorbs it, and written in ONE
+  // place: ensureFeeLines, which only a Stripe Checkout ever reaches. A null
+  // connected account — the first tenant — gets zeros without a database
+  // write. The "cover the processing fee" gross-up is the organisation's money,
+  // not the platform's, which is why receiptLines keeps it and drops the fee.
+  console.log("\n9. Platform service fee: per unit, capped, buyer-pays, never on a gift");
+  const fees = await import("../src/lib/fees");
+  const P = fees.DEFAULT_FEE_POLICY;
+  const ORG = "Infinite Minds";
+  const ticket40 = { amountCents: 4000, quantity: 1 };
+  const noCover = { coverProcessing: false, orgName: ORG };
+  const withCover = { coverProcessing: true, orgName: ORG };
+
+  check("a $40 ticket carries 1.5% + 49¢ = $1.09",
+    fees.computeOrderFees([ticket40], P, noCover).platformFeeCents, 109);
+  check("per UNIT × quantity, not on the line total: 2 × $40 → $2.18 (one fee on $80 would be $1.69)",
+    fees.computeOrderFees([{ amountCents: 4000, quantity: 2 }], P, noCover).platformFeeCents, 218);
+  check("the $5 cap binds on a $400 ticket (uncapped it would be $6.49)",
+    fees.computeOrderFees([{ amountCents: 40000, quantity: 1 }], P, noCover).platformFeeCents, 500);
+  check("a $0 (comped) line carries no fee, whatever its quantity",
+    fees.computeOrderFees([{ amountCents: 0, quantity: 3 }], P, noCover).platformFeeCents, 0);
+  check("a donation carries no fee",
+    fees.computeOrderFees([{ amountCents: 5000, quantity: 1, isDonation: true }], P, noCover).platformFeeCents, 0);
+  check("a membership is in the tickets bucket: $50 → $1.24",
+    fees.computeOrderFees([{ amountCents: 5000, quantity: 1, membershipPlanId: "plan" }], P, noCover).platformFeeCents, 124);
+
+  const buyerPays = fees.computeOrderFees([ticket40], P, noCover);
+  check("buyer-pays: one Service fee line, total $41.09",
+    { lines: buyerPays.lines.map((l) => [l.feeKind, l.amountCents, l.quantity]), total: buyerPays.totalCents },
+    { lines: [["PLATFORM_FEE", 109, 1]], total: 4109 });
+  const absorbed = fees.computeOrderFees([ticket40], { ...P, payer: "absorb" }, noCover);
+  check("absorb: no buyer line, the fee is still owed to the platform, total $40.00",
+    { lines: absorbed.lines, fee: absorbed.platformFeeCents, total: absorbed.totalCents },
+    { lines: [], fee: 109, total: 4000 });
+
+  check("gross-up for the card fee on $100.00 is $3.30 — ceil, never floor",
+    fees.grossUpForCardFee(10000, P.processing), 330);
+  check("gross-up on nothing is nothing: a $0 order has no charge to cover",
+    fees.grossUpForCardFee(0, P.processing), 0);
+  const covered = fees.computeOrderFees([ticket40], P, withCover);
+  check("the cover is grossed up over the WHOLE charge, service fee included: $1.54 on $41.09 (on $40 alone it would be $1.51)",
+    covered.coverCents, 154);
+  check("...as one FEE_COVER line after the service fee, total $42.63",
+    { kinds: covered.lines.map((l) => l.feeKind), total: covered.totalCents },
+    { kinds: ["PLATFORM_FEE", "FEE_COVER"], total: 4263 });
+  check("the cover label is the shared one",
+    covered.lines[1]?.description, fees.coverLabel(154, ORG));
+  check("...and it names the exact amount and the recipient",
+    [/\$1\.54\b/.test(covered.lines[1]?.description ?? ""), (covered.lines[1]?.description ?? "").includes(ORG)],
+    [true, true]);
+  check("the cover on a $0 order is $0",
+    fees.computeOrderFees([{ amountCents: 0, quantity: 1 }], P, withCover).coverCents, 0);
+  check("the cover is ignored when the organisation does not offer it",
+    fees.computeOrderFees([ticket40], { ...P, allowBuyerCover: false }, withCover).coverCents, 0);
+  check("existing fee lines are not fee'd again — recomputing from an order that already carries them is a no-op",
+    fees.computeOrderFees([ticket40, ...covered.lines], P, withCover), covered);
+  check("no policy → no fee, no cover, no lines, total = goods",
+    fees.computeOrderFees([ticket40], null, withCover),
+    { subtotalCents: 4000, platformFeeCents: 0, buyerFeeCents: 0, coverCents: 0, totalCents: 4000, lines: [] });
+
+  check("readFeePolicy: nothing stored → none", fees.readFeePolicy({}), { kind: "none" });
+  check("readFeePolicy: the default round-trips", fees.readFeePolicy({ fees: P }), { kind: "ok", policy: P });
+  check("readFeePolicy: garbage is unreadable — classified, never thrown, never charged",
+    fees.readFeePolicy({ fees: { tickets: "x" } }).kind, "unreadable");
+  check("receiptLines drops the platform's fee and keeps the cover (it is the organisation's money)",
+    fees.receiptLines([ticket40, ...covered.lines]).map((l) => ("feeKind" in l ? l.feeKind : null) ?? "goods"), ["goods", "FEE_COVER"]);
+  check("the fee lines never say \"tip\"", /\btips?\b/i.test(JSON.stringify(covered.lines)), false);
+
+  // ── ensureFeeLines: the ONE writer of fee lines, driven by the order's org ──
+  const { ensureFeeLines } = await import("../src/server/payments");
+  const feeLinesOrder = await createRegistration({
+    eventId: event.id,
+    registrant: { ...registrant, email: "verify-fee-lines@example.test" },
+    marketingConsent: false,
+    quantities: [{ serviceKey: "verify-entry", quantity: 2 }],
+  });
+  check("the fixture order is 2 × $15 of goods", feeLinesOrder.totalCents, 3000);
+  const loadFeeOrder = () =>
+    db.order.findUniqueOrThrow({ where: { id: feeLinesOrder.orderId }, include: { lineItems: true } });
+  const feeKindsInDb = async () =>
+    (await loadFeeOrder()).lineItems.map((l) => l.feeKind).filter(Boolean).sort();
+  const connectedOrg = { name: ORG, settings: { fees: P }, stripeAccountId: "acct_verify_pricing" };
+  const legacyOrg = { name: org.name, settings: org.settings, stripeAccountId: null };
+  const f1 = await ensureFeeLines({ ...(await loadFeeOrder()), org: connectedOrg });
+  check("a connected organisation gets a Service fee line written: 2 × $15 → 2 × $0.72 = $1.44, total $31.44 (one fee on $30 would be $0.94)",
+    { fee: f1.platformFeeCents, total: f1.totalCents, kinds: await feeKindsInDb() },
+    { fee: 144, total: 3144, kinds: ["PLATFORM_FEE"] });
+  const f2 = await ensureFeeLines({ ...(await loadFeeOrder()), org: connectedOrg });
+  check("...idempotent across a resume: still exactly one fee line, same total",
+    { kinds: await feeKindsInDb(), total: f2.totalCents },
+    { kinds: ["PLATFORM_FEE"], total: 3144 });
+  await db.order.update({ where: { id: feeLinesOrder.orderId }, data: { coverProcessingFee: true } });
+  const f3 = await ensureFeeLines({ ...(await loadFeeOrder()), org: connectedOrg });
+  check("the buyer's cover choice on the order adds the FEE_COVER line: $1.25 on $31.44, total $32.69",
+    { cover: f3.coverCents, total: f3.totalCents, kinds: await feeKindsInDb() },
+    { cover: 125, total: 3269, kinds: ["FEE_COVER", "PLATFORM_FEE"] });
+  const f4 = await ensureFeeLines({ ...(await loadFeeOrder()), org: legacyOrg });
+  check("no connected account → zeros, and any stale fee line is removed",
+    { fee: f4.platformFeeCents, cover: f4.coverCents, total: f4.totalCents, kinds: await feeKindsInDb() },
+    { fee: 0, cover: 0, total: 3000, kinds: [] });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 10. Bank debits (ACH). A debit takes about four business days to clear and
+  // can still fail, so it is switched off a configurable number of business
+  // days before an event's start; a donation or a membership has no event and
+  // no cutoff. An offering may be card-only or bank-only (a $2,000 booth fee
+  // pays 0.8% capped at $5 by bank rather than 2.9%), and an order over the
+  // organisation's threshold is bank-only. The intersection of every line's
+  // rule with the cutoff is what Checkout is told to accept; an empty
+  // intersection is a sentence to the buyer before any Stripe call.
+  console.log("\n10. Bank debits: the business-day cutoff and the per-offering method rules");
+  const bd = (a: string, b: string) => fees.businessDaysUntil(new Date(a), new Date(b));
+  check("Friday evening to Monday morning is ONE business day (the weekend does not count)",
+    bd("2026-10-16T22:00:00-05:00", "2026-10-19T09:00:00-05:00"), 1);
+  check("Friday to the next Friday is five", bd("2026-10-16T12:00:00-05:00", "2026-10-23T12:00:00-05:00"), 5);
+  check("the same day is zero", bd("2026-10-19T09:00:00-05:00", "2026-10-19T18:00:00-05:00"), 0);
+  check("a target in the past counts nothing", bd("2026-10-19T09:00:00-05:00", "2026-10-12T09:00:00-05:00"), 0);
+  const achOn = { enabled: true, cutoffBusinessDays: 5, achOnlyAboveCents: null as number | null };
+  const achNow = new Date("2026-10-19T09:00:00-05:00"); // a Monday
+  const inBdays = (n: number) => {
+    const d = new Date(achNow);
+    let left = n;
+    while (left > 0) { d.setUTCDate(d.getUTCDate() + 1); const dow = d.getUTCDay(); if (dow !== 0 && dow !== 6) left--; }
+    return d;
+  };
+  check("an event three business days out: no bank debit", fees.achAllowedFor({ eventStartsAt: inBdays(3), now: achNow, policy: achOn, orgAchCapable: true }), false);
+  check("five business days out: allowed", fees.achAllowedFor({ eventStartsAt: inBdays(5), now: achNow, policy: achOn, orgAchCapable: true }), true);
+  check("no event (a gift, a membership): allowed", fees.achAllowedFor({ eventStartsAt: null, now: achNow, policy: achOn, orgAchCapable: true }), true);
+  check("the organisation has not enabled bank debits: never", fees.achAllowedFor({ eventStartsAt: null, now: achNow, policy: { ...achOn, enabled: false }, orgAchCapable: true }), false);
+  check("the connected account lacks the capability: never", fees.achAllowedFor({ eventStartsAt: null, now: achNow, policy: achOn, orgAchCapable: false }), false);
+
+  const far = inBdays(10);
+  const methods = (lines: ("ANY" | "CARD_ONLY" | "ACH_ONLY")[], extra: Partial<Parameters<typeof fees.allowedMethodsFor>[0]> = {}) =>
+    fees.allowedMethodsFor({ lines: lines.map((onlineMethods) => ({ onlineMethods })), totalCents: 5000, eventStartsAt: far, now: achNow, policy: achOn, orgAchCapable: true, ...extra });
+  check("ANY + ANY → card and bank", methods(["ANY", "ANY"]).methods, ["card", "us_bank_account"]);
+  check("ANY + card-only → card", methods(["ANY", "CARD_ONLY"]).methods, ["card"]);
+  check("ANY + bank-only → bank", methods(["ANY", "ACH_ONLY"]).methods, ["us_bank_account"]);
+  check("card-only + bank-only → nothing, with a sentence for the buyer",
+    [methods(["CARD_ONLY", "ACH_ONLY"]).methods, typeof methods(["CARD_ONLY", "ACH_ONLY"]).refusal], [[], "string"]);
+  const inside = methods(["ACH_ONLY"], { eventStartsAt: inBdays(2) });
+  check("bank-only inside the cutoff → nothing, and the sentence names the organiser's other ways to pay",
+    [inside.methods, /bank transfer/i.test(inside.refusal ?? "") && /5 business days/.test(inside.refusal ?? "") && /check or Zelle/i.test(inside.refusal ?? "")],
+    [[], true]);
+  check("an order over the organisation's bank-only threshold → bank only",
+    methods(["ANY"], { totalCents: 250000, policy: { ...achOn, achOnlyAboveCents: 100000 } }).methods, ["us_bank_account"]);
+  check("...and under it → both", methods(["ANY"], { totalCents: 5000, policy: { ...achOn, achOnlyAboveCents: 100000 } }).methods, ["card", "us_bank_account"]);
+  check("bank debits off → card only, whatever the lines say", methods(["ANY"], { policy: { ...achOn, enabled: false } }).methods, ["card"]);
+  check("a bank-only cover is grossed up at the bank rate: 0.8% → $0.81 on $100 (the card rate would be $3.30)",
+    [fees.grossUpForFee(10000, fees.ACH_PROCESSING), fees.grossUpForCardFee(10000, P.processing)], [81, 330]);
+  check("...capped at $5 like the fee it covers: $5.00 on $1,000", fees.grossUpForFee(100000, fees.ACH_PROCESSING), 500);
+  check("computeOrderFees takes the rate as an option, so a bank-only order's cover is the bank gross-up",
+    fees.computeOrderFees([{ amountCents: 10000, quantity: 1 }], { ...P, payer: "absorb" }, { coverProcessing: true, orgName: ORG, processing: fees.ACH_PROCESSING }).coverCents, 81);
 
   await cleanup(org.id);
 }

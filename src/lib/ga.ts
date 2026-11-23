@@ -1,6 +1,6 @@
 import type { EventType } from "@prisma/client";
-import { env } from "@/lib/env";
 import { log } from "@/lib/logger";
+import type { OrgSite } from "@/lib/orgSettings";
 
 /**
  * Server-side Google Analytics 4 via the Measurement Protocol — one event,
@@ -75,6 +75,8 @@ export type GaLineItem = {
 };
 
 export type GaPurchaseInput = {
+  /** The ORGANISATION's analytics ids (settings.site), read off the order — the webhook has no request in scope. */
+  site: OrgSite;
   /**
    * The buyer's GA client id, from Order.gaClientId. Null means "no web
    * session of this buyer's own" and suppresses the event entirely — see
@@ -209,20 +211,6 @@ export function buildPurchasePayload(
 }
 
 /**
- * Is server-side GA reporting configured at all?
- *
- * BOTH halves are required, and the default is off. This is open-source
- * software a stranger self-hosts: nobody may be made to configure Google
- * anything to take a payment, and a deployment that has set neither variable
- * must make zero outbound requests. The measurement id alone is not enough —
- * the Measurement Protocol needs a server-side API secret, and firing without
- * one would be a silently-discarded request on every sale.
- */
-export function gaServerEventsEnabled(): boolean {
-  return gaConfigured(env.NEXT_PUBLIC_GA_MEASUREMENT_ID, env.GA_API_SECRET);
-}
-
-/**
  * The AND, taken as arguments rather than off `env`, so the truth table can be
  * asserted without a process whose environment has been rewritten — the same
  * split, for the same reason, as resolveResumeSecret in lib/checkoutResume.ts.
@@ -262,14 +250,16 @@ export async function sendPurchaseEvent(
   // future edit to buildPurchasePayload must not become a rolled-back sale
   // either — "never throws" has to hold for bugs, not just for network faults.
   try {
-    if (!gaServerEventsEnabled()) return "skipped-unconfigured";
+    if (!gaConfigured(input.site.gaMeasurementId ?? undefined, input.site.gaApiSecret ?? undefined)) {
+      return "skipped-unconfigured";
+    }
 
     const payload = buildPurchasePayload(input);
     if (!payload) return "skipped-no-client-id";
 
     const url =
-      `${MP_ENDPOINT}?measurement_id=${encodeURIComponent(env.NEXT_PUBLIC_GA_MEASUREMENT_ID ?? "")}` +
-      `&api_secret=${encodeURIComponent(env.GA_API_SECRET ?? "")}`;
+      `${MP_ENDPOINT}?measurement_id=${encodeURIComponent(input.site.gaMeasurementId ?? "")}` +
+      `&api_secret=${encodeURIComponent(input.site.gaApiSecret ?? "")}`;
 
     const res = await fetch(url, {
       method: "POST",

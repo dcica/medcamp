@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/server/admin";
 import { db } from "@/lib/db";
-import { getActiveOrg } from "@/lib/tenant";
+import { getActiveOrg, getActiveOrigin } from "@/lib/tenant";
+import { offeringKindsByEvent } from "@/server/performance";
+import { marketingLinks } from "@/lib/marketingQr";
 import { formatVenueZone, formatWhen, instantToVenueInput } from "@/lib/eventTime";
 import { STATUS_STYLE } from "@/lib/eventLifecycle";
 import { PageHelp } from "@/app/_components/PageHelp";
@@ -12,6 +14,7 @@ import { CampControls } from "./CampControls";
 import { EditEventForm } from "./EditEventForm";
 import { EventFlags } from "./EventFlags";
 import { PublicDoors } from "./PublicDoors";
+import { MarketingQr } from "./MarketingQr";
 import { Breadcrumbs, campTrail } from "@/app/_components/Breadcrumbs";
 
 export const dynamic = "force-dynamic";
@@ -56,6 +59,14 @@ export default async function CampDetailPage({
     : null;
 
   if (!camp) notFound();
+
+  // Same origin and same per-service kinds the public pages use, so the
+  // flyer codes name exactly the buttons a member of the public will see.
+  const [origin, kindsMap] = await Promise.all([
+    getActiveOrigin(),
+    offeringKindsByEvent([camp.id]),
+  ]);
+  const qrLinks = marketingLinks(origin, camp, kindsMap.get(camp.id));
 
   return (
     <div className="space-y-6">
@@ -150,7 +161,16 @@ export default async function CampDetailPage({
           // here: no stated limit. Do not substitute a 0.
           venueCapacity: camp.venueCapacity?.toString() ?? "",
           internalNotes: camp.internalNotes ?? "",
+          description: camp.description ?? "",
+          displayOrder: camp.displayOrder?.toString() ?? "",
+          externallyHosted: camp.externallyHosted,
+          hostedByName: camp.hostedByName ?? "",
+          externalUrl: camp.externalUrl ?? "",
+          type: camp.type,
         }}
+        // The kind locks once the event opens or anyone has paid — the same
+        // paid-only count the "registered" link above is built from.
+        canChangeType={camp.status === "DRAFT" && camp._count.attendees === 0}
       />
 
       <PageHelp
@@ -214,6 +234,14 @@ export default async function CampDetailPage({
         />
       </div>
 
+      {/* Flyer / poster QR codes, one per public door above. */}
+      <div>
+        <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
+          QR codes for marketing
+        </h3>
+        <MarketingQr code={camp.code} links={qrLinks} status={camp.status} />
+      </div>
+
       {/* Registration & policy flags */}
       <div>
         <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
@@ -223,6 +251,7 @@ export default async function CampDetailPage({
           id={camp.id}
           initial={{
             collectsAttendeeDetails: camp.collectsAttendeeDetails,
+            namesAttendees: camp.namesAttendees,
             acceptsDonations: camp.acceptsDonations,
             honorsMembership: camp.honorsMembership,
             allowsRefunds: camp.allowsRefunds,

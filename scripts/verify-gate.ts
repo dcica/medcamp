@@ -46,7 +46,7 @@
 import type { Role } from "@prisma/client";
 import * as dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 // The machine has a global DATABASE_URL pointing at an unrelated project; dotenv
@@ -261,7 +261,11 @@ async function main(): Promise<void> {
 
   // ───────────────────────────────────────────────────────────────────────────
   console.log("\n§3b the guard reads the DATABASE, not the session token");
-  const org = await db.organization.findFirstOrThrow();
+  const org = await db.organization.findUniqueOrThrow({
+    // Pin the org getActiveOrg() resolves in script scope — DEFAULT_ORG_SLUG — so
+    // fixtures land where the code under test looks, not in "the oldest row".
+    where: { slug: process.env.DEFAULT_ORG_SLUG ?? "dcica" },
+  });
   await cleanup(org.id);
   const tillMember = await makeMember(org.id, TILL_EMAIL, "REGISTRATION_TILL", true);
   const noTillMember = await makeMember(org.id, NOTILL_EMAIL, "REGISTRATION_NO_TILL", false);
@@ -332,6 +336,21 @@ async function main(): Promise<void> {
   check("...it only reads the order status", /status: true/.test(cardBodies));
   check("startCardSale leaves the order PENDING for the webhook",
     /method: "STRIPE"/.test(cardBodies));
+
+  // The QR the guest scans is a Stripe Checkout, so it carries whatever fee
+  // the organisation's policy puts on an online payment. The screen must show
+  // the total Checkout will CHARGE, which only createCheckoutForOrder knows —
+  // the goods total from sellAtGate is wrong by the fee the moment one exists.
+  check("startCardSale shows the total Checkout will charge, not the goods total",
+    /const \{ url, totalCents \} = await createCheckoutForOrder\(orderId\)/.test(cardBodies)
+      && !/totalCents \} = await sellAtGate/.test(cardBodies));
+
+  // Recording a Zelle/cheque/cash payment is a REGISTRATIONS-PAGE action, never
+  // a door one: the scan station must have no path to it, or a volunteer at the
+  // gate could mint and confirm an order with no till and no money.
+  const scanFiles = walkDir("src/app/scan");
+  check("the scan station never imports the offline recorder",
+    scanFiles.every((f) => !/offlineOrders/.test(readFileSync(f, "utf8"))), scanFiles.length + " files");
 
   const declared = [...actionsSrc.matchAll(/export async function (\w+)\(/g)].map((m) => m[1]);
   eq("no unclassified gate action", declared.filter((n) => ![...CASH_ACTIONS, ...OPEN_ACTIONS].includes(n)), []);
@@ -408,12 +427,25 @@ async function main(): Promise<void> {
   check("POS_TILL lands on the station it can actually use", navSrc.includes(String.raw`return "/scan"`));
 
   // BOTH lists. Naming a path in PROTECTED while leaving it out of the matcher
-  // is a silent no-op — the middleware never runs for that path at all.
+  // is a silent no-op — the middleware never runs for that path at all. The
+  // matcher is compiled with Next's own path-to-regexp and ASKED, rather than
+  // grepped for a literal entry: since tenant routing it is one catch-all
+  // pattern with an asset exclusion, and a literal check would pass or fail on
+  // spelling, not on whether the middleware runs.
+  const { config: mwConfig } = await import("../src/middleware");
+  // Next's vendored copy ships no declaration file; the shape is the upstream one.
+  const { pathToRegexp } = (await import(
+    // @ts-expect-error — untyped compiled module
+    "next/dist/compiled/path-to-regexp"
+  )) as { pathToRegexp: (path: string) => RegExp };
+  const matchers = (Array.isArray(mwConfig.matcher) ? mwConfig.matcher : [mwConfig.matcher]) as string[];
+  const runsOn = (p: string) => matchers.some((m) => pathToRegexp(m).test(p));
   check("middleware protects /scan", mwSrc.includes(String.raw`/^\/scan(\/|$)/`));
-  check("...and its matcher actually runs there", mwSrc.includes(String.raw`"/scan/:path*"`));
+  check("...and its matcher actually runs there", runsOn("/scan") && runsOn("/scan/x"));
   // /gate was missing from BOTH until this merge, so pin it too.
   check("middleware protects /gate", mwSrc.includes(String.raw`/^\/gate(\/|$)/`));
-  check("...and its matcher actually runs there", mwSrc.includes(String.raw`"/gate/:path*"`));
+  check("...and its matcher actually runs there", runsOn("/gate") && runsOn("/gate/x"));
+  check("...and the matcher still skips static assets", !runsOn("/_next/static/x.js") && !runsOn("/events/poster.png"));
 
   // The old routes stay reachable, and must NOT re-decide access: two places
   // deciding who may open a door is how they drift apart.
@@ -727,8 +759,13 @@ async function main(): Promise<void> {
   await ticket(org.id, event.id, `${CODE}-BVAAAAAAA`, "Bee Vee One", "CONFIRMED", adm);
   await ticket(org.id, event.id, `${CODE}-BVBBBBBBB`, "Bee Vee Two", "CONFIRMED", adm);
   const bvHits = await hits("BV");
+  // Pinned to the two SEEDED tokens, not to "every token starting with BV":
+  // this suite mints dozens of random 8-character tokens on the same event,
+  // and about once in fifty runs one of them begins with BV too. The property
+  // is that a two-character fragment brings the seeded pair back — a third,
+  // random hit is the search doing exactly what it should.
   eq("two characters bring back every token starting with them",
-    bvHits.filter((h) => h.campId?.startsWith(`${CODE}-BV`)).length, 2);
+    ["BVAAAAAAA", "BVBBBBBBB"].filter((t) => bvHits.some((h) => h.campId === `${CODE}-${t}`)).length, 2);
   // Anchored to THIS event's code, so a fragment cannot match inside the
   // prefix every ticket already shares.
   // THE ROW THE ANCHOR EXISTS FOR. Every campId contains the event code, so an
@@ -975,6 +1012,21 @@ async function main(): Promise<void> {
   await rejectsWith("an empty basket is refused",
     () => gate.sellAtGate(event.id, [], { buyerName: "Nobody" }), "Pick at least one item");
 
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§16 the door never sells a bank-only item");
+
+  // A bank-only offering (a $2,000 booth fee) has no business at a door: a
+  // debit takes days to clear and the guest is standing in front of you.
+  const bankOnly = await db.serviceType.upsert({
+    where: { orgId_key: { orgId: org.id, key: "verify-gate-bank-only" } },
+    update: { kind: "ADMISSION", priceCents: 200000 },
+    create: { orgId: org.id, key: "verify-gate-bank-only", name: "Verify Booth Fee", priceCents: 200000, kind: "ADMISSION" },
+  });
+  await db.serviceCap.create({ data: { eventId: event.id, serviceTypeId: bankOnly.id, priceCents: 200000, onlineMethods: "ACH_ONLY" } });
+  const doorMenu = await gate.getGateCatalog(event.id);
+  check("the door menu hides a bank-only offering", !doorMenu.admission.some((a) => a.id === bankOnly.id));
+  await db.serviceCap.deleteMany({ where: { eventId: event.id, serviceTypeId: bankOnly.id } });
+  await db.serviceType.delete({ where: { id: bankOnly.id } });
   await cleanup(org.id);
 }
 
@@ -1061,6 +1113,14 @@ async function makeMember(orgId: string, email: string, role: Role, canHoldTill:
 }
 
 /** The source text of one exported action, up to the next export. */
+/** Every .ts/.tsx under a directory, for the scan-station sweep in §2. */
+function walkDir(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const p = join(dir, name);
+    return statSync(p).isDirectory() ? walkDir(p) : /\.(ts|tsx)$/.test(p) ? [p] : [];
+  });
+}
+
 function actionBody(src: string, name: string): string {
   const start = src.indexOf(`export async function ${name}(`);
   if (start === -1) return "";
@@ -1085,7 +1145,7 @@ async function cleanup(orgId: string): Promise<void> {
     await db.payment.deleteMany({ where: { orderId: { in: orderIds } } });
     await db.event.delete({ where: { id: event.id } });
   }
-  await db.serviceType.deleteMany({ where: { orgId, key: { in: [ADM_KEY, MERCH_KEY, FEE_KEY] } } });
+  await db.serviceType.deleteMany({ where: { orgId, key: { in: [ADM_KEY, MERCH_KEY, FEE_KEY, "verify-gate-bank-only"] } } });
   await db.event.deleteMany({ where: { org: { slug: SCRATCH_ORG_SLUG } } });
   await db.organization.deleteMany({ where: { slug: SCRATCH_ORG_SLUG } });
   // Memberships cascade from the user.

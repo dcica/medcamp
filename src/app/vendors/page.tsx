@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { db } from "@/lib/db";
+import { notFound } from "next/navigation";
+import { getActiveOrg, getActiveProfile } from "@/lib/tenant";
+import { findPublicEvent } from "@/server/public";
 import { PageHelp } from "@/app/_components/PageHelp";
-import { CONTACT_EMAIL } from "@/lib/contact";
 import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
@@ -39,19 +40,18 @@ export default async function VendorsPage({
   searchParams: Promise<{ event?: string }>;
 }) {
   const { event: eventId } = await searchParams;
-  const event = eventId
-    ? await db.event.findUnique({
-        where: { id: eventId },
-        select: { name: true },
-      })
-    : null;
+  const org = await getActiveOrg();
+  if (!org) notFound();
+  const profile = await getActiveProfile();
+  const contactEmail = profile.contactEmail;
+  const event = eventId ? await findPublicEvent(org.id, eventId) : null;
 
   const subject = encodeURIComponent(
-    event ? `Vendor interest — ${event.name}` : "Vendor interest — DCICA events",
+    event ? `Vendor interest — ${event.name}` : `Vendor interest — ${org.name} events`,
   );
   const body = encodeURIComponent(
     [
-      "Hi DCICA team,",
+      `Hi ${org.name} team,`,
       "",
       "We'd like to be a vendor/sponsor at an upcoming event.",
       event ? `Event: ${event.name}` : "",
@@ -84,7 +84,7 @@ export default async function VendorsPage({
         subtitle={
           event
             ? `Sell or sponsor at ${event.name}.`
-            : "Sell or sponsor at a DCICA event."
+            : `Sell or sponsor at a ${org.name} event.`
         }
         items={[
           {
@@ -107,18 +107,26 @@ export default async function VendorsPage({
           <li>A contact name and phone number</li>
         </ul>
 
-        <a
-          href={`mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`}
-          className="mt-5 flex min-h-tap items-center justify-center rounded-lg bg-brand px-4 text-sm font-semibold text-brand-fg"
-        >
-          Email us your details
-        </a>
-        <p className="mt-3 text-center text-xs text-gray-500">
-          or write to{" "}
-          <a href={`mailto:${CONTACT_EMAIL}`} className="text-brand underline">
-            {CONTACT_EMAIL}
-          </a>
-        </p>
+        {contactEmail ? (
+          <>
+            <a
+              href={`mailto:${contactEmail}?subject=${subject}&body=${body}`}
+              className="mt-5 flex min-h-tap items-center justify-center rounded-lg bg-brand px-4 text-sm font-semibold text-brand-fg"
+            >
+              Email us your details
+            </a>
+            <p className="mt-3 text-center text-xs text-gray-500">
+              or write to{" "}
+              <a href={`mailto:${contactEmail}`} className="text-brand underline">
+                {contactEmail}
+              </a>
+            </p>
+          </>
+        ) : (
+          <p className="mt-5 text-center text-sm text-gray-600">
+            Contact the organisers through their own website to take part.
+          </p>
+        )}
       </div>
 
       <p className="mt-6 text-center text-sm">

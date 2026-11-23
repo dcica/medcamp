@@ -45,6 +45,8 @@ type Offering = {
 type Props = {
   eventId: string;
   eventName: string;
+  /** The organisation's display name, for the marketing-consent line. */
+  orgName: string;
   /**
    * The event's public slug, for analytics only — nothing rendered or charged
    * reads it. Optional so the form still compiles and still reports a
@@ -118,6 +120,7 @@ const fieldId = (field: FieldKey) => `perform-${field}`;
 export function PerformanceEntryForm({
   eventId,
   eventName,
+  orgName,
   eventSlug,
   entries,
   uploadsAvailable,
@@ -661,7 +664,7 @@ export function PerformanceEntryForm({
             onChange={(e) => setMarketingConsent(e.target.checked)}
             className="mt-0.5 h-5 w-5"
           />
-          <span>Email me about future DCICA events.</span>
+          <span>Email me about future {orgName} events.</span>
         </label>
       </Section>
 

@@ -6,7 +6,11 @@ import { getActiveOrg } from "@/lib/tenant";
 import { formatCents } from "@/lib/money";
 import { VENUE_TIME_ZONE } from "@/lib/eventTime";
 import { getEventRegistrations } from "@/server/registrations";
+import { emailConfig } from "@/lib/email";
+import { canRecordCash } from "@/server/session";
 import { Breadcrumbs, campTrail } from "@/app/_components/Breadcrumbs";
+import { OfflinePaymentForm } from "./OfflinePaymentForm";
+import { ResendTicketButton } from "./ResendTicketButton";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +33,7 @@ export default async function EventRegistrationsPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireAdmin();
+  const member = await requireAdmin();
   const { id } = await params;
   const org = await getActiveOrg();
   if (!org) notFound();
@@ -38,7 +42,24 @@ export default async function EventRegistrationsPage({
   if (!event) notFound();
 
   const data = await getEventRegistrations(org.id, event.id);
-  const otherRevenue = data.donationCents + data.membershipCents;
+  // The offline-payment form's item list: quantity mode only (an attendee-mode
+  // order needs per-person details nobody should invent from a bank transfer).
+  const offlineOfferings = event.collectsAttendeeDetails
+    ? []
+    : (
+        await db.serviceCap.findMany({
+          where: { eventId: event.id, serviceType: { active: true, kind: { in: ["ADMISSION", "MERCH"] } } },
+          include: { serviceType: true },
+          orderBy: { serviceType: { name: "asc" } },
+        })
+      ).map((c) => ({
+        key: c.serviceType.key,
+        name: c.serviceType.name,
+        priceCents: c.priceCents,
+        onsitePriceCents: c.onsitePriceCents,
+      }));
+  const otherRevenue =
+    data.donationCents + data.membershipCents + data.platformFeeCents + data.feeCoverCents;
 
   return (
     <div className="space-y-6">
@@ -100,12 +121,31 @@ export default async function EventRegistrationsPage({
                 <span>{formatCents(data.membershipCents)}</span>
               </li>
             )}
+            {data.feeCoverCents > 0 && (
+              <li className="flex justify-between text-gray-600">
+                <span>of which processing-cost cover (yours)</span>
+                <span>{formatCents(data.feeCoverCents)}</span>
+              </li>
+            )}
+            {data.platformFeeCents > 0 && (
+              <li className="flex justify-between text-gray-600">
+                <span>of which platform service fee (not yours)</span>
+                <span>{formatCents(data.platformFeeCents)}</span>
+              </li>
+            )}
           </ul>
         )}
 
         {/* The gap between this screen's count and a raw row count, named
             rather than left for someone to rediscover. Amber, not red: an
             abandoned cart is normal retail behaviour, not a fault. */}
+        {data.processingOrders > 0 && (
+          <p className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
+            {data.processingOrders} bank debit{data.processingOrders === 1 ? "" : "s"} in flight —{" "}
+            {formatCents(data.processingCents)} held, not yet collected. Seats are reserved; tickets
+            go out when each clears (up to four business days).
+          </p>
+        )}
         {data.unpaidOrders > 0 && (
           <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
             {data.unpaidOrders} cart{data.unpaidOrders === 1 ? "" : "s"} started
@@ -163,6 +203,24 @@ export default async function EventRegistrationsPage({
         <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
           Paid orders
         </h3>
+        {!event.collectsAttendeeDetails && (
+          <div className="mb-3">
+            <OfflinePaymentForm
+              eventId={event.id}
+              offerings={offlineOfferings}
+              emailConfigured={emailConfig().configured}
+              canRecordCash={canRecordCash(member)}
+            />
+          </div>
+        )}
+        {event.namesAttendees && (
+          <a
+            href={`/api/reports/entrants?event=${event.id}`}
+            className="mb-3 inline-flex min-h-tap items-center text-sm text-brand underline"
+          >
+            Download entrants (CSV) — division, player, partner
+          </a>
+        )}
         {data.orders.length === 0 ? (
           <p className="rounded-lg border border-dashed border-gray-300 p-4 text-sm text-gray-600">
             Nobody has paid yet.
@@ -204,11 +262,28 @@ export default async function EventRegistrationsPage({
                     </li>
                   ))}
                 </ul>
-                {o.campIds.length > 0 && (
-                  <p className="mt-2 break-all font-mono text-[11px] text-gray-400">
-                    {o.campIds.join(" · ")}
-                  </p>
+                {/* Named entrants read as a roster — name beside code — so a
+                    coordinator can find a player without decoding anything.
+                    Anonymous heads keep the compact code line. */}
+                {o.heads.some((h) => h.name) ? (
+                  <ul className="mt-2 space-y-0.5 text-xs">
+                    {o.heads.map((h) => (
+                      <li key={h.campId} className="flex justify-between gap-3">
+                        <span>{h.name ?? "—"}</span>
+                        <span className="shrink-0 break-all font-mono text-[11px] text-gray-400">
+                          {h.campId}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  o.campIds.length > 0 && (
+                    <p className="mt-2 break-all font-mono text-[11px] text-gray-400">
+                      {o.campIds.join(" · ")}
+                    </p>
+                  )
                 )}
+                <ResendTicketButton orderId={o.id} />
               </li>
             ))}
           </ul>

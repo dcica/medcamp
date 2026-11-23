@@ -404,8 +404,6 @@ SP=/tmp/rehearsal            # any path that is not inside the repo
 {
   grep -E '^(DATABASE_URL|DIRECT_URL)=' .env.test
   echo 'NEXT_PUBLIC_APP_URL=https://test.dcica.org'
-  echo 'NEXT_PUBLIC_ROOT_DOMAIN=test.dcica.org'
-  echo 'TENANT_ROUTING=path'
   echo 'DEFAULT_ORG_SLUG=dcica'
   grep -E '^(EMAIL_PROVIDER|AWS_REGION|EMAIL_FROM|AWS_PROFILE)=' .env
 } > "$SP/.env.rehearsal"

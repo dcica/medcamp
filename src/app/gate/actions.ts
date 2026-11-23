@@ -169,7 +169,7 @@ export async function startCardSale(
 > {
   await requireRole(...GATE_ROLES);
   try {
-    const { orderId, totalCents } = await sellAtGate(eventId, items, {
+    const { orderId } = await sellAtGate(eventId, items, {
       buyerName,
       method: "STRIPE",
     });
@@ -177,7 +177,11 @@ export async function startCardSale(
     // shows their own QR on the phone they just paid with. Cancel goes back
     // to /register rather than /scan — the guest must never be dropped onto
     // a staff screen.
-    const { url } = await createCheckoutForOrder(orderId);
+    //
+    // The total shown on the door screen is the one CHECKOUT will charge —
+    // fee lines included, when the organisation's policy puts one on an
+    // online payment — not the goods total sellAtGate priced.
+    const { url, totalCents } = await createCheckoutForOrder(orderId);
     // Rendered HERE, not in the browser. `qrcode` is already a dependency
     // for the confirmation email and the wallet page, and generating it
     // server-side keeps the station free of another client bundle on a

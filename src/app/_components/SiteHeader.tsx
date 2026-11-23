@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getCurrentMember } from "@/server/session";
 import { getActiveBranding } from "@/lib/tenant";
 import { StaffMenu } from "./StaffMenu";
+import { listMemberships } from "@/server/staffOrg";
 
 /**
  * Global top bar. Gives every screen a home anchor. For signed-in members it
@@ -22,6 +23,8 @@ export async function SiteHeader() {
     getCurrentMember(),
     getActiveBranding(),
   ]);
+  // dcica staff belong to one organisation and never see the switcher.
+  const canSwitch = member ? (await listMemberships(member.userId)).length > 1 : false;
 
   return (
     // Saffron bar mirrors dcica.org's nav; navy wordmark matches the DCICA logo.
@@ -51,6 +54,7 @@ export async function SiteHeader() {
             <StaffMenu
               name={member.name ?? member.email}
               role={member.role}
+              canSwitch={canSwitch}
             />
           ) : (
             <Link

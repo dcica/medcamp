@@ -35,26 +35,23 @@
 import type { Metadata } from "next";
 import { z } from "zod";
 import { env } from "@/lib/env";
-import { CONTACT_EMAIL } from "@/lib/contact";
 
 // ── Canonical origin ────────────────────────────────────────────────────────
 
 /**
- * The origin every canonical, OG and sitemap URL is built from.
+ * The origin every canonical, OG and sitemap URL is built from is the
+ * ORGANISATION'S, resolved by the caller (`getActiveOrigin()` in a request,
+ * `orgBaseUrl(org)` where there is none) and passed in. Nothing in this file
+ * reads an env var for it: one deployment now serves several organisations on
+ * several hosts, and a canonical built from a global would tell Google that
+ * every tenant's pages live on one tenant's domain.
  *
- * `NEXT_PUBLIC_APP_URL` and not the request's Host header: the app answers on
- * more than one hostname per environment (the Vercel deployment URL, the
- * per-branch preview URL, and the real domain all reach the same box), and a
- * canonical built from the request would tell Google that
- * `medcamp-test-abc123.vercel.app/` and `test.dcica.org/` are two different
- * pages with identical content. That is a duplicate-content split, and it is
- * self-inflicted. One configured origin, one canonical.
- *
- * Trailing slash stripped so `${siteUrl()}${path}` never yields `//`.
+ * Still not the request's Host header, for the reason the old `siteUrl()`
+ * gave: the app answers on more than one hostname per environment (the Vercel
+ * deployment URL, a preview URL and the real domain all reach the same box),
+ * and a canonical built from the request would split one page into several.
+ * The organisation's PRIMARY domain is the one configured origin per tenant.
  */
-export function siteUrl(): string {
-  return (env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/+$/, "");
-}
 
 /**
  * Whether this deployment may appear in search results at all.
@@ -68,8 +65,9 @@ export function searchIndexingEnabled(): boolean {
 }
 
 /** An absolute URL for a same-origin path (`/e/x` → `https://…/e/x`). */
-export function absoluteUrl(path: string): string {
-  return `${siteUrl()}${path.startsWith("/") ? path : `/${path}`}`;
+export function absoluteUrl(origin: string, path: string): string {
+  const base = origin.replace(/\/+$/, "");
+  return `${base}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
 // ── Slugs ───────────────────────────────────────────────────────────────────
@@ -357,6 +355,10 @@ export function jsonLdScript(data: unknown): string {
 }
 
 type OrganizationLdInput = {
+  /** The organisation's own origin — `getActiveOrigin()` / `orgBaseUrl(org)`. */
+  origin: string;
+  /** From the organisation's profile; omitted from the markup when unset. */
+  contactEmail: string | null;
   orgName: string;
   seo: TenantSeo;
   locality: { locality: string; region: string } | null;
@@ -377,7 +379,7 @@ type OrganizationLdInput = {
  * kind of markup worth shipping.
  */
 export function organizationLd(input: OrganizationLdInput) {
-  const { orgName, seo, locality, logoUrl } = input;
+  const { origin, contactEmail, orgName, seo, locality, logoUrl } = input;
   const address: Record<string, string> = { "@type": "PostalAddress" };
   if (seo.streetAddress) address.streetAddress = seo.streetAddress;
   const town = seo.locality ?? locality?.locality;
@@ -392,13 +394,13 @@ export function organizationLd(input: OrganizationLdInput) {
   return prune({
     "@context": "https://schema.org",
     "@type": "NGO",
-    "@id": `${siteUrl()}/#organization`,
+    "@id": `${origin}/#organization`,
     name: orgName,
     legalName: seo.legalName,
-    url: siteUrl(),
+    url: origin,
     logo: logoUrl ?? undefined,
     description: seo.description,
-    email: CONTACT_EMAIL,
+    email: contactEmail ?? undefined,
     telephone: seo.telephone,
     // Only emit an address once it says something beyond the country.
     address: Object.keys(address).length > 2 ? address : undefined,
@@ -410,6 +412,8 @@ export function organizationLd(input: OrganizationLdInput) {
 }
 
 export type EventLdInput = {
+  /** The organiser's origin — the organisation's own host, never a global. */
+  organizerUrl: string;
   name: string;
   url: string;
   description: string | null;
@@ -492,7 +496,7 @@ export function eventLd(e: EventLdInput) {
     organizer: {
       "@type": "Organization",
       name: e.organizerName,
-      url: siteUrl(),
+      url: e.organizerUrl,
     },
     offers: e.offer
       ? prune({

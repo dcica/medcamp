@@ -157,6 +157,7 @@ async function main(): Promise<void> {
   // Imported late, exactly as mint-offline-order.ts does, so nothing
   // constructs Prisma or validates env before dotenv has run.
   const { env } = await import("../src/lib/env");
+  const { orgBaseUrl } = await import("../src/lib/orgUrl");
   const { db } = await import("../src/lib/db");
   const { getSesAccountStatus } = await import("../src/lib/email");
   const { createRegistration } = await import("../src/server/registration");
@@ -205,7 +206,7 @@ async function main(): Promise<void> {
   // ── Resolve ─────────────────────────────────────────────────────────────
   const event = await db.event.findFirstOrThrow({
     where: { code: EVENT_CODE },
-    include: { caps: { include: { serviceType: true } }, volunteerRoles: true },
+    include: { caps: { include: { serviceType: true } }, volunteerRoles: true, org: { include: { domains: true } } },
   });
   const now = new Date();
   const startsAt = new Date(now.getTime() - DOORS_OPENED_MINUTES_AGO * 60_000);
@@ -431,7 +432,7 @@ async function main(): Promise<void> {
   }
 
   // ── 7. Print pack ───────────────────────────────────────────────────────
-  await printPack(db, event.id, env.NEXT_PUBLIC_APP_URL);
+  await printPack(db, event.id, orgBaseUrl(event.org));
   await db.$disconnect();
 }
 

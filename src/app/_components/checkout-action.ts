@@ -8,6 +8,7 @@ import {
 } from "@/server/resumeCookie";
 import { guard, guardKey } from "@/server/requestGuard";
 import type { CheckoutRoutes } from "@/lib/checkoutReturn";
+import { getActiveOrg } from "@/lib/tenant";
 
 /**
  * "Finish paying" — shared by every payment flow.
@@ -35,7 +36,12 @@ export async function resumeCheckout(
     await guardKey(`resume-order:${orderId}`, 10, 600);
 
     const proof = await readResumeCookie();
-    const outcome = await resumeCheckoutForOrder(orderId, proof, routes);
+    // Scoped to the organisation this request resolved to; none resolved means
+    // nothing can be resumed, and it reads exactly like a bad cookie.
+    const org = await getActiveOrg();
+    const outcome = org
+      ? await resumeCheckoutForOrder(orderId, proof, routes, { orgId: org.id })
+      : ({ ok: false, reason: "not-authorised" } as const);
 
     if (!outcome.ok) {
       // Both refusals get the same sentence on purpose. Distinguishing "you may

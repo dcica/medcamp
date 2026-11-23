@@ -150,7 +150,7 @@ discovery is largely "someone searched for the event by name," the query list is
 the interesting half of the funnel.
 
 The property must already be verified in Search Console. This deployment
-supports HTML-tag verification via `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION`, or
+supports HTML-tag verification via the organisation's `googleSiteVerification` setting (Admin → Settings), or
 you can verify by DNS TXT record instead.
 
 ### 5. Leave Google Signals OFF; reporting identity device-based
@@ -388,7 +388,7 @@ measurement id and there must never be one — a hardcoded id would ship one
 organization's analytics property to every self-hoster and silently collect a
 stranger's traffic into it.
 
-For a self-hoster: leave `NEXT_PUBLIC_GA_MEASUREMENT_ID` unset and there is
+For a self-hoster: leave the organisation's `gaMeasurementId` setting (Admin → Settings) unset and there is
 nothing to configure, nothing to disclose, and no cookie banner question to
 answer. Everything in this document is optional.
 
@@ -434,7 +434,7 @@ people buying real tickets, so its visits belong in the numbers. The recorded
 rationale also names the cost of the alternative: an unset id means the inline
 snippet is never exercised anywhere before production, so the first real test of the
 tag would be the live site. Staff and QA traffic on that host is split out in GA with
-a hostname filter. Do not reopen this by unsetting `NEXT_PUBLIC_GA_MEASUREMENT_ID`.
+a hostname filter. Do not reopen this by unsetting the organisation's `gaMeasurementId` setting (Admin → Settings).
 
 **Server-side `purchase` events are a different switch, and they do not inherit that
 reasoning.** A page view from a test host carries a hostname, so it can be segmented
@@ -444,8 +444,8 @@ record with **no dimension to filter it by**, indistinguishable from a real sale
 GA4 property cannot have a subset of its events deleted after the fact, so there is
 no cleanup path either.
 
-**The rule, therefore: `NEXT_PUBLIC_GA_MEASUREMENT_ID` stays set everywhere it is set
-today; `GA_API_SECRET` is set in the production scope only.**
+**The rule, therefore: the organisation's `gaMeasurementId` setting (Admin → Settings) stays set everywhere it is set
+today; the organisation's `gaApiSecret` setting is set in the production scope only.**
 
 That outcome falls out of how the sender is gated rather than having to be
 remembered: it no-ops silently unless BOTH the measurement id and the API secret are

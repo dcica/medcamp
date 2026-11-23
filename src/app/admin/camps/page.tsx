@@ -34,12 +34,12 @@ export default async function CampsPage() {
         id="admin-camps"
         items={[
           {
-            label: "Create a camp",
-            body: "Give it a name and dates. A camp code (MC-YYYY[S|W]-NNNN) is generated automatically.",
+            label: "Create an event",
+            body: "Give it a name, a short code, its kind and dates. The code starts every ticket number (PB-OPEN-2026-K7M2XQ9T) and cannot change later. A general event sells by quantity; a medical camp collects one row per patient.",
           },
           {
-            label: "Camp list",
-            body: "Tap any camp to set its services, stations, and lifecycle. Newest camps appear first.",
+            label: "Event list",
+            body: "Tap any event to set what it sells, its flags and its lifecycle. Soonest first.",
           },
         ]}
       />

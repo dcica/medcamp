@@ -3,6 +3,7 @@ import { getActiveOrg } from "@/lib/tenant";
 import { getCurrentEvent } from "@/server/events";
 import type { EventStatus } from "@prisma/client";
 import { venueDayKey } from "@/lib/eventTime";
+import { toReconRow, type ReconRow } from "@/lib/reconciliation";
 
 /**
  * Coordinator dashboard data (Module 4). One read of the active camp's checked-in
@@ -242,8 +243,12 @@ export async function getDailySales(
       createdAt: { gte: since },
       order: {
         orgId,
-        // Current trade only — see FINISHED_EVENT_STATUSES.
-        event: { status: { notIn: [...FINISHED_EVENT_STATUSES] } },
+        // Current trade only — see FINISHED_EVENT_STATUSES. A general-fund
+        // donation has no event and is always current trade.
+        OR: [
+          { eventId: null },
+          { event: { status: { notIn: [...FINISHED_EVENT_STATUSES] } } },
+        ],
       },
     },
     include: { order: { include: { lineItems: true } } },
@@ -276,7 +281,8 @@ export async function getDailySales(
     countedOrders.add(order.id);
     for (const li of order.lineItems) {
       if (li.status !== "PAID") continue;
-      if (li.isDonation) continue;
+      // Neither a gift nor a fee line is a unit sold.
+      if (li.isDonation || li.feeKind) continue;
       bucket.units += li.quantity;
     }
   }
@@ -292,32 +298,16 @@ export async function getReconciliationRows() {
 
   const payments = await db.payment.findMany({
     where: { order: { eventId: camp.id } },
-    include: { order: true },
+    // The lines are what break the gross into gift, cover and goods — see
+    // src/lib/reconciliation.ts for the row's arithmetic.
+    include: { order: { include: { lineItems: true } } },
     orderBy: { createdAt: "asc" },
   });
 
   return {
     campCode: camp.code,
-    rows: payments.map((p) => ({
-      paymentId: p.id,
-      createdAt: p.createdAt.toISOString(),
-      method: p.method,
-      status: p.status,
-      amountCents: p.amountCents,
-      orderId: p.orderId ?? "",
-      registrantEmail: p.order?.registrantEmail ?? "",
-      stripePaymentIntentId: p.stripePaymentIntentId ?? "",
-    })),
+    rows: payments.map(toReconRow),
   };
 }
 
-export type ReconRow = {
-  paymentId: string;
-  createdAt: string;
-  method: string;
-  status: string;
-  amountCents: number;
-  orderId: string;
-  registrantEmail: string;
-  stripePaymentIntentId: string;
-};
+export type { ReconRow } from "@/lib/reconciliation";

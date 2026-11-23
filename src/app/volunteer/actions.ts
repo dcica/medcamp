@@ -1,6 +1,7 @@
 "use server";
 
 import { ZodError } from "zod";
+import { getActiveOrg } from "@/lib/tenant";
 import {
   createVolunteerSignup,
   cancelSignup,
@@ -57,7 +58,9 @@ export async function cancelVolunteerSignup(
   signupId: string,
 ): Promise<CancelResult> {
   try {
-    await cancelSignup(signupId);
+    const org = await getActiveOrg();
+    if (!org) throw new Error("Signup not found.");
+    await cancelSignup(org.id, signupId);
     return { ok: true };
   } catch (err) {
     return {

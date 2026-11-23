@@ -1,13 +1,9 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
+import { getActiveOrg } from "@/lib/tenant";
+import { findPublicOrder } from "@/server/public";
 import QRCode from "qrcode";
-import { db } from "@/lib/db";
-import { stripe } from "@/lib/stripe";
-import { log } from "@/lib/logger";
-import {
-  confirmOrderPaid,
-  MissingCapError,
-  OverCapacityError,
-} from "@/server/payments";
+import { confirmFromCheckoutSession } from "@/server/payments";
 import { PageHelp } from "@/app/_components/PageHelp";
 import { SimulatePayButton } from "./SimulatePayButton";
 import { PRIVATE_PAGE_METADATA } from "@/lib/seo";
@@ -28,6 +24,8 @@ const orderInclude = {
       lineItems: { include: { serviceType: true } },
     },
   },
+  // A bank debit in flight shows as "processing", not "not confirmed yet".
+  payments: { select: { status: true } },
 } as const;
 
 /**
@@ -44,11 +42,10 @@ export default async function ConfirmPage({
 }) {
   const { orderId } = await params;
   const { session_id } = await searchParams;
+  const org = await getActiveOrg();
+  if (!org) notFound();
 
-  let order = await db.order.findUnique({
-    where: { id: orderId },
-    include: orderInclude,
-  });
+  let order = await findPublicOrder(org.id, orderId, { include: orderInclude });
 
   // ── Race fix ──────────────────────────────────────────────────────────────
   // Stripe redirects the browser to this page the instant Checkout succeeds,
@@ -58,46 +55,13 @@ export default async function ConfirmPage({
   // session with Stripe and confirm synchronously. confirmOrderPaid is
   // idempotent + atomically claimed, so whichever path wins, the other is a
   // no-op (and only the winner sends the email).
-  if (order && order.status !== "CONFIRMED" && session_id && stripe) {
-    try {
-      const session = await stripe.checkout.sessions.retrieve(session_id);
-      // Guard: the session must actually be paid AND belong to THIS order
-      // (metadata.orderId is set when we create the session) — never confirm an
-      // order from a session id pasted in from elsewhere.
-      if (
-        session.payment_status === "paid" &&
-        session.metadata?.orderId === order.id
-      ) {
-        await confirmOrderPaid(order.id, {
-          method: "STRIPE",
-          stripeCheckoutId: session.id,
-          stripePaymentIntentId:
-            typeof session.payment_intent === "string"
-              ? session.payment_intent
-              : undefined,
-          idempotencyKey: `checkout-${session.id}`,
-        });
-        order = await db.order.findUnique({
-          where: { id: orderId },
-          include: orderInclude,
-        });
-      }
-    } catch (err) {
-      // A genuinely-full cap stays quiet by design: the buyer paid, staff
-      // handles the refund, and this page just falls through to its pending
-      // state. A MISSING cap row is a different animal — a misconfigured event,
-      // where every purchase of that service fails — so it is logged at error
-      // rather than swallowed with the sold-out case. Any other failure is
-      // logged too. Either way the webhook remains the backstop (and now
-      // returns a 5xx for both of these, so Stripe retries).
-      if (err instanceof MissingCapError) {
-        log.error("confirm: service cap row missing (misconfigured event)", {
-          orderId,
-          serviceKey: err.serviceKey,
-        });
-      } else if (!(err instanceof OverCapacityError)) {
-        log.error("confirm: stripe session verify failed", { orderId, err });
-      }
+  if (order && order.status !== "CONFIRMED" && session_id) {
+    // ONE path verifies the session — the same confirmFromCheckoutSession the
+    // /perform/after-payment page uses — and it carries the organisation's
+    // Stripe account option. A second copy here is how that option would be
+    // forgotten on exactly the page a connected organisation's buyer lands on.
+    if (await confirmFromCheckoutSession(order.id, session_id)) {
+      order = await findPublicOrder(org.id, orderId, { include: orderInclude });
     }
   }
 
@@ -136,7 +100,7 @@ export default async function ConfirmPage({
         title={
           isConfirmed ? (entry ? "You're entered!" : "You're registered!") : "Almost there"
         }
-        subtitle={order.event.name}
+        subtitle={order.event?.name ?? "Donation"}
         items={
           entry
             ? [
@@ -170,7 +134,17 @@ export default async function ConfirmPage({
         }
       />
 
-      {!isConfirmed && (
+      {!isConfirmed && order.payments.some((p) => p.status === "PROCESSING") && (
+        <div className="mt-6 rounded-xl border border-blue-200 bg-blue-50 p-4">
+          <p className="text-sm text-blue-800">
+            Your bank payment is processing. A bank debit takes up to four business
+            days to clear; your place is held meanwhile, and your tickets are emailed
+            (and shown here) the moment it does. There is nothing to show at the door
+            until then.
+          </p>
+        </div>
+      )}
+      {!isConfirmed && !order.payments.some((p) => p.status === "PROCESSING") && (
         <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
           <p className="text-sm text-amber-800">
             Payment hasn&apos;t been confirmed yet. Once your payment clears

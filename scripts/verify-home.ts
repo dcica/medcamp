@@ -559,7 +559,7 @@ async function main(): Promise<void> {
   const pageSrc = readFileSync("src/app/page.tsx", "utf8");
   check(
     "zero events still fall through to the untouched empty state",
-    /events\.length > 0 \?/.test(pageSrc) && /<EmptyEventsState \/>/.test(pageSrc),
+    /events\.length > 0 \?/.test(pageSrc) && /<EmptyEventsState\b/.test(pageSrc),
     "the empty-state branch is gone",
   );
   // Comments stripped: page.tsx's own doc comment explains WHY PageHelp was
@@ -576,7 +576,11 @@ async function main(): Promise<void> {
   );
 
   const { saleSummaryByEvent } = await import("../src/server/eventSales");
-  const org = await db.organization.findFirstOrThrow();
+  const org = await db.organization.findUniqueOrThrow({
+    // Pin the org getActiveOrg() resolves in script scope — DEFAULT_ORG_SLUG — so
+    // fixtures land where the code under test looks, not in "the oldest row".
+    where: { slug: process.env.DEFAULT_ORG_SLUG ?? "dcica" },
+  });
   await cleanup(org.id);
 
   const admitType = await db.serviceType.upsert({

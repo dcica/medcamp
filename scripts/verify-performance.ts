@@ -82,7 +82,11 @@ async function main() {
   const { confirmOrderPaid } = await import("../src/server/payments");
   const { getStorage } = await import("../src/lib/storage");
 
-  const org = await db.organization.findFirstOrThrow();
+  const org = await db.organization.findUniqueOrThrow({
+    // Pin the org getActiveOrg() resolves in script scope — DEFAULT_ORG_SLUG — so
+    // fixtures land where the code under test looks, not in "the oldest row".
+    where: { slug: process.env.DEFAULT_ORG_SLUG ?? "dcica" },
+  });
   await cleanup(org.id);
 
   // Relative dates, never literals: isRegistrationOpen refuses a finished
@@ -218,11 +222,11 @@ async function main() {
   const campId = paid.attendees[0]!.campId!;
   check("receipt code assigned on confirmation", Boolean(campId), campId);
 
-  const view = await getEntryByCode(campId);
+  const view = await getEntryByCode(org.id, campId);
   check("paid entry resolves by code", view !== null);
   check("resolved entry is the right group", view?.groupName === "Shakti Steps", view?.groupName);
-  check("bogus code returns null", (await getEntryByCode("RON-2026-ZZZZZZZZ")) === null);
-  check("empty code returns null", (await getEntryByCode("")) === null);
+  check("bogus code returns null", (await getEntryByCode(org.id, "RON-2026-ZZZZZZZZ")) === null);
+  check("empty code returns null", (await getEntryByCode(org.id, "")) === null);
 
   // The invariant that matters: an UNPAID entry must be indistinguishable from
   // a bad code. Build a second entry and leave it PENDING.
@@ -236,7 +240,7 @@ async function main() {
     data: { campId: `${CODE}-UNPAID01` },
   });
   check("UNPAID entry with a valid code still returns null",
-    (await getEntryByCode(`${CODE}-UNPAID01`)) === null);
+    (await getEntryByCode(org.id, `${CODE}-UNPAID01`)) === null);
 
   console.log("\n§6 song upload round trip");
   const storage = getStorage();
@@ -245,9 +249,9 @@ async function main() {
   } else {
     console.log(`  ..  adapter: ${storage.name}`);
     await rejectsWith("completing with no file uploaded fails",
-      () => completeSongUpload(campId), "didn't receive the file");
+      () => completeSongUpload(org.id, campId), "didn't receive the file");
 
-    const ticket = await beginSongUpload(campId);
+    const ticket = await beginSongUpload(org.id, campId);
     check("upload ticket issued", Boolean(ticket.url));
     check("ticket declares the MP3 content type", ticket.contentType === "audio/mpeg", ticket.contentType);
     check("ticket declares the 10 MiB cap", ticket.maxBytes === 10 * 1024 * 1024, `${ticket.maxBytes}`);
@@ -265,7 +269,7 @@ async function main() {
       await writeFile(full, Buffer.alloc(4096, 3));
 
       // THE path-agreement check: complete() must find what begin() described.
-      await completeSongUpload(campId);
+      await completeSongUpload(org.id, campId);
       const afterUpload = await db.performanceEntry.findUniqueOrThrow({ where: { id: created.entryId } });
       check("songObjectPath recorded", afterUpload.songObjectPath === ticket.path, String(afterUpload.songObjectPath));
       check("delivery is UPLOAD", afterUpload.songDelivery === "UPLOAD", afterUpload.songDelivery);
@@ -273,13 +277,13 @@ async function main() {
 
       // Oversize: rejected AND removed, not left occupying the bucket.
       await writeFile(full, Buffer.alloc(10 * 1024 * 1024 + 1, 3));
-      await rejectsWith("oversize upload rejected", () => completeSongUpload(campId), "larger than 10 MB");
+      await rejectsWith("oversize upload rejected", () => completeSongUpload(org.id, campId), "larger than 10 MB");
       check("oversize object deleted", (await storage.statObject("songs", ticket.path)) === null);
 
       console.log("\n§7 offline escape hatch clears the object");
       await writeFile(full, Buffer.alloc(2048, 3));
-      await completeSongUpload(campId);
-      await chooseOfflineDelivery(campId);
+      await completeSongUpload(org.id, campId);
+      await chooseOfflineDelivery(org.id, campId);
       const offline = await db.performanceEntry.findUniqueOrThrow({ where: { id: created.entryId } });
       check("delivery switched to OFFLINE", offline.songDelivery === "OFFLINE", offline.songDelivery);
       check("songObjectPath cleared", offline.songObjectPath === null);
@@ -291,10 +295,10 @@ async function main() {
       check("roster row carries the receipt code", roster[0]?.campId === campId, roster[0]?.campId);
 
       // Re-upload so purge has something to remove.
-      await beginSongUpload(campId);
+      await beginSongUpload(org.id, campId);
       await mkdir(dirname(full), { recursive: true });
       await writeFile(full, Buffer.alloc(1024, 3));
-      await completeSongUpload(campId);
+      await completeSongUpload(org.id, campId);
       const purged = await purgeEventSongs(event.id);
       check("purge removed one object", purged === 1, `${purged}`);
       check("entry row survives the purge",
@@ -317,6 +321,7 @@ async function main() {
     lineItems: [{ description: "Competition Entry", quantity: 1, amountCents: 3000 }],
     merch: [], totalPaidCents: 3000, venue: null,
     startsAt: new Date(), endsAt: new Date(), allowsRefunds: false,
+    theme: { brand: "#0c3543", accent: "#f9a200", accentFg: "#16201f" },
   };
   // The registration wording must be untouched by the entry branch.
   check("registration subject unchanged",
@@ -398,6 +403,54 @@ async function main() {
   // with no bars is the normal case and the wallet needs a connection.
   check("the inline QR images are still there",
     (html.match(/src="cid:/g) ?? []).length === 5);
+
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§9c the quid-pro-quo sentence appears only when a line carried a fair market value");
+  // IRS Pub 1771: a contribution made partly in exchange for goods or services
+  // needs a written statement of the payment, the value received and the
+  // deductible remainder. Present only when an offering had an FMV set, so
+  // every email already sent stays byte-identical.
+  const plainText = confirmationText(baseMail);
+  check("no contribution → byte-identical text, ending on the frozen last line", confirmationText({ ...baseMail, contribution: null }) === plainText && plainText.endsWith("View your QR badge: " + baseMail.confirmUrl));
+  const qpq = { ...baseMail, contribution: { paidCents: 25000, fairMarketValueCents: 7500, deductibleCents: 17500 } };
+  const qpqText = confirmationText(qpq);
+  check("the statement names the payment, the value received and the deductible limit",
+    qpqText.includes("$250.00") && qpqText.includes("$75.00") && qpqText.includes("$175.00") && /fair market value/i.test(qpqText),
+    qpqText.split("\n").slice(-2).join(" | "));
+  check("...and the HTML carries the same three figures",
+    ["$250.00", "$75.00", "$175.00"].every((s) => confirmationHtml(qpq).includes(s)) && /fair market value/i.test(confirmationHtml(qpq)));
+  check("...absent from the HTML when there is nothing to say", !/fair market value/i.test(confirmationHtml(baseMail)));
+
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§9d the donation receipt says what the organisation says, and nothing the platform cannot");
+  // A receipt is the organisation's document. It carries its legal name, EIN
+  // and its OWN sentence when set; when not set it carries the amount, the
+  // organisation and the date — and says nothing about deductibility, because
+  // the platform never asserts a tax status. It never mentions a fee.
+  const rc = await import("../src/lib/donationReceiptEmail");
+  const receipt = {
+    to: "d@x.org", donorName: "Giver", orgName: "Infinite Minds",
+    legalName: null, ein: null, receiptStatement: null,
+    paidAt: new Date("2026-10-18T15:00:00Z"), amountCents: 2500, honoreeName: null,
+    theme: baseMail.theme,
+  };
+  const bare = rc.donationReceiptText(receipt);
+  check("names the amount, the organisation and the venue-calendar date",
+    bare.includes("$25.00") && bare.includes("Infinite Minds") && bare.includes("Oct 18, 2026"), bare);
+  check("says NOTHING about deductibility or tax when the organisation has not", !/deduct|tax/i.test(bare));
+  check("never mentions a fee", !/\bfees?\b/i.test(bare));
+  const fullReceipt = {
+    ...receipt, legalName: "Infinite Minds Inc", ein: "12-3456789", honoreeName: "Grandma",
+    receiptStatement: "No goods or services were provided in exchange for this contribution.",
+  };
+  const stated = rc.donationReceiptText(fullReceipt);
+  check("prints the legal name, the EIN and the organisation's own sentence when set",
+    stated.includes("Infinite Minds Inc") && stated.includes("EIN 12-3456789") && stated.includes("No goods or services were provided"), stated);
+  check("...and the honoree", /in honou?r of Grandma/i.test(stated));
+  const statedHtml = rc.donationReceiptHtml(fullReceipt);
+  check("the HTML carries the same", ["$25.00", "EIN 12-3456789", "Grandma", "No goods or services"].every((s) => statedHtml.includes(s)));
+  check("the bare HTML is as silent as the bare text", !/deduct|tax|\bfees?\b/i.test(rc.donationReceiptHtml(receipt)));
+  check("the subject thanks them by organisation", rc.donationReceiptSubject(receipt) === "Thank you for your gift to Infinite Minds", rc.donationReceiptSubject(receipt));
 
 
 

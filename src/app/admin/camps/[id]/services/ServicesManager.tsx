@@ -28,6 +28,10 @@ export type Offering = {
   /** "m:ss", the format a choreographer is quoted. Null = unconstrained. */
   minDuration: string | null;
   maxDuration: string | null;
+  /** Fair market value per unit, dollars. Null = nothing to disclose on the receipt. */
+  fairMarketValueDollars: number | null;
+  /** Which online methods may buy it. ACH_ONLY is for the large items; the door never sells one. */
+  onlineMethods: "ANY" | "CARD_ONLY" | "ACH_ONLY";
 };
 
 /** A catalogue service, for the Add picker. */
@@ -256,9 +260,16 @@ function OfferingEditor({
   );
   const [minDuration, setMinDuration] = useState(row.minDuration ?? "");
   const [maxDuration, setMaxDuration] = useState(row.maxDuration ?? "");
+  const [fairMarketValue, setFairMarketValue] = useState(
+    row.fairMarketValueDollars === null ? "" : String(row.fairMarketValueDollars),
+  );
+  const [onlineMethods, setOnlineMethods] = useState(row.onlineMethods);
 
   const capacityValue = capped ? capacity.trim() : "";
   const dirty =
+    onlineMethods !== row.onlineMethods ||
+    fairMarketValue !==
+      (row.fairMarketValueDollars === null ? "" : String(row.fairMarketValueDollars)) ||
     price !== String(row.priceDollars) ||
     capped !== (row.capacity !== null) ||
     capacityValue !== (row.capacity === null ? "" : String(row.capacity)) ||
@@ -354,6 +365,48 @@ function OfferingEditor({
           onChange={(e) => setOnsitePrice(e.target.value)}
         />
       </label>
+
+      <label className="block text-sm text-gray-600">
+        Paid online by
+        <select
+          className={inputCls}
+          value={onlineMethods}
+          onChange={(e) => setOnlineMethods(e.target.value as "ANY" | "CARD_ONLY" | "ACH_ONLY")}
+        >
+          <option value="ANY">Card or bank debit (whatever the organisation offers)</option>
+          <option value="CARD_ONLY">Card only</option>
+          <option value="ACH_ONLY">Bank debit only</option>
+        </select>
+      </label>
+      <p className="text-xs text-gray-500">
+        Bank debit only: for large fees — a booth, a sponsorship, a table package — Stripe
+        charges 0.8% capped at $5 instead of 2.9%. A debit takes days to clear, so it closes
+        before the event and the door never sells a bank-only item.
+      </p>
+
+      <label className="block text-sm text-gray-600">
+        Fair market value per unit ($)
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          inputMode="decimal"
+          placeholder="nothing to disclose"
+          className={inputCls}
+          value={fairMarketValue}
+          onChange={(e) => setFairMarketValue(e.target.value)}
+        />
+      </label>
+      {/* The one rule people get wrong, stated where the number is typed:
+          value RECEIVED by the guest, not the cost to host. */}
+      <p className="text-xs text-gray-500">
+        What the buyer receives, at a comparable price — the dinner, the court
+        time — not what it costs you to put on. Set it and the confirmation
+        email states the payment, this value and the deductible remainder (IRS
+        Pub 1771). Example: a $100 seat at a dinner comparable to a $40 meal is
+        $60 deductible, even if the meal cost you $30. Required for payments
+        over $75; harmless below.
+      </p>
 
       <label className="block text-sm text-gray-600">
         Early-bird price ($)
@@ -479,6 +532,8 @@ function OfferingEditor({
                 maxParticipants: blankToNull(maxParticipants),
                 minDuration: minDuration.trim() === "" ? null : minDuration,
                 maxDuration: maxDuration.trim() === "" ? null : maxDuration,
+                fairMarketValueDollars: blankToNull(fairMarketValue),
+                onlineMethods,
               }),
             )
           }

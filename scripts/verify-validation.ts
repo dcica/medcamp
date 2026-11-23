@@ -51,6 +51,8 @@
 import type { RegistrationInput } from "../src/server/registration";
 import type { SubmitResult } from "../src/app/register/actions";
 import * as dotenv from "dotenv";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { PrismaClient } from "@prisma/client";
 
 // The machine has a global DATABASE_URL pointing at an unrelated project; dotenv
@@ -171,7 +173,11 @@ async function main(): Promise<void> {
     };
   };
 
-  const org = await db.organization.findFirstOrThrow();
+  const org = await db.organization.findUniqueOrThrow({
+    // Pin the org getActiveOrg() resolves in script scope — DEFAULT_ORG_SLUG — so
+    // fixtures land where the code under test looks, not in "the oldest row".
+    where: { slug: process.env.DEFAULT_ORG_SLUG ?? "dcica" },
+  });
   await cleanup(org.id);
 
   // Relative to now, never a literal date: isRegistrationOpen refuses a finished
@@ -609,6 +615,58 @@ async function main(): Promise<void> {
 
   await volunteerCounselorAndLinkChecks();
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // 15. Named entrants. When the event names each head, the server — not the
+  // form — is what insists on a name per head; the form's inputs are a
+  // courtesy. Off, names are neither required nor kept.
+  console.log("\n15. Named entrants: when the event names each head, every head is named");
+  await db.event.update({ where: { id: event.id }, data: { namesAttendees: true } });
+  await refuses(
+    "names missing entirely",
+    { ...okOrder, quantities: [{ serviceKey: "vv-admission", quantity: 1 }] },
+    "Enter a name for each entrant — VV Admission needs 1.",
+  );
+  await refuses(
+    "too few names for the quantity",
+    { ...okOrder, quantities: [{ serviceKey: "vv-admission", quantity: 2, names: ["Asha"] }] },
+    "Enter a name for each entrant — VV Admission needs 2.",
+  );
+  await refuses(
+    "a blank name",
+    { ...okOrder, quantities: [{ serviceKey: "vv-admission", quantity: 1, names: ["   "] }] },
+    "Every entrant needs a name.",
+  );
+  faultsFields(
+    "a name that is not text is faulted at its own path",
+    { ...okOrder, quantities: [{ serviceKey: "vv-admission", quantity: 1, names: [7] }] },
+    ["quantities.0.names.0"],
+  );
+  await db.event.update({ where: { id: event.id }, data: { namesAttendees: false } });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 16. A donation has its own door and its own refusals, in the buyer's words.
+  // createDonationOrder is the authority (the action translates nothing); it
+  // reads the organisation's policy, so "closed" is refused before anything
+  // about the donor is looked at.
+  console.log("\n16. A donation: its own door, its own refusals");
+  const { createDonationOrder } = await import("../src/server/donations");
+  const openPolicy = { enabled: true, suggestedAmountsCents: [2500], allowFeeCover: true, minCents: 500 };
+  const closedPolicy = { ...openPolicy, enabled: false };
+  const give = (input: Record<string, unknown>, policy = openPolicy) =>
+    createDonationOrder(org.id, input as never, policy).then(() => "ACCEPTED", (e: Error) => e.message);
+  check("donations closed → refused first", await give({ donor: { name: "A", email: EMAIL }, amountCents: 2500 }, closedPolicy), "Donations are not open right now.");
+  check("below the organisation's minimum", await give({ donor: { name: "A", email: EMAIL }, amountCents: 100 }), "The minimum donation is $5.00.");
+  check("a blank name", await give({ donor: { name: "  ", email: EMAIL }, amountCents: 2500 }), "Name is required");
+  check("a bad email", await give({ donor: { name: "A", email: "nope" }, amountCents: 2500 }), "Valid email required");
+  check("a fractional amount", await give({ donor: { name: "A", email: EMAIL }, amountCents: 25.5 }), "Enter a whole-dollar amount");
+  check("a note past the cap", await give({ donor: { name: "A", email: EMAIL }, amountCents: 2500, donorNote: "x".repeat(301) }), "Keep the note under 300 characters");
+  check("an honoree past the cap", await give({ donor: { name: "A", email: EMAIL }, amountCents: 2500, honoreeName: "x".repeat(121) }), "Keep the honoree's name under 120 characters");
+  // The action is the public entry point: read as text, since it needs a request.
+  const donateSrc = readFileSync(join(process.cwd(), "src/app/donate/actions.ts"), "utf8");
+  check("the donate action is rate-limited like /register", /guard\("donate"/.test(donateSrc), true);
+  check("...and hands the order to the ONE checkout path", /createCheckoutForOrder\(/.test(donateSrc), true);
+  check("...with the resume cookie set on the same response", /setResumeCookie\(/.test(donateSrc), true);
+
   await cleanup(org.id);
 }
 
@@ -884,6 +942,78 @@ async function volunteerCounselorAndLinkChecks(): Promise<void> {
     forked,
     [],
   );
+  // ───────────────────────────────────────────────────────────────────────────
+  // 14. Event setup. An organiser creates and edits a GENERAL event in the UI
+  // (a tournament, a dinner), so the code rule can no longer be "MC-2026W":
+  // one shared parser for the code, the display order, the description and
+  // the external link, called by the field AND the action — the invariant
+  // ValidatedInput records (the client is never stricter than the server).
+  console.log("\n14. Event setup: code, display order, external link (one rule, both sides)");
+  const setup = await import("../src/lib/eventSetup");
+  check("parseEventCode keeps the legacy camp shape", setup.parseEventCode("MC-2026W"), { ok: true, value: "MC-2026W" });
+  check("...and takes a tournament code, uppercased", setup.parseEventCode(" pb-open-2026 "), { ok: true, value: "PB-OPEN-2026" });
+  check("...rejects a space", setup.parseEventCode("PB OPEN").ok, false);
+  check("...rejects a leading dash", setup.parseEventCode("-PB").ok, false);
+  check("...rejects a trailing dash", setup.parseEventCode("PB-").ok, false);
+  check("...rejects two characters", setup.parseEventCode("PB").ok, false);
+  check("...rejects 21 characters", setup.parseEventCode("A".repeat(21)).ok, false);
+  check("...accepts 20", setup.parseEventCode("A".repeat(20)).ok, true);
+  check("...rejects blank with a message, not a throw", typeof (setup.parseEventCode("") as { error?: string }).error, "string");
+
+  check("parseDisplayOrder: blank is null (not pinned), never 0", setup.parseDisplayOrder(""), { ok: true, value: null });
+  check("...a whole number, trimmed", setup.parseDisplayOrder(" 3 "), { ok: true, value: 3 });
+  check("...zero is a position", setup.parseDisplayOrder("0"), { ok: true, value: 0 });
+  check("...rejects a fraction", setup.parseDisplayOrder("1.5").ok, false);
+  check("...rejects a negative", setup.parseDisplayOrder("-1").ok, false);
+
+  check("parseExternalUrl: blank is null", setup.parseExternalUrl(""), { ok: true, value: null });
+  check("...https only — http is refused", setup.parseExternalUrl("http://example.org/x").ok, false);
+  check("...accepts https", setup.parseExternalUrl("https://example.org/x"), { ok: true, value: "https://example.org/x" });
+  check("...refuses a javascript: scheme", setup.parseExternalUrl("javascript:alert(1)").ok, false);
+  check("...refuses something that is not a URL", setup.parseExternalUrl("https://").ok, false);
+  check("...caps the length", setup.parseExternalUrl("https://example.org/" + "x".repeat(2048)).ok, false);
+
+  check("parseDescription: blank is null", setup.parseDescription("  "), { ok: true, value: null });
+  check("...keeps a trimmed description", setup.parseDescription(" Doubles, round robin. "), { ok: true, value: "Doubles, round robin." });
+  check("...refuses one over the cap", setup.parseDescription("x".repeat(setup.DESCRIPTION_MAX + 1)).ok, false);
+  check("...accepts one at the cap", setup.parseDescription("x".repeat(setup.DESCRIPTION_MAX)).ok, true);
+
+  check(
+    "the field-side wrappers are the same rule (no client stricter than the server)",
+    [
+      setup.validateEventCode("PB OPEN") !== null,
+      setup.validateEventCode("PB-OPEN-2026"),
+      setup.validateDisplayOrder("1.5") !== null,
+      setup.validateDisplayOrder(""),
+      setup.validateExternalUrl("http://x.org") !== null,
+      setup.validateExternalUrl(""),
+      setup.validateDescription("x".repeat(setup.DESCRIPTION_MAX + 1)) !== null,
+      setup.validateDescription(""),
+    ],
+    [true, null, true, null, true, null, true, null],
+  );
+
+  // The action is the authority: read AS TEXT, since createCamp/updateCamp
+  // need a signed-in coordinator and this script has none.
+  const campActions = readFileSync(join(process.cwd(), "src/app/admin/camps/actions.ts"), "utf8");
+  check("createCamp parses the code through the shared rule", /parseEventCode\(/.test(campActions), true);
+  check("...and the old MC-2026W-only regex is gone", /\[A-Z\]\{2,4\}-\\d\{4\}\[SW\]/.test(campActions), false);
+  check("...a GENERAL event starts in quantity mode, a CAMP in attendee mode",
+    /collectsAttendeeDetails: type === "CAMP"/.test(campActions), true);
+  check("updateCamp runs description, display order and link through the shared rules",
+    [/parseDescription\(/.test(campActions), /parseDisplayOrder\(/.test(campActions), /parseExternalUrl\(/.test(campActions)],
+    [true, true, true]);
+  check("...changing the type is refused once anyone has paid, or off DRAFT",
+    /campId: \{ not: null \}/.test(campActions) && /status !== "DRAFT"/.test(campActions), true);
+  const bodyOf = (name: string) => {
+    const at = campActions.indexOf(`export async function ${name}(`);
+    const end = campActions.indexOf("\nexport ", at + 1);
+    return at === -1 ? "" : campActions.slice(at, end === -1 ? campActions.length : end);
+  };
+  check("...and both actions revalidate the home page, because the rail reads these fields",
+    [/revalidatePath\("\/"\)/.test(bodyOf("createCamp")), /revalidatePath\("\/"\)/.test(bodyOf("updateCamp"))],
+    [true, true]);
+
 }
 
 /**
@@ -918,6 +1048,15 @@ async function cleanup(orgId: string): Promise<void> {
   await db.member.deleteMany({ where: { orgId, email: EMAIL } });
   await db.membershipPlan.deleteMany({ where: { orgId, key: PLAN_KEY } });
   await db.serviceType.deleteMany({ where: { orgId, key: { in: KEYS } } });
+  // Eventless (general-fund) orders sit under no event's cascade. §16 expects
+  // every case refused, so a row here is itself a finding.
+  const gifts = await db.order.findMany({ where: { orgId, eventId: null, registrantEmail: EMAIL }, select: { id: true } });
+  if (gifts.length > 0) console.log(`  NOTE  cleanup removed ${gifts.length} eventless order(s) — every §16 case should have been refused`);
+  const giftIds = gifts.map((g) => g.id);
+  const giftPayments = await db.payment.findMany({ where: { orderId: { in: giftIds } }, select: { id: true } });
+  await db.ledgerEntry.deleteMany({ where: { paymentId: { in: giftPayments.map((p) => p.id) } } });
+  await db.payment.deleteMany({ where: { orderId: { in: giftIds } } });
+  await db.order.deleteMany({ where: { id: { in: giftIds } } });
 }
 
 main()
