@@ -37,7 +37,8 @@
  *   §10 delete `if (!input.clientId) return null`          → cash-walk-in rows fail
  */
 import * as dotenv from "dotenv";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { PrismaClient } from "@prisma/client";
 
 // Same reasoning as verify-performance.ts: the machine has a global
@@ -62,6 +63,14 @@ function check(label: string, ok: boolean, detail = "") {
   if (!ok) failures++;
 }
 
+/** Every .ts/.tsx under a directory, for the sweeps in §14. */
+function walk(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const p = join(dir, name);
+    return statSync(p).isDirectory() ? walk(p) : /\.(ts|tsx)$/.test(p) ? [p] : [];
+  });
+}
+
 /** Minimal sessionStorage so the draft module can be exercised outside a browser. */
 function installSessionStorage(): Map<string, string> {
   const backing = new Map<string, string>();
@@ -84,7 +93,7 @@ async function main() {
   );
   const draftMod = await import("../src/lib/checkoutDraft");
   const { hasEdits, snapshot } = draftMod;
-  const { reapExpiredCheckout, resumeCheckoutForOrder, getResumableCheckout, isKnownOrder } =
+  const { reapExpiredCheckout, resumeCheckoutForOrder, getResumableCheckout, isKnownOrder, createCheckoutForOrder } =
     await import("../src/server/payments");
   const { guardKey } = await import("../src/server/requestGuard");
   const { resetRateLimits } = await import("../src/lib/rateLimit");
@@ -226,7 +235,11 @@ async function main() {
   check("an empty string is not a usable secret", resolveResumeSecret({ checkoutResumeSecret: "", nextAuthSecret: "b" }) === "b");
 
   // ─────────────────────────────────────────────────────────────────────────
-  const org = await db.organization.findFirstOrThrow();
+  const org = await db.organization.findUniqueOrThrow({
+    // Pin the org getActiveOrg() resolves in script scope — DEFAULT_ORG_SLUG — so
+    // fixtures land where the code under test looks, not in "the oldest row".
+    where: { slug: process.env.DEFAULT_ORG_SLUG ?? "dcica" },
+  });
   await cleanup(org.id);
 
   const event = await db.event.create({
@@ -387,14 +400,14 @@ async function main() {
 
   console.log("\n§7 what the return page may read, and how hard resume is to grind");
 
-  const visible = await getResumableCheckout(pending, signResumeProof(pending));
+  const visible = await getResumableCheckout(org.id, pending, signResumeProof(pending));
   check("a proven PENDING order exposes its total", visible?.amountCents === 2500, JSON.stringify(visible));
   check("…and no more than the total and the id", visible !== null && Object.keys(visible).sort().join(",") === "amountCents,orderId");
-  check("an unproven order exposes nothing", (await getResumableCheckout(pending, null)) === null);
-  check("a forged proof exposes nothing", (await getResumableCheckout(pending, `${pending}.xxxx`)) === null);
-  check("a CONFIRMED order is not offered for resume", (await getResumableCheckout(paid, signResumeProof(paid))) === null);
-  check("a CANCELLED order is not offered for resume", (await getResumableCheckout(abandoned, signResumeProof(abandoned))) === null);
-  check("no ?cancelled= at all reads nothing", (await getResumableCheckout(undefined, signResumeProof(pending))) === null);
+  check("an unproven order exposes nothing", (await getResumableCheckout(org.id, pending, null)) === null);
+  check("a forged proof exposes nothing", (await getResumableCheckout(org.id, pending, `${pending}.xxxx`)) === null);
+  check("a CONFIRMED order is not offered for resume", (await getResumableCheckout(org.id, paid, signResumeProof(paid))) === null);
+  check("a CANCELLED order is not offered for resume", (await getResumableCheckout(org.id, abandoned, signResumeProof(abandoned))) === null);
+  check("no ?cancelled= at all reads nothing", (await getResumableCheckout(org.id, undefined, signResumeProof(pending))) === null);
 
   // Functional half: a bucket really does stop at its limit.
   resetRateLimits();
@@ -487,9 +500,11 @@ async function main() {
   // Structural, same reasoning as §7: the predicate above cannot prove the
   // route CONSULTS it. If the guard is dropped "because confirmOrderPaid throws
   // anyway", the retry storm comes straight back.
-  const hookSrc = readFileSync("src/app/api/stripe/webhook/route.ts", "utf8");
-  check("the webhook consults isKnownOrder before acting",
-    /if\s*\(!\(await isKnownOrder\(orderId\)\)\)/.test(hookSrc));
+  // The handler body lives in src/server/stripeWebhook.ts since Connect: two
+  // routes (platform secret, Connect secret), one handler, one guard.
+  const hookSrc = readFileSync("src/server/stripeWebhook.ts", "utf8");
+  check("the webhook consults the ownership guard before acting",
+    /if\s*\(!\(await resolveOwnedOrder\(orderId, /.test(hookSrc));
   check("…and answers 200 for a foreign order, never a 5xx",
     /order not in this deployment/.test(hookSrc) &&
       !/order not in this deployment[\s\S]{0,200}status:\s*5/.test(hookSrc));
@@ -520,7 +535,11 @@ async function main() {
     { name: "Vision Screening", key: "vision", amountCents: 2500, quantity: 1 },
     { name: "Bloodwork", key: "bloodwork", amountCents: 1999, quantity: 3 },
   ];
+  // The purchase event takes the organisation's analytics ids from the order;
+  // the payload builder needs none of them, so the fixtures carry an empty site.
+  const NO_SITE = { gaMeasurementId: null, gaApiSecret: null, googleSiteVerification: null };
   const campPayload = ga.buildPurchasePayload({
+    site: NO_SITE,
     clientId: "1234567890.1700000000",
     orderId: "ord_camp",
     eventType: "CAMP",
@@ -561,6 +580,7 @@ async function main() {
     ["lower-case camp (not a real member)", "camp"],
   ] as const) {
     const p = ga.buildPurchasePayload({
+    site: NO_SITE,
       clientId: "1.2",
       orderId: "ord_x",
       eventType: type,
@@ -580,6 +600,7 @@ async function main() {
   // destroying the merchandise and membership reporting this change exists to
   // create, and nothing would notice.
   const generalPayload = ga.buildPurchasePayload({
+    site: NO_SITE,
     clientId: "1234567890.1700000000",
     orderId: "ord_general",
     eventType: "GENERAL",
@@ -600,6 +621,7 @@ async function main() {
       generalPayload?.events[0].params.items[0].quantity === 2,
   );
   const memberPayload = ga.buildPurchasePayload({
+    site: NO_SITE,
     clientId: "1.2",
     orderId: "ord_mem",
     eventType: "MEMBERSHIP_DRIVE",
@@ -636,6 +658,7 @@ async function main() {
   check(
     "a quantity-aware line total is amountCents × quantity",
     ga.buildPurchasePayload({
+    site: NO_SITE,
       clientId: "1.2",
       orderId: "o",
       eventType: "GENERAL",
@@ -657,6 +680,7 @@ async function main() {
     check(
       `${label} client id produces NO payload at all`,
       ga.buildPurchasePayload({
+    site: NO_SITE,
         clientId: id,
         orderId: "ord_cash",
         eventType: "GENERAL",
@@ -670,6 +694,7 @@ async function main() {
   // acceptable — which one you get depends on whether the ambient .env happens
   // to configure GA — but neither may be a request.
   const sendResult = await ga.sendPurchaseEvent({
+    site: NO_SITE,
     clientId: null,
     orderId: "ord_cash",
     eventType: "GENERAL",
@@ -724,7 +749,11 @@ async function main() {
   // where a slow endpoint holds a DB lock on the money path.
   const paySrc = readFileSync("src/server/payments.ts", "utf8");
   const sendAt = paySrc.indexOf("sendPurchaseEvent({");
-  const guardAt = paySrc.indexOf("if (!result.alreadyConfirmed)");
+  // Matched on the guard's STEM, not the whole expression: the condition may
+  // legitimately carry more clauses (--historical suppression, below), and
+  // pinning the exact text would make any addition look like a regression. The
+  // property being asserted is only that the send sits INSIDE this guard.
+  const guardAt = paySrc.indexOf("if (!result.alreadyConfirmed");
   const thenAt = paySrc.indexOf(".then(async (result)");
   check("confirmOrderPaid sends the purchase event", sendAt > 0);
   check(
@@ -739,6 +768,18 @@ async function main() {
     "…and outside the transaction, so Google cannot hold a DB lock",
     thenAt > 0 && sendAt > thenAt,
   );
+  // The email and the purchase event describe the same thing — a sale that just
+  // happened — so a reconstruction of a PAST sale must suppress both or neither.
+  // One guard, not two: splitting them is how you end up mailing a ticket for
+  // last night's event, or booking last night's revenue against today in GA4.
+  check(
+    "…and ONE condition suppresses the email and the purchase event together (--historical)",
+    /if \(!result\.alreadyConfirmed && !input\.historical\)/.test(paySrc),
+  );
+  check(
+    "…with no second, separate historical check that could drift from it",
+    paySrc.split("input.historical").length - 1 === 1,
+  );
   check(
     "the client id is captured in openCheckoutSession — the one path every checkout takes",
     /async function openCheckoutSession[\s\S]*?readGaClientId\(\)[\s\S]*?\n\}/.test(paySrc),
@@ -748,11 +789,268 @@ async function main() {
     /catch \{\s*return null;\s*\}\s*\}\s*\n\s*\/\*\* Mint the Stripe session/.test(paySrc),
   );
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // §11 Stripe Connect: every Stripe call carries the ORDER's organisation.
+  // Organization.stripeAccountId null ⇒ today's platform-key path, byte for
+  // byte; non-null ⇒ a direct charge on the connected account, which is where
+  // the money must land. One helper builds the option so a call cannot forget.
+  console.log("\n§11 the Stripe account option follows the order's organisation");
+  const { stripeRequestOptions } = await import("../src/lib/stripe");
+  const none = stripeRequestOptions({ stripeAccountId: null });
+  check("a platform-key org gets NO account option (dcica's path is byte-identical)",
+    JSON.stringify(none) === "{}" && !("stripeAccount" in none));
+  check("a connected org gets the stripeAccount option",
+    JSON.stringify(stripeRequestOptions({ stripeAccountId: "acct_x" })) === JSON.stringify({ stripeAccount: "acct_x" }));
+  check("…merged with any other request option",
+    JSON.stringify(stripeRequestOptions({ stripeAccountId: "acct_x" }, { idempotencyKey: "k" })) ===
+      JSON.stringify({ idempotencyKey: "k", stripeAccount: "acct_x" }));
+  // Per call, not "somewhere nearby": each regex ends on the options argument
+  // of THAT call, so an option dropped from one cannot be covered by the next.
+  check("sessions.create carries the order's account option",
+    /sessions\.create\(\{[\s\S]*?\n  \}, stripeRequestOptions\(order\.org\)\);/.test(paySrc));
+  check("sessions.expire carries it",
+    /sessions\.expire\([^)]*, stripeRequestOptions\(/.test(paySrc));
+  check("sessions.retrieve carries it",
+    /sessions\.retrieve\([^)]*, stripeRequestOptions\(/.test(paySrc));
+  check("the confirm page keeps no session retrieve of its own (one path passes the option)",
+    !/sessions\.retrieve\(/.test(readFileSync("src/app/confirm/[orderId]/page.tsx", "utf8")));
+
+  // A connected organisation whose onboarding is not finished must not reach
+  // Stripe at all: the buyer gets a sentence, not a 400 from session create.
+  const connected = await db.organization.create({
+    data: { slug: CONNECTED_SLUG, name: "Verify Connected", stripeAccountId: "acct_verifycheckout", stripeChargesEnabled: false },
+  });
+  const cEvent = await db.event.create({
+    data: {
+      orgId: connected.id, type: "GENERAL", status: "OPEN", code: "VC-CONN", name: "Connected Verification",
+      startsAt: new Date(Date.now() + 30 * 24 * 3600_000), endsAt: new Date(Date.now() + 30 * 24 * 3600_000 + 4 * 3600_000),
+      collectsAttendeeDetails: false,
+    },
+  });
+  const cService = await db.serviceType.create({
+    data: { orgId: connected.id, key: "vc-admit", name: "VC Admission", priceCents: 2500, kind: "ADMISSION" },
+  });
+  const cOrder = await db.order.create({
+    data: {
+      orgId: connected.id, eventId: cEvent.id, status: "PENDING",
+      registrantName: "Connected Buyer", registrantEmail: "vc@example.org", registrantPhone: "5551234567",
+      lineItems: { create: [{ orgId: connected.id, serviceTypeId: cService.id, description: "VC Admission", amountCents: 2500, quantity: 1, status: "PENDING_PAYMENT" }] },
+    },
+    select: { id: true },
+  });
+  const refusedConnected = await createCheckoutForOrder(cOrder.id).then(() => "created", (e: Error) => e.message);
+  check("a connected org with charges disabled is refused with a buyer-readable sentence, before Stripe",
+    /not enabled yet/i.test(refusedConnected), refusedConnected);
+  check("…and no Payment row was minted for it",
+    (await db.payment.count({ where: { orderId: cOrder.id } })) === 0);
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // §12 A Connect event is mine only if the ACCOUNT and the ORDER are mine.
+  // The platform account is shared by every deployment, and its Connect
+  // endpoint receives every connected account's events — the predicate, not
+  // the endpoint, is what keeps tenants and deployments apart (commit 411c01c's
+  // lesson, generalised).
+  console.log("\n§12 a Connect event is mine only if the account and the order are mine");
+  const { resolveOwnedOrder } = await import("../src/server/payments");
+  check("platform scope: a platform-key org's order with no event.account is mine",
+    (await resolveOwnedOrder(pending, undefined, "platform")) !== null);
+  check("platform scope: the same order arriving with an event.account is NOT mine",
+    (await resolveOwnedOrder(pending, "acct_x", "platform")) === null);
+  check("connect scope: a platform-key org's order is NOT mine",
+    (await resolveOwnedOrder(pending, undefined, "connect")) === null);
+  check("connect scope: the owning account's event is mine",
+    (await resolveOwnedOrder(cOrder.id, "acct_verifycheckout", "connect")) !== null);
+  check("connect scope: another account's event is NOT mine",
+    (await resolveOwnedOrder(cOrder.id, "acct_other", "connect")) === null);
+  check("platform scope: a connected org's order is NOT mine",
+    (await resolveOwnedOrder(cOrder.id, undefined, "platform")) === null);
+  check("an unknown order is nobody's", (await resolveOwnedOrder("cmt0000notours0000000000", undefined, "platform")) === null);
+  // A session opened on the platform key BEFORE the organisation connected
+  // Stripe reports to the platform endpoint AFTER it did — a bank debit in
+  // flight for four days, say. Ownership follows the PAYMENT's account, not
+  // the organisation's current one, or a captured charge is "not mine" forever.
+  const cOrderOrgId = (await db.order.findUniqueOrThrow({ where: { id: cOrder.id }, select: { orgId: true } })).orgId;
+  await db.payment.create({ data: { orgId: cOrderOrgId, orderId: cOrder.id, method: "STRIPE", status: "PENDING", amountCents: 1, stripeCheckoutId: "cs_verify_preconnect", stripeAccountId: null } });
+  check("platform scope: a connected org's order whose SESSION was opened on the platform key is mine",
+    (await resolveOwnedOrder(cOrder.id, undefined, "platform", "cs_verify_preconnect")) !== null);
+  check("...and the webhook hands the guard the session id", /resolveOwnedOrder\(orderId, account, scope, session\.id\)/.test(hookSrc));
+  const connectSrc = readFileSync("src/app/api/stripe/connect/route.ts", "utf8");
+  const platformSrc = readFileSync("src/app/api/stripe/webhook/route.ts", "utf8");
+  check("the Connect route verifies with STRIPE_CONNECT_WEBHOOK_SECRET and never the platform secret",
+    /STRIPE_CONNECT_WEBHOOK_SECRET/.test(connectSrc) && !/[^_]STRIPE_WEBHOOK_SECRET/.test(connectSrc));
+  check("the platform route verifies with STRIPE_WEBHOOK_SECRET and never the Connect secret",
+    /[^_]STRIPE_WEBHOOK_SECRET/.test(platformSrc) && !/STRIPE_CONNECT_WEBHOOK_SECRET/.test(platformSrc));
+  check("both routes hand the event to one handler with their scope",
+    /handleStripeEvent\(event, "connect"\)/.test(connectSrc) && /handleStripeEvent\(event, "platform"\)/.test(platformSrc));
+  check("the handler confirms a completed session only when it is PAID (a bank debit completes unpaid)",
+    /payment_status\s*!==\s*"paid"/.test(hookSrc));
+  check("the handler takes account.updated", /"account\.updated"/.test(hookSrc));
+  check("the handler takes charge.refunded", /"charge\.refunded"/.test(hookSrc));
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // §13 Onboarding a connected account: Standard account + Account Links. The
+  // pieces that are silent when wrong are pinned — the id stored BEFORE the
+  // link is minted (an abandoned link can then resume), one snapshot mapping
+  // shared by the return route and the webhook, and every action behind the
+  // coordinator guard.
+  console.log("\n§13 onboarding a connected account");
+  const { accountSnapshot, connectReturnUrls } = await import("../src/server/stripeConnect");
+  check("the snapshot maps the four facts a session create and the UI need",
+    JSON.stringify(accountSnapshot({
+      charges_enabled: true, payouts_enabled: false, details_submitted: true,
+      capabilities: { us_bank_account_ach_payments: "active" },
+    })) === JSON.stringify({ stripeChargesEnabled: true, stripePayoutsEnabled: false, stripeDetailsSubmitted: true, stripeAchEnabled: true }));
+  check("a pending ACH capability is not enabled",
+    accountSnapshot({ charges_enabled: true, payouts_enabled: true, details_submitted: true, capabilities: { us_bank_account_ach_payments: "pending" } }).stripeAchEnabled === false);
+  check("missing fields read as not enabled, never as enabled",
+    JSON.stringify(accountSnapshot({})) === JSON.stringify({ stripeChargesEnabled: false, stripePayoutsEnabled: false, stripeDetailsSubmitted: false, stripeAchEnabled: false }));
+  const urls = connectReturnUrls({ slug: "infinite-minds" }, "https://platform.test");
+  check("the return and refresh urls land on the platform host under the org's /o/ path",
+    urls.return_url === "https://platform.test/o/infinite-minds/admin/settings/stripe/return" &&
+      urls.refresh_url === "https://platform.test/o/infinite-minds/admin/settings/stripe/refresh");
+
+  const connectActions = readFileSync("src/app/admin/settings/stripe/actions.ts", "utf8");
+  check("the connect action creates a STANDARD account", /accounts\.create\(\{[\s\S]*?type: "standard"/.test(connectActions));
+  const storeAt = connectActions.indexOf("stripeAccountId: account.id");
+  const linkAt = connectActions.indexOf("accountLinks.create(");
+  check("…and stores the account id BEFORE minting the onboarding link", storeAt > 0 && linkAt > storeAt);
+  for (const m of connectActions.matchAll(/export async function (\w+)\(/g)) {
+    const from = m.index ?? 0;
+    const to = connectActions.indexOf("\nexport ", from + 1);
+    const body = connectActions.slice(from, to === -1 ? undefined : to);
+    check(`${m[1]}() is wrapped in requireCoordinator`, /requireCoordinator\(/.test(body));
+  }
+  const returnRoute = readFileSync("src/app/admin/settings/stripe/return/route.ts", "utf8");
+  check("the return route re-reads the account and stores the shared snapshot",
+    /accounts\.retrieve\(/.test(returnRoute) && /accountSnapshot\(/.test(returnRoute));
+  check("the refresh route mints a fresh link (links are single-use)",
+    /accountLinks\.create\(/.test(readFileSync("src/app/admin/settings/stripe/refresh/route.ts", "utf8")));
+  check("the webhook's account.updated uses the same snapshot mapping", /accountSnapshot\(/.test(hookSrc));
+  const card = readFileSync("src/app/admin/settings/StripeCard.tsx", "utf8");
+  check("the settings card shows the three states",
+    /Connect Stripe/.test(card) && /Continue onboarding/.test(card) && /Connected/.test(card) &&
+      /<StripeCard/.test(readFileSync("src/app/admin/settings/page.tsx", "utf8")));
+  check("the dead OAuth client id is gone from the env template",
+    !/STRIPE_CONNECT_CLIENT_ID/.test(readFileSync(".env.example", "utf8")));
+
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // §14 The platform service fee rides on the Checkout session and nowhere
+  // else. Read AS TEXT, because the property is WHERE things happen:
+  // ensureFeeLines is awaited at the top of openCheckoutSession — the one
+  // funnel every online payment and every resume passes through — so cash,
+  // Zelle, check, COMP, $0 and the mint script never carry a fee; the
+  // application fee is only sent to Stripe when there is one (a bare
+  // `application_fee_amount: 0` on a platform-key session is refused by
+  // Stripe and would 500 the first tenant's checkout); and the DEBIT that
+  // books the fee out of the organisation's receipts is written by
+  // confirmOrderPaid under the same guard. The checkout copy is held to the
+  // transparent-checkout rules: the cover is a checkbox the buyer clears in
+  // one tap, it is never a recurring charge, and nothing is called a tip.
+  console.log("\n§14 the platform fee rides on the Checkout session, never on cash");
+  const feeSrc = readFileSync(join(process.cwd(), "src/server/payments.ts"), "utf8");
+  const openStart = feeSrc.indexOf("async function openCheckoutSession");
+  const openBody = openStart > -1 ? feeSrc.slice(openStart, feeSrc.indexOf("\n}\n", openStart) + 3) : "";
+  check("openCheckoutSession exists where expected", openStart > -1);
+  check("ensureFeeLines is awaited inside openCheckoutSession",
+    /await ensureFeeLines\(/.test(openBody));
+  const feeCallSites = (feeSrc.match(/ensureFeeLines\(/g) ?? []).length;
+  check("...and that is its ONLY call site in payments.ts (the definition plus one call)",
+    feeCallSites === 2, `${feeCallSites} occurrences`);
+  const otherCallers = walk("src").filter(
+    (f) => !f.endsWith("payments.ts") && /ensureFeeLines\(/.test(readFileSync(f, "utf8")),
+  );
+  check("...and no other module calls it", otherCallers.length === 0, otherCallers.join(", "));
+  check("the Stripe lines are the goods plus the computed fee lines",
+    /line_items:\s*\[\.\.\.goods, \.\.\.fees\.lines\]/.test(openBody));
+  check("application_fee_amount is sent inside a conditional spread, only when there is a fee",
+    /\.\.\.\(fees\.platformFeeCents > 0\s*\?\s*\{\s*payment_intent_data:\s*\{\s*application_fee_amount:\s*fees\.platformFeeCents,?\s*\},?\s*\}\s*:\s*\{\}\)/.test(openBody));
+  check("...and nowhere else", (feeSrc.match(/application_fee_amount/g) ?? []).length === 1);
+  check("the Payment row records the application fee it was opened with",
+    /applicationFeeCents:\s*fees\.platformFeeCents/.test(openBody));
+  check("...and its amount is the fee-inclusive total",
+    /amountCents:\s*fees\.totalCents/.test(openBody));
+  const confirmStart = feeSrc.indexOf("export async function confirmOrderPaid");
+  const confirmEnd = feeSrc.indexOf("\nexport ", confirmStart + 1);
+  const confirmSrc = feeSrc.slice(confirmStart, confirmEnd > -1 ? confirmEnd : feeSrc.length);
+  check("confirmOrderPaid books the platform fee as a DEBIT against the organisation's receipts",
+    /direction: "DEBIT"[\s\S]{0,200}memo: "Platform service fee"/.test(confirmSrc));
+  check("...only when the payment carried one",
+    /if \(\(payment\.applicationFeeCents \?\? 0\) > 0\)/.test(confirmSrc));
+  check("the GA purchase items go through receiptLines",
+    /lineItems: receiptLines\(order\.lineItems\)\.map/.test(confirmSrc));
+
+  // Transparent checkout. Comments stripped first so a sentence explaining
+  // the rule cannot trip the rule.
+  const stripComments = (s: string) =>
+    s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  const checkoutFiles = [...walk("src/app/register"), "src/lib/fees.ts"];
+  for (const f of checkoutFiles) {
+    let code = "";
+    try { code = stripComments(readFileSync(f, "utf8")); } catch { /* missing file fails below */ }
+    check(`${f}: exists and nothing in it is called a tip`, code.length > 0 && !/\btips?\b/i.test(code));
+    check(`${f}: nothing in it is a subscription`, !/mode:\s*"subscription"/.test(code));
+  }
+  const formSrc = readFileSync("src/app/register/RegisterForm.tsx", "utf8");
+  check("the cover is a checkbox bound to the buyer's choice",
+    /type="checkbox"[\s\S]{0,200}checked=\{coverFee\}/.test(formSrc)
+      || /checked=\{coverFee\}[\s\S]{0,200}type="checkbox"/.test(formSrc));
+  check("...one tap clears it", /onChange=\{\(e\) => setCoverFee\(e\.target\.checked\)\}/.test(formSrc));
+  check("...its label is the shared one that names the amount and the recipient", /coverLabel\(/.test(formSrc));
+  check("...and its default is the organisation's setting, not a constant", /feeCoverDefaultChecked/.test(formSrc));
+  check("the buyer's choice is sent with the registration", /coverProcessingFee:\s*coverFee/.test(formSrc));
+  check("the service fee is shown as its own line before payment", /PLATFORM_FEE_LABEL/.test(formSrc));
+  check("the form's bank-only rule includes the organisation's threshold, so its cover matches the server's", /achOnlyAboveCents/.test(formSrc));
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // §15 Bank debits are a DELAYED-NOTIFICATION method: the session completes
+  // UNPAID and the outcome arrives later as async_payment_succeeded or
+  // async_payment_failed. Read as text, because the property is which event
+  // does what: a completed-but-unpaid session RESERVES (capacity held, no
+  // ticket), success CONFIRMS through the one idempotent path, failure
+  // RELEASES. Resume refuses while a debit is in flight (no double pay) and
+  // the expiry reaper treats an in-flight debit as live.
+  console.log("\n§15 a bank debit reserves, then confirms or releases — never admits early");
+  const hook15 = readFileSync(join(process.cwd(), "src/server/stripeWebhook.ts"), "utf8");
+  check("a completed-but-unpaid session marks the payment PROCESSING instead of just logging",
+    /payment_status !== "paid"[\s\S]{0,600}markPaymentProcessing\(/.test(hook15));
+  check("async_payment_succeeded confirms through confirmOrderPaid",
+    /async_payment_succeeded[\s\S]{0,1200}confirmOrderPaid\(/.test(hook15));
+  check("async_payment_failed releases the reservation", /async_payment_failed[\s\S]{0,1200}releaseProcessingPayment\(/.test(hook15));
+  check("...both pass the ownership guard first",
+    (() => { const g = hook15.indexOf("resolveOwnedOrder(orderId"); const a = hook15.lastIndexOf("async_payment_succeeded"); const f = hook15.lastIndexOf("async_payment_failed"); return g > -1 && a > g && f > g; })());
+  const pay15 = readFileSync(join(process.cwd(), "src/server/payments.ts"), "utf8");
+  const open15 = pay15.slice(pay15.indexOf("async function openCheckoutSession"), pay15.indexOf("\n}\n", pay15.indexOf("async function openCheckoutSession")) + 3);
+  check("Checkout is told which methods to accept, from the shared rule, never a hardcoded list",
+    /payment_method_types:\s*allowed\.methods/.test(open15) && /allowedMethodsFor\(/.test(open15));
+  check("...with instant bank verification (microdeposits add days the cutoff cannot absorb)",
+    /verification_method:\s*"instant"/.test(open15));
+  check("an empty intersection is refused BEFORE any Stripe call",
+    (() => { const r = open15.indexOf("allowed.methods.length === 0"); const c = open15.indexOf("stripe.checkout.sessions.create("); return r > -1 && c > -1 && r < c; })());
+  const resume15 = pay15.slice(pay15.indexOf("export async function resumeCheckoutForOrder"), pay15.indexOf("\nexport ", pay15.indexOf("export async function resumeCheckoutForOrder") + 1));
+  check("resume refuses while a debit is in flight", /status: "PROCESSING"/.test(resume15));
+  const reap15 = pay15.slice(pay15.indexOf("export async function reapExpiredCheckout"), pay15.indexOf("\nexport ", pay15.indexOf("export async function reapExpiredCheckout") + 1));
+  check("the expiry reaper counts an in-flight debit as live", /"PROCESSING"/.test(reap15));
+  const confirm15 = pay15.slice(pay15.indexOf("export async function confirmOrderPaid"), pay15.indexOf("\nexport ", pay15.indexOf("export async function confirmOrderPaid") + 1));
+  check("confirmOrderPaid skips the capacity claim when the reservation already made it", /capsReservedAt/.test(confirm15));
+  const catalog15 = readFileSync(join(process.cwd(), "src/server/gate.ts"), "utf8");
+  check("the door never sells a bank-only item", /ACH_ONLY/.test(catalog15));
+
   await cleanup(org.id);
 }
 
+const CONNECTED_SLUG = "verify-checkout-connected";
+
 /** Remove everything this script creates (cascades don't cover payments/ledger). */
 async function cleanup(orgId: string): Promise<void> {
+  // §11's scratch connected organisation, most-dependent first.
+  const c = { org: { slug: CONNECTED_SLUG } };
+  await db.payment.deleteMany({ where: c });
+  await db.lineItem.deleteMany({ where: c });
+  await db.order.deleteMany({ where: c });
+  await db.serviceType.deleteMany({ where: c });
+  await db.event.deleteMany({ where: c });
+  await db.organization.deleteMany({ where: { slug: CONNECTED_SLUG } });
   const events = await db.event.findMany({ where: { orgId, code: CODE } });
   for (const event of events) {
     const orders = await db.order.findMany({ where: { eventId: event.id }, select: { id: true } });
@@ -767,6 +1065,45 @@ async function cleanup(orgId: string): Promise<void> {
   }
   await db.serviceType.deleteMany({ where: { orgId, key: SERVICE_KEY } });
 }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§X confirmOrderPaid budgets for a big party");
+  // Read AS TEXT: this is about the transaction OPTIONS, which no amount
+  // of calling the function proves unless the box happens to be slow.
+  //
+  // campId assignment cannot be batched -- every attendee gets a different
+  // random token -- so a party of N costs N uniqueness SELECTs plus N
+  // UPDATEs, sequentially, inside ONE transaction. Prisma's default budget
+  // is 5s. Measured against the deployed test DB on 2026-09-28: a party of
+  // 4 took 6969ms and a party of 10 took 10203ms. Both rolled back, and the
+  // rollback is the expensive part -- Stripe has the money, the webhook
+  // 500s, the order sits PENDING with no ticket.
+  const pay = readFileSync(
+    join(process.cwd(), "src/server/payments.ts"),
+    "utf8",
+  );
+  const confirmIdx = pay.indexOf("export async function confirmOrderPaid");
+  check("confirmOrderPaid exists where expected", confirmIdx > -1);
+  // Bounded by the NEXT top-level export, not by a character count. The
+  // options sit after a ~275-line transaction body, and a fixed window that
+  // happened to stop short read as "no timeout set" — a check that fails for
+  // the wrong reason is only marginally better than one that cannot fail.
+  const afterConfirm = pay.indexOf("\nexport ", confirmIdx + 1);
+  const confirmBody = pay.slice(
+    confirmIdx,
+    afterConfirm > -1 ? afterConfirm : pay.length,
+  );
+  const m = confirmBody.match(/timeout:\s*([0-9_]+)/);
+  const budget = m ? Number(m[1].replace(/_/g, "")) : 0;
+  check("its transaction sets an explicit timeout, not the 5s default",
+    budget > 0, String(budget));
+  // 10203ms is the measured worst case seen so far. A budget at or under
+  // it would have failed that exact order, so the floor is set above it
+  // rather than at a round number that merely looks generous.
+  check("...and the budget clears the measured worst case (10203ms)",
+    budget > 10_203, String(budget));
+  check("maxWait is set too, so a busy pool waits rather than throwing",
+    /maxWait:\s*[0-9_]+/.test(confirmBody));
 
 main()
   .then(async () => {

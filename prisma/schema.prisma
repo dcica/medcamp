@@ -38,6 +38,22 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// Stripe Connect (Standard account). null = charges run on the platform's
+  /// own key, which is the first tenant's path and stays byte-identical. Set =
+  /// direct charges on THIS account: the money lands with the organisation,
+  /// the platform's service fee is split off by Stripe at charge time, and the
+  /// organisation owns refunds and disputes. Unique: one account, one tenant.
+  stripeAccountId        String?   @unique
+  /// Snapshot of the connected account's state (Account Links return, and
+  /// `account.updated` on the Connect webhook). Charges are refused while
+  /// onboarding is incomplete, with a sentence rather than a Stripe 400.
+  stripeChargesEnabled   Boolean   @default(false)
+  stripePayoutsEnabled   Boolean   @default(false)
+  stripeDetailsSubmitted Boolean   @default(false)
+  /// `us_bank_account_ach_payments` capability active — bank debits allowed.
+  stripeAchEnabled       Boolean   @default(false)
+  stripeConnectedAt      DateTime?
+
   memberships        Membership[]
   events             Event[]
   serviceTypes       ServiceType[]
@@ -54,8 +70,35 @@ model Organization {
   checklist          ChecklistItem[]
   invites            Invite[]
   performanceEntries PerformanceEntry[]
+  domains            OrgDomain[]
 
   @@map("organizations")
+}
+
+/// One row per hostname across ALL tenants. The Host header resolves a request
+/// to its organisation here (src/lib/tenant.ts), which is why `hostname` is
+/// globally unique: two organisations can never claim one host, so the lookup
+/// can never pick "whichever row came first". A `String[]` on Organization or a
+/// list inside `settings` would have no such guarantee.
+model OrgDomain {
+  id         String       @id @default(cuid())
+  orgId      String
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  /// Normalised the way src/lib/tenantResolve.ts normalises a request host:
+  /// lowercase, no port, no trailing dot. Seeds and the admin write path must
+  /// store it that way or the lookup never matches.
+  hostname   String       @unique
+  /// The host every absolute URL for this organisation is built on. One per
+  /// organisation, enforced on the write path and pinned by verify-tenant —
+  /// Prisma cannot express a partial unique index.
+  isPrimary  Boolean      @default(false)
+  verifiedAt DateTime?
+  createdAt  DateTime     @default(now())
+
+  // Child side of the FK: the cascade on Organization delete and every
+  // `include: { domains: true }` look up by orgId (PR #6 policy, verify:schema).
+  @@index([orgId])
+  @@map("org_domains")
 }
 
 // ── Auth / RBAC (tenant-scoped) ──────────────────────────────────────────────
@@ -268,6 +311,11 @@ model Event {
   /// Whether a current family membership admits the member's party free here
   /// (drives the "add membership" compare/upsell at registration + gate comp).
   honorsMembership        Boolean      @default(false)
+  /// Quantity mode only: every admission head is NAMED at registration (a
+  /// tournament entrant, a dinner guest) — a name and nothing else, no
+  /// address. Still PII, still purged with the event. Off, names are neither
+  /// asked for nor kept.
+  namesAttendees          Boolean      @default(false)
   /// When walk-in registration opens day-of (coordinator toggle). Null = closed.
   walkInOpensAt           DateTime?
   /// Monotonic per-event counter for attendee campId sequence (NNNN). Incremented
@@ -307,6 +355,20 @@ model Event {
   flagsReviewedAt   DateTime?
   flagsReviewedById String?
   flagsReviewedBy   User?     @relation("EventFlagsReviewer", fields: [flagsReviewedById], references: [id], onDelete: SetNull)
+
+  /// Manual position on the public home page. Null = chronological, which is
+  /// the default and stays right for almost everything.
+  ///
+  /// Exists because chronological is not always the order a visitor should
+  /// read. Rhythm of Navratri starts at 5pm and Dandiya Night at 7pm the SAME
+  /// evening, so date order puts the competition entry above the ticket most
+  /// people came to buy. The fix is not to fudge the times — RON's are the
+  /// flyer's, and `prisma/seed-events.ts` says so in as many words.
+  ///
+  /// Ordered NULLS LAST: a set position always outranks a date, and an event
+  /// nobody has positioned keeps its chronological slot rather than jumping
+  /// to the front.
+  displayOrder      Int?
 
   /// Computed when the camp closes; PII is purged but this survives.
   closedAt DateTime?
@@ -350,6 +412,16 @@ enum ServiceKind {
   ADMISSION // issues a scannable ticket and counts toward the door headcount
   MERCH // a physical good handed over at the gate (will-call)
   FEE // buys a slot and admits nobody — e.g. a competition entry
+}
+
+/// Which online payment methods an offering may be bought with, per event
+/// (src/lib/fees.ts allowedMethodsFor). ACH_ONLY is for the large items — a
+/// booth fee, a sponsorship, a table package — where a bank debit's 0.8%
+/// capped at $5 beats a card's 2.9%; the door never sells one.
+enum OnlineMethods {
+  ANY
+  CARD_ONLY
+  ACH_ONLY
 }
 
 /// Org-level catalogue of offerable services. Reused across events; the actual
@@ -433,6 +505,13 @@ model ServiceCap {
   /// so it is now unrepresentable rather than merely discouraged.
   capacity            Int?
   sold                Int         @default(0)
+  /// Per-unit fair market value of what the guest receives — the comparable
+  /// dinner, not the school's cost to host it. Set per event beside the
+  /// price; copied onto each line at creation. Null = nothing to disclose.
+  fairMarketValueCents Int?
+  /// Per event, beside the price: the same catalogue item can be a $50 booth
+  /// at one event and a $2,000 one at another.
+  onlineMethods        OnlineMethods @default(ANY)
 
   @@unique([eventId, serviceTypeId])
   @@index([eventId])
@@ -512,8 +591,11 @@ model Order {
   id      String       @id @default(cuid())
   orgId   String
   org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  eventId String
-  event   Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  /// Null for a general-fund donation (the /donate page): an order that sells
+  /// nothing, admits nobody and belongs to the organisation, not to an event
+  /// — so no event purge ever touches it. Every ticket order has one.
+  eventId String?
+  event   Event?       @relation(fields: [eventId], references: [id], onDelete: Cascade)
   status  OrderStatus  @default(PENDING)
 
   // Registrant (contact only)
@@ -547,6 +629,24 @@ model Order {
   /// primary key. verify:schema enforces covering indexes on FK children only.
   gaClientId String?
 
+  /// The buyer ticked "cover the processing cost" on the form. Persisted so a
+  /// resumed Checkout recomputes the same FEE_COVER line. Never a tip.
+  coverProcessingFee Boolean @default(false)
+
+  /// A general-fund donation: who it honours and the donor's note, as typed.
+  /// Donor-entered, optional, organisation-level — kept with the gift.
+  honoreeName String?
+  donorNote   String?
+  /// When the donation receipt email was delivered. Null = not yet, or the
+  /// deployment has no mail provider (the console path is not delivery).
+  receiptSentAt DateTime?
+
+  /// A bank debit in flight claimed this order's capacity (the same atomic
+  /// decrement confirmation makes). Set once by markPaymentProcessing, read by
+  /// confirmOrderPaid so the claim is never made twice, cleared when a failed
+  /// debit gives the seats back.
+  capsReservedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -575,6 +675,15 @@ model Attendee {
   /// confirmation, not at cart creation. Stable; survives purge for reconciliation.
   campId String? @unique
 
+  /// Quantity mode: the line that minted this head, and its seat within that
+  /// line (0-based across the line's units × admitsCount). A doubles partner
+  /// is the other seat in the same unit: same lineItemId, same
+  /// floor(seat / admitsCount). Null on camp-mode attendees and on the one
+  /// receipt head a merch-only order gets.
+  lineItemId String?
+  lineItem   LineItem? @relation("MintedBy", fields: [lineItemId], references: [id], onDelete: SetNull)
+  seat       Int?
+
   // ── PII (purged on event PURGED) ──
   name           String?
   mailingAddress String?
@@ -586,13 +695,14 @@ model Attendee {
   /// Set when purged so we keep the row (for counts) without PII.
   piiPurgedAt DateTime?
 
-  lineItems     LineItem[]
+  lineItems     LineItem[]     @relation("AttendeeServices")
   stationVisits StationVisit[]
   labStatuses   LabStatus[]
 
   @@index([orgId, eventId])
   @@index([eventId])
   @@index([orderId])
+  @@index([lineItemId])
   @@map("attendees")
 }
 
@@ -605,6 +715,14 @@ enum LineItemStatus {
   VOID
 }
 
+/// A line that is not goods. Written only by ensureFeeLines (src/server/payments.ts)
+/// at Checkout time, from the organisation's fee policy (src/lib/fees.ts).
+/// Deliberately NOT ServiceKind.FEE — that is a competition-entry offering.
+enum FeeLineKind {
+  PLATFORM_FEE // the platform's service fee; Stripe moves it to the platform at charge time
+  FEE_COVER // the buyer's opt-in gross-up covering the organisation's processing cost; the organisation's money
+}
+
 /// The single billable unit. Attached to an order (and usually an attendee).
 /// Doctor add-ons mid-visit are LineItems with status PENDING_PAYMENT.
 model LineItem {
@@ -615,7 +733,10 @@ model LineItem {
   order   Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   attendeeId String?
-  attendee   Attendee? @relation(fields: [attendeeId], references: [id], onDelete: SetNull)
+  attendee   Attendee? @relation("AttendeeServices", fields: [attendeeId], references: [id], onDelete: SetNull)
+
+  /// Quantity mode: the heads this line minted (see Attendee.lineItemId).
+  mintedAttendees Attendee[] @relation("MintedBy")
 
   serviceTypeId String?
   serviceType   ServiceType? @relation(fields: [serviceTypeId], references: [id], onDelete: SetNull)
@@ -628,12 +749,20 @@ model LineItem {
   description String
   /// Per-unit price (cents). Line total = amountCents * quantity.
   amountCents Int
+  /// Per-unit fair market value of what the buyer RECEIVES (IRS Pub 1771),
+  /// snapshotted from ServiceCap.fairMarketValueCents when the line is
+  /// created, so a receipt re-issued later reads the value that applied when
+  /// they paid. Null = nothing to disclose. Never changes the price.
+  fairMarketValueCents Int?
   /// Units bought on this line. >1 for quantity-mode admission/merch
   /// ("5 sticks" = one line, qty 5). Per-attendee camp services stay qty 1.
   quantity    Int            @default(1)
   /// A purchaser-entered donation (variable amount, no serviceType). Flagged so
   /// reconciliation/reports break donations out from service revenue.
   isDonation  Boolean        @default(false)
+  /// Null = goods. Set on the two fee lines a Checkout may carry; both are
+  /// recomputed from the goods lines every time a session is opened.
+  feeKind     FeeLineKind?
   status      LineItemStatus @default(PENDING_PAYMENT)
   /// True if added mid-visit by a doctor (routes patient back to registration).
   addedOnsite Boolean        @default(false)
@@ -792,6 +921,10 @@ model PerformanceEntry {
 
 enum PaymentStatus {
   PENDING
+  /// A bank debit in flight: the Checkout session completed UNPAID, capacity
+  /// is reserved (Order.capsReservedAt), no ticket exists yet. Resolves to
+  /// SUCCEEDED or FAILED when Stripe reports the outcome (up to ~4 business days).
+  PROCESSING
   SUCCEEDED
   FAILED
   REFUNDED
@@ -813,6 +946,14 @@ model Payment {
   // Stripe
   stripePaymentIntentId String? @unique
   stripeCheckoutId      String? @unique
+  /// The connected account the session was created on (null = platform key),
+  /// denormalised at creation so a refund or a webhook knows where the charge
+  /// lives even if the organisation later disconnects. Never queried by.
+  stripeAccountId       String?
+  /// The application fee the session was opened with (what Stripe moves to the
+  /// platform on success). Null on cash and on every platform-key session.
+  /// Read by confirmOrderPaid to book the DEBIT, and by a refund to return it.
+  applicationFeeCents   Int?
 
   // Cash bookkeeping
   cashTenderedCents Int?

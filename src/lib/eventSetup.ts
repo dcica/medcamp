@@ -92,3 +92,131 @@ export function validateInternalNotes(value: string): string | null {
   const parsed = parseInternalNotes(value);
   return parsed.ok ? null : parsed.error;
 }
+
+// ── Event code ───────────────────────────────────────────────────────────────
+
+/**
+ * The event's code is the PREFIX of every ticket number it mints
+ * (`PB-OPEN-2026-K7M2XQ9T`), so it is short, upper-case, and made only of
+ * characters that survive a QR, a label printer and a volunteer reading it
+ * aloud. The legacy camp shape (MC-2026W) still fits; a tournament or a dinner
+ * no longer has to pretend to be one. Identity, not a label: it is never
+ * editable once set (see updateCamp).
+ */
+export const EVENT_CODE_RE = /^[A-Z0-9][A-Z0-9-]{1,18}[A-Z0-9]$/;
+
+export type TextParse = { ok: true; value: string } | { ok: false; error: string };
+
+export function parseEventCode(raw: string): TextParse {
+  const v = raw.trim().toUpperCase();
+  if (v === "") return { ok: false, error: "Code is required." };
+  if (!EVENT_CODE_RE.test(v)) {
+    return {
+      ok: false,
+      error:
+        "Code: 3–20 letters, digits or dashes, starting and ending with a letter or digit (e.g. PB-OPEN-2026).",
+    };
+  }
+  return { ok: true, value: v };
+}
+
+/** Field-side wrapper. Identical rule; see the invariant in ValidatedInput. */
+export function validateEventCode(value: string): string | null {
+  const parsed = parseEventCode(value);
+  return parsed.ok ? null : parsed.error;
+}
+
+// ── Display order ────────────────────────────────────────────────────────────
+
+/**
+ * Where the event sits on the public rail. Blank is NULL — "sort by date" —
+ * and 0 is a position (first), so the same blank-is-not-zero rule as the
+ * floor capacity applies, for the same reason: `Number("")` is 0.
+ */
+export type DisplayOrderParse =
+  | { ok: true; value: number | null }
+  | { ok: false; error: string };
+
+export function parseDisplayOrder(raw: string): DisplayOrderParse {
+  const v = raw.trim();
+  if (v === "") return { ok: true, value: null };
+  if (!/^\d+$/.test(v)) {
+    return {
+      ok: false,
+      error: "Display order must be a whole number (0 comes first) — leave it blank to sort by date.",
+    };
+  }
+  const n = Number(v);
+  if (n > INT4_MAX) return { ok: false, error: "That display order is too large." };
+  return { ok: true, value: n };
+}
+
+/** Field-side wrapper. Identical rule; see the invariant in ValidatedInput. */
+export function validateDisplayOrder(value: string): string | null {
+  const parsed = parseDisplayOrder(value);
+  return parsed.ok ? null : parsed.error;
+}
+
+// ── Public description ───────────────────────────────────────────────────────
+
+/** A card's worth, not a page's: the public event page prints it under the title. */
+export const DESCRIPTION_MAX = 600;
+
+export type OptionalTextParse =
+  | { ok: true; value: string | null }
+  | { ok: false; error: string };
+
+/** Blank becomes NULL, so "no description" is one value (the public page's `e.description &&`). */
+export function parseDescription(raw: string): OptionalTextParse {
+  const v = raw.trim();
+  if (v === "") return { ok: true, value: null };
+  if (v.length > DESCRIPTION_MAX) {
+    return {
+      ok: false,
+      error: `Keep the description under ${DESCRIPTION_MAX} characters — it is a card, not a page.`,
+    };
+  }
+  return { ok: true, value: v };
+}
+
+/** Field-side wrapper. Identical rule; see the invariant in ValidatedInput. */
+export function validateDescription(value: string): string | null {
+  const parsed = parseDescription(value);
+  return parsed.ok ? null : parsed.error;
+}
+
+// ── External link ────────────────────────────────────────────────────────────
+
+/** Generous, and still a ceiling: a URL column is not a place for a document. */
+export const EXTERNAL_URL_MAX = 2000;
+
+/**
+ * Where an externally hosted event's own page lives — rendered as a link on
+ * the public page and NEVER fetched by us. https only, for the same reasons
+ * the volunteer module's approval link is: a coordinator types it, the public
+ * clicks it, and a `javascript:` or `data:` scheme would run in their browser.
+ */
+export function parseExternalUrl(raw: string): OptionalTextParse {
+  const v = raw.trim();
+  if (v === "") return { ok: true, value: null };
+  if (v.length > EXTERNAL_URL_MAX) return { ok: false, error: "That link is too long." };
+  let parsed: URL;
+  try {
+    parsed = new URL(v);
+  } catch {
+    return {
+      ok: false,
+      error: "That doesn't look like a link — paste the full address, starting with https://",
+    };
+  }
+  if (parsed.protocol !== "https:" || !parsed.hostname) {
+    return { ok: false, error: "The link must start with https:// — other kinds of links are not accepted." };
+  }
+  return { ok: true, value: v };
+}
+
+/** Field-side wrapper. Identical rule; see the invariant in ValidatedInput. */
+export function validateExternalUrl(value: string): string | null {
+  const parsed = parseExternalUrl(value);
+  return parsed.ok ? null : parsed.error;
+}

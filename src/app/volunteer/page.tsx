@@ -6,6 +6,7 @@ import { PageHelp } from "@/app/_components/PageHelp";
 import { VolunteerSignupForm } from "./VolunteerSignupForm";
 import { GeneralInterestForm } from "./GeneralInterestForm";
 import type { Metadata } from "next";
+import { getActiveBranding } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
 
@@ -47,11 +48,12 @@ export default async function VolunteerSignupPage({
 }) {
   const { src, event } = await searchParams;
   const view = await getVolunteerSignupView(event);
+  const branding = await getActiveBranding();
 
   if (!view) {
     return (
       <main className="mx-auto max-w-screen-sm px-4 py-10">
-        <h1 className="text-xl font-bold">Volunteer with DCICA</h1>
+        <h1 className="text-xl font-bold">Volunteer with {branding.orgName}</h1>
         <p className="mt-2 text-sm leading-relaxed text-gray-600">
           No event is taking signups at the moment — they open a few weeks before
           each one. Leave your details and a coordinator will contact you when

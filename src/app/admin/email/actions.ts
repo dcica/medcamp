@@ -2,6 +2,9 @@
 
 import { requireCoordinator } from "@/server/admin";
 import { sendTestEmail } from "@/lib/email";
+import { getActiveOrg } from "@/lib/tenant";
+import { resolveOrgProfile, senderFor } from "@/lib/orgSettings";
+import { env } from "@/lib/env";
 
 export type SendTestResult =
   | { ok: true; delivered: boolean }
@@ -18,7 +21,12 @@ export async function sendTestEmailAction(to: string): Promise<SendTestResult> {
   }
 
   try {
-    const { delivered } = await sendTestEmail(trimmed);
+    const org = await getActiveOrg();
+    const profile = resolveOrgProfile(org?.settings);
+    const { delivered } = await sendTestEmail(trimmed, org?.name ?? "Events", {
+      from: senderFor(profile, env.EMAIL_FROM),
+      replyTo: profile.contactEmail,
+    });
     return { ok: true, delivered };
   } catch (err) {
     return {

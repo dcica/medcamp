@@ -122,6 +122,7 @@ function describeSeconds(seconds: number): string {
  */
 export async function createPerformanceEntry(
   input: PerformanceEntryInput,
+  opts?: { orgId?: string },
 ): Promise<CreatedEntry> {
   const data = performanceEntrySchema.parse(input);
 
@@ -130,6 +131,10 @@ export async function createPerformanceEntry(
   // action layer passes plain Errors through to the buyer verbatim by design.
   const event = await db.event.findUnique({ where: { id: data.eventId } });
   if (!event) throw new Error("That event could not be found.");
+  // Same words as missing, on purpose (see createRegistration).
+  if (opts?.orgId && event.orgId !== opts.orgId) {
+    throw new Error("That event could not be found.");
+  }
 
   const offering = await db.serviceCap.findFirst({
     where: {
@@ -200,7 +205,7 @@ export async function createPerformanceEntry(
     },
     // The ONLY caller allowed to sell a fee-kind service: the group details are
     // written below in the same request.
-    { allowFeeServices: true },
+    { allowFeeServices: true, orgId: opts?.orgId },
   );
 
   // The fee line to attach to. Matched by serviceType rather than taking the
@@ -267,12 +272,14 @@ export type EntryView = {
  * order is still PENDING must be indistinguishable from a bad code, so a
  * cancelled checkout cannot be used to reach an upload slot it never paid for.
  */
-export async function getEntryByCode(rawCode: string): Promise<EntryView | null> {
+export async function getEntryByCode(orgId: string, rawCode: string): Promise<EntryView | null> {
   const campId = normalizeCampId(rawCode);
   if (!campId) return null;
 
-  const attendee = await db.attendee.findUnique({
-    where: { campId },
+  // Scoped to the organisation: a code is a capability, and one tenant's
+  // capability must not resolve on another tenant's host.
+  const attendee = await db.attendee.findFirst({
+    where: { campId, orgId },
     select: {
       order: {
         select: {
@@ -294,7 +301,9 @@ export async function getEntryByCode(rawCode: string): Promise<EntryView | null>
   return {
     entryId: e.id,
     orderId: order.id,
-    eventName: order.event.name,
+    // An entry is always sold on an event; the optional chain is for the type
+    // (orders.eventId is nullable for general-fund donations).
+    eventName: order.event?.name ?? "",
     groupName: e.groupName,
     choreographerName: e.choreographerName,
     participantCount: e.participantCount,
@@ -342,7 +351,7 @@ export type UploadTicket = {
  * The browser PUTs to this directly — our function is never in the byte path,
  * so a 10 MiB body never occupies serverless memory or billed time.
  */
-export async function beginSongUpload(rawCode: string): Promise<UploadTicket> {
+export async function beginSongUpload(orgId: string, rawCode: string): Promise<UploadTicket> {
   const storage = getStorage();
   if (!storage) {
     throw new Error(
@@ -350,7 +359,7 @@ export async function beginSongUpload(rawCode: string): Promise<UploadTicket> {
     );
   }
 
-  const view = await getEntryByCode(rawCode);
+  const view = await getEntryByCode(orgId, rawCode);
   if (!view) throw new Error("That entry code could not be found.");
 
   const entry = await db.performanceEntry.findUniqueOrThrow({
@@ -393,11 +402,11 @@ export async function beginSongUpload(rawCode: string): Promise<UploadTicket> {
  * would ultimately rest on a client's word, and a coordinator would build a
  * running order around a track that was never sent.
  */
-export async function completeSongUpload(rawCode: string): Promise<void> {
+export async function completeSongUpload(orgId: string, rawCode: string): Promise<void> {
   const storage = getStorage();
   if (!storage) throw new Error("File upload isn't available right now.");
 
-  const view = await getEntryByCode(rawCode);
+  const view = await getEntryByCode(orgId, rawCode);
   if (!view) throw new Error("That entry code could not be found.");
 
   const entry = await db.performanceEntry.findUniqueOrThrow({
@@ -432,8 +441,8 @@ export async function completeSongUpload(rawCode: string): Promise<void> {
  * file over the limit, or a phone that will not cooperate. Drops any object so
  * storage does not keep a partial upload nobody will use.
  */
-export async function chooseOfflineDelivery(rawCode: string): Promise<void> {
-  const view = await getEntryByCode(rawCode);
+export async function chooseOfflineDelivery(orgId: string, rawCode: string): Promise<void> {
+  const view = await getEntryByCode(orgId, rawCode);
   if (!view) throw new Error("That entry code could not be found.");
 
   const entry = await db.performanceEntry.findUniqueOrThrow({

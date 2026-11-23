@@ -1,15 +1,25 @@
 import { z } from "zod";
 import type { ServiceCap, ServiceType } from "@prisma/client";
 import { db } from "@/lib/db";
-import { resolvePrice } from "@/lib/pricing";
+import { resolvePrice, type PriceChannel } from "@/lib/pricing";
 
 /**
  * Registration service. Creates a PENDING order from a validated submission;
  * payment confirmation (webhook or cash) is the authoritative step (payments.ts).
  * Prices come from the event's offerings, resolved through the single
- * resolvePrice (src/lib/pricing.ts) for the "online" channel — never the
- * client, and never re-resolved later: a LineItem's amountCents is frozen at
- * creation.
+ * resolvePrice (src/lib/pricing.ts) — never the client, and never re-resolved
+ * later: a LineItem's amountCents is frozen at creation.
+ *
+ * The channel defaults to "online" and every web caller leaves it there. It is
+ * an option at all for ONE caller: scripts/mint-offline-order.ts, reconstructing
+ * a sale that was taken AT THE DOOR on a rail the app could not see (a card
+ * terminal, cash handed over). Those must record what was actually charged —
+ * $15 at the door, not the $12 online price — or the ledger reads light and the
+ * till will not reconcile. Dandiya 2026 produced ~$60 of that error across 20
+ * charges before this existed.
+ *
+ * NOT a way to price a live web checkout at the door rate: the door's own sales
+ * go through sellAtGate (src/server/gate.ts), which resolves "door" itself.
  *
  * Two modes, chosen by Event.collectsAttendeeDetails (server-authoritative):
  *   - ATTENDEE (medcamp/CAMP): one row per person with a profile + per-person
@@ -47,6 +57,12 @@ const attendeeInput = z.object({
 const quantityInput = z.object({
   serviceKey: z.string().min(1),
   quantity: z.number().int().min(0),
+  /**
+   * One name per admitted head, in seat order (quantity × admitsCount), for
+   * an event that names its entrants. Blank is refused here; whether names
+   * are REQUIRED at all is the event's call, checked in createRegistration.
+   */
+  names: z.array(z.string().trim().min(1, "Every entrant needs a name")).optional(),
 });
 
 export const registrationSchema = z.object({
@@ -59,6 +75,8 @@ export const registrationSchema = z.object({
   marketingConsent: z.boolean().default(false),
   membershipPlanId: z.string().optional(),
   donationCents: z.number().int().min(0).optional(),
+  /** The buyer ticked "cover the processing cost". Priced at Checkout, never here. */
+  coverProcessingFee: z.boolean().optional(),
   // Exactly one of these is used, per the event's mode.
   attendees: z.array(attendeeInput).optional(),
   quantities: z.array(quantityInput).optional(),
@@ -82,6 +100,7 @@ type BaseOrder = {
   registrantPhone: string;
   marketingConsent: boolean;
   marketingConsentAt: Date | null;
+  coverProcessingFee: boolean;
 };
 
 /**
@@ -166,7 +185,7 @@ export async function createRegistration(
    * createPerformanceEntry — which writes the details in the same breath — is
    * allowed through.
    */
-  opts?: { allowFeeServices?: boolean },
+  opts?: { allowFeeServices?: boolean; channel?: PriceChannel; orgId?: string },
 ): Promise<CreatedOrder> {
   const data = registrationSchema.parse(input);
 
@@ -183,6 +202,12 @@ export async function createRegistration(
     include: { org: true },
   });
   if (!event) {
+    throw new Error("That event could not be found.");
+  }
+  // The organisation the REQUEST resolved to must own the event. Same sentence
+  // as "missing": a different one would tell a probe which ids are real.
+  // Scripts (offline minting) pass no orgId and are trusted.
+  if (opts?.orgId && event.orgId !== opts.orgId) {
     throw new Error("That event could not be found.");
   }
   if (!isRegistrationOpen(event)) {
@@ -225,6 +250,28 @@ export async function createRegistration(
     }
   }
 
+  // ── Named entrants ──
+  // When the event names each head, every admitted head must be named: the
+  // server insists, the form merely helps. Off, names are DROPPED here, so a
+  // payload that volunteers them cannot make us keep what the event did not
+  // ask for. Derived from `byKey` (the server's own row), never the payload.
+  const namesRequired = event.namesAttendees && !event.collectsAttendeeDetails;
+  const quantities = data.quantities?.map((q) => {
+    const offering = byKey.get(q.serviceKey);
+    const heads =
+      offering && offering.serviceType.kind === "ADMISSION"
+        ? Math.max(1, offering.serviceType.admitsCount)
+        : 0;
+    const needed = namesRequired ? heads * q.quantity : 0;
+    if (needed > 0 && (q.names ?? []).length !== needed) {
+      throw new Error(
+        `Enter a name for each entrant — ${offering!.serviceType.name} needs ${needed}.`,
+      );
+    }
+    return { ...q, names: needed > 0 ? q.names : undefined };
+  });
+  const named: RegistrationInput = { ...data, quantities };
+
   const baseOrder: BaseOrder = {
     orgId: event.orgId,
     eventId: event.id,
@@ -234,6 +281,7 @@ export async function createRegistration(
     registrantPhone: data.registrant.phone,
     marketingConsent: data.marketingConsent,
     marketingConsentAt: data.marketingConsent ? new Date() : null,
+    coverProcessingFee: data.coverProcessingFee ?? false,
   };
 
   // Resolved once and reused for every line on this order — price resolution
@@ -277,8 +325,8 @@ export async function createRegistration(
   // Mode-specific: create the order + attendees + service line items.
   const { orderId, serviceTotalCents } =
     event.collectsAttendeeDetails && !sellsOnlyFees
-      ? await createAttendeeOrder(event.orgId, event.id, baseOrder, data, byKey, compUnits, now)
-      : await createQuantityOrder(event.orgId, event.id, baseOrder, data, byKey, compUnits, now);
+      ? await createAttendeeOrder(event.orgId, event.id, baseOrder, named, byKey, compUnits, now, opts?.channel ?? "online")
+      : await createQuantityOrder(event.orgId, event.id, baseOrder, named, byKey, compUnits, now, opts?.channel ?? "online");
 
   let total = serviceTotalCents;
 
@@ -333,6 +381,7 @@ async function createAttendeeOrder(
   byKey: Map<string, Offering>,
   compUnits: number,
   now: Date,
+  channel: PriceChannel,
 ): Promise<{ orderId: string; serviceTotalCents: number }> {
   const attendees = data.attendees ?? [];
   if (attendees.length === 0) throw new Error("Add at least one attendee.");
@@ -356,7 +405,7 @@ async function createAttendeeOrder(
       const offering = byKey.get(key)!;
       const comped = offering.serviceType.kind === "ADMISSION" && compRemaining > 0;
       if (comped) compRemaining -= 1;
-      const resolved = resolvePrice(offering, "online", now);
+      const resolved = resolvePrice(offering, channel, now);
       return { offering, resolved, amountCents: comped ? 0 : resolved.amountCents };
     }),
   );
@@ -391,6 +440,9 @@ async function createAttendeeOrder(
         `${offering.serviceType.name} — ${att.name}` +
         (amountCents === 0 && resolved.amountCents > 0 ? " (member comp)" : ""),
       amountCents,
+      // Snapshotted here, never re-read: a receipt re-issued later must state
+      // the value that applied when they paid.
+      fairMarketValueCents: offering.fairMarketValueCents,
       status: "PENDING_PAYMENT" as const,
     }));
   });
@@ -413,6 +465,7 @@ async function createQuantityOrder(
   byKey: Map<string, Offering>,
   compUnits: number,
   now: Date,
+  channel: PriceChannel,
 ): Promise<{ orderId: string; serviceTotalCents: number }> {
   const picked = (data.quantities ?? []).filter((q) => q.quantity > 0);
   if (picked.length === 0) throw new Error("Pick at least one item.");
@@ -443,7 +496,7 @@ async function createQuantityOrder(
       : 0;
     compRemaining -= compQty * heads;
     const paidQty = q.quantity - compQty;
-    const resolved = resolvePrice(offering, "online", now);
+    const resolved = resolvePrice(offering, channel, now);
 
     const lines: {
       offering: Offering;
@@ -477,40 +530,64 @@ async function createQuantityOrder(
   // Multiplied by admitsCount, so a gate bundle mints a code PER PERSON rather
   // than per purchase: one "family of 4" is one line and four scannable codes,
   // because four people walk through the door and each needs something to show.
-  const admissionUnits = picked
-    .filter((q) => byKey.get(q.serviceKey)!.serviceType.kind === "ADMISSION")
-    .reduce(
-      (s, q) =>
-        s + q.quantity * Math.max(1, byKey.get(q.serviceKey)!.serviceType.admitsCount),
-      0,
-    );
-  // Merch- or fee-only orders still get ONE code so the buyer has something to
-  // scan at the desk — a receipt, not an admission.
-  const ticketCount = admissionUnits > 0 ? admissionUnits : 1;
+  //
+  // Each head records the LINE that minted it and its SEAT within that line
+  // (0-based across quantity × admitsCount), so a doubles partner is simply the
+  // other seat in the same unit — no pairing table. Names arrive per pick, in
+  // seat order, only when the event names its entrants (createRegistration
+  // has already dropped them otherwise); a pick that split into a comped line
+  // and a paid line hands its names on in that order.
+  const namesByKey = new Map(picked.map((q) => [q.serviceKey, q.names ?? null]));
+  const nameCursor = new Map<string, number>();
 
-  const order = await db.order.create({
-    data: {
-      ...baseOrder,
-      attendees: {
-        // Anonymous scannable tickets (No-PHI — no name/address in this mode).
-        create: Array.from({ length: ticketCount }, () => ({ orgId, eventId })),
-      },
-    },
-    include: { attendees: true },
+  const orderId = await db.$transaction(async (tx) => {
+    const order = await tx.order.create({ data: baseOrder, select: { id: true } });
+    let minted = 0;
+    for (const p of priced) {
+      const line = await tx.lineItem.create({
+        data: {
+          orgId,
+          orderId: order.id,
+          // Order-level (not per-person): the charge for N units of this service.
+          serviceTypeId: p.offering.serviceType.id,
+          description:
+            p.offering.serviceType.name + (p.comped ? " (member comp)" : ""),
+          amountCents: p.amountCents,
+          quantity: p.quantity,
+          // Snapshotted here, never re-read: a receipt re-issued later must
+          // state the value that applied when they paid.
+          fairMarketValueCents: p.offering.fairMarketValueCents,
+          status: "PENDING_PAYMENT",
+        },
+        select: { id: true },
+      });
+      if (p.offering.serviceType.kind !== "ADMISSION") continue;
+      const heads = Math.max(1, p.offering.serviceType.admitsCount);
+      const key = p.offering.serviceType.key;
+      const names = namesByKey.get(key) ?? null;
+      const seats = p.quantity * heads;
+      const start = nameCursor.get(key) ?? 0;
+      await tx.attendee.createMany({
+        data: Array.from({ length: seats }, (_, seat) => ({
+          orgId,
+          eventId,
+          orderId: order.id,
+          lineItemId: line.id,
+          seat,
+          // Anonymous unless the event asked for names (No-PHI by default).
+          name: names ? (names[start + seat] ?? null) : null,
+        })),
+      });
+      nameCursor.set(key, start + seats);
+      minted += seats;
+    }
+    // Merch- or fee-only orders still get ONE code so the buyer has something
+    // to scan at the desk — a receipt, not an admission.
+    if (minted === 0) {
+      await tx.attendee.create({ data: { orgId, eventId, orderId: order.id } });
+    }
+    return order.id;
   });
 
-  const lineItemData = priced.map((p) => ({
-    orgId,
-    orderId: order.id,
-    // Order-level (not per-person): the charge for N units of this service.
-    serviceTypeId: p.offering.serviceType.id,
-    description:
-      p.offering.serviceType.name + (p.comped ? " (member comp)" : ""),
-    amountCents: p.amountCents,
-    quantity: p.quantity,
-    status: "PENDING_PAYMENT" as const,
-  }));
-  await db.lineItem.createMany({ data: lineItemData });
-
-  return { orderId: order.id, serviceTotalCents };
+  return { orderId, serviceTotalCents };
 }

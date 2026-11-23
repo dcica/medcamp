@@ -158,8 +158,8 @@ Vercel side and the DNS side are two separate steps:
 2. In GoDaddy → Domain → DNS → Records, add `CNAME <sub> → <target>`, TTL
    **600** during cutover so a rollback propagates in minutes.
 3. Wait for Vercel to verify and issue the TLS certificate.
-4. Only then flip `NEXT_PUBLIC_APP_URL`, `NEXTAUTH_URL` and
-   `NEXT_PUBLIC_ROOT_DOMAIN` to the custom host and redeploy. Certificate first,
+4. Only then flip `NEXTAUTH_URL` and `PLATFORM_HOST` to the custom host and
+   redeploy (a tenant's own domain comes from its `OrgDomain` row, not from env). Certificate first,
    env second, redeploy third — that order avoids serving a broken host.
 
 Attaching a domain does not migrate the integrations that are registered
@@ -210,6 +210,27 @@ Copy each endpoint's **signing secret** → `STRIPE_WEBHOOK_SECRET` in the
 matching Vercel project. (A mismatched secret means payments never confirm —
 confirmation is webhook-authoritative.)
 
+**Connect endpoint (second tenant onward).** A direct charge on a connected
+account reports to a SEPARATE endpoint: in the Stripe dashboard create a
+destination with "Listen to events on connected accounts" pointing at
+`https://<env-domain>/api/stripe/connect`, subscribed to
+`checkout.session.completed`, `checkout.session.expired`,
+`checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`,
+`charge.refunded` and `account.updated`, and put ITS signing secret in
+`STRIPE_CONNECT_WEBHOOK_SECRET` (`scripts/push-stripe-env-to-vercel.sh` takes it
+when exported). Per environment and per mode, like the platform secret. Every
+deployment's Connect endpoint receives every connected account's events; the
+handler's ownership guard (`resolveOwnedOrder`) is what keeps them apart.
+Locally: `stripe listen --forward-to localhost:3100/api/stripe/webhook --forward-connect-to localhost:3100/api/stripe/connect`.
+
+**Bank debits.** Both endpoints must be subscribed to
+`checkout.session.async_payment_succeeded` and
+`checkout.session.async_payment_failed` (listed above) or a debit that clears
+never confirms and one that bounces never releases its seats. The
+organisation's Stripe account needs the ACH Direct Debit capability (Stripe
+dashboard → Settings → Payment methods); the Payments card on Admin → Settings
+shows whether Stripe has reported it.
+
 ### 6. GitHub (CI migrations)
 
 Repo → Settings → Environments. Create `test` and `production` (`staging` is
@@ -251,9 +272,9 @@ keys live only in prod.
 
 | Var | test | prod |
 |---|---|---|
-| `NEXT_PUBLIC_APP_URL` / `NEXTAUTH_URL` | `https://test.dcica.org` | `https://events.dcica.org` |
-| `NEXT_PUBLIC_ROOT_DOMAIN` | `test.dcica.org` | `events.dcica.org` |
-| `TENANT_ROUTING` | path | path |
+| `PLATFORM_HOST` | `medcamp-test.vercel.app` | `medcamp-prod.vercel.app` (a bought platform domain later) |
+| `NEXTAUTH_URL` | `https://$PLATFORM_HOST` | `https://$PLATFORM_HOST` |
+| `NEXT_PUBLIC_APP_URL` | fallback origin only (`https://test.dcica.org`) | fallback origin only (`https://events.dcica.org`) |
 | `DEFAULT_ORG_SLUG` | dcica | dcica |
 | `BOOTSTRAP_ADMIN_EMAILS` | QA emails | **real coordinators** |
 | `DATABASE_URL` | pooled, `&schema=test` | pooled, `&schema=prod` |
@@ -266,6 +287,37 @@ keys live only in prod.
 | `TEST_LOGIN_ENABLED` / `TEST_LOGIN_PASSWORD` | set | **unset** |
 | `EMAIL_PROVIDER` / `EMAIL_FROM` | ses / `no-reply@dcica.org` | ses / `no-reply@dcica.org` |
 | `AWS_REGION` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | set (explicit) | set (explicit) |
+
+---
+
+## Adding a tenant (one shared instance)
+
+One deployment serves every organisation. A tenant is a seed module under
+`prisma/orgs/` plus a domain; nothing else is per tenant.
+
+1. **Seed module.** Add `prisma/orgs/<slug>.ts` to `prisma/orgs/index.ts`
+   (theme validated at seed time, catalogue, first-admin `Invite`, and its
+   hostnames per environment). `db:seed` runs every module; CI sets `SEED_ENV`
+   per job, so the `OrgDomain` rows for `events.<tenant>` land on prod only.
+2. **Domain.** `npx vercel domains add events.<tenant> medcamp-prod`, the
+   tenant's DNS admin adds `CNAME events → cname.vercel-dns.com`, and the
+   certificate issues (`vercel certs issue` if it stalls). Until the row is
+   seeded the host resolves `DEFAULT_ORG_SLUG`, which is why the seed runs
+   first.
+3. **Test surface.** None to buy: `https://medcamp-test.vercel.app/o/<slug>`
+   resolves the tenant on the test deployment through the path.
+4. **Staff.** Sign in on the platform host; `/staff/from` carries a bookmark on
+   the tenant domain across. The first coordinator's invite is in the seed
+   module and is accepted on their first sign-in.
+5. **Settings.** Contact and sender addresses, legal identity, analytics ids
+   and the privacy/terms text are entered in Admin → Settings by the tenant;
+   the sender needs an SES identity for its domain (DKIM CNAMEs) first.
+
+**The `PLATFORM_HOST` cutover** is one deliberate step: set `PLATFORM_HOST` and
+`NEXTAUTH_URL` together (`scripts/push-ses-env-to-vercel.sh` does), register
+`https://<platform>/api/auth/callback/google` on the one OAuth client, redeploy.
+Staff sign-in moves hosts; every bookmark on a tenant domain redirects in one
+hop. Rollback is the same two env vars.
 
 ---
 
@@ -292,8 +344,11 @@ test-card "purchase" that would send a real confirmation email and QR pass.
 
 When the DCICA Stripe account is activated, flip in this order:
 
-1. Swap `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` + `STRIPE_SECRET_KEY` to `pk_live` /
-   `sk_live`.
+1. Swap `STRIPE_SECRET_KEY` to `sk_live` (or a `rk_live` restricted key with
+   write on Checkout Sessions and PaymentIntents). There is no publishable key
+   to swap — hosted Checkout needs no client-side key, and the unread
+   `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` was removed on 2026-10-03.
+   `scripts/push-stripe-env-to-vercel.sh prod` does this and refuses test keys.
 2. Create the webhook endpoint **again in live mode** — test and live endpoints
    are separate objects with separate signing secrets — and replace
    `STRIPE_WEBHOOK_SECRET`.

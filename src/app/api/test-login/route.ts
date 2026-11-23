@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
-import { getActiveOrg } from "@/lib/tenant";
+import { getActiveOrg, tenantLookup, ORG_COOKIE } from "@/lib/tenant";
 import {
   testLoginEnabled,
   testLoginPassword,
   findTestAccount,
 } from "@/lib/testAccounts";
 import { guard } from "@/server/requestGuard";
+import { orgCookieOptions } from "@/server/staffOrg";
 
 /**
  * TEST-ONLY credential login. Gated by TEST_LOGIN_ENABLED (config entry), NOT by
@@ -45,6 +46,9 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const username: string = (body.username ?? "").toString();
   const password: string = (body.password ?? "").toString();
+  // Which organisation to sign the test account into. On a tenant host the
+  // request resolves it; on the platform host the QA screen offers a choice.
+  const orgSlug: string = (body.orgSlug ?? "").toString();
 
   const account = findTestAccount(username);
   if (!account || password !== testLoginPassword) {
@@ -55,10 +59,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const org = await getActiveOrg();
+  const org = orgSlug
+    ? await tenantLookup.bySlug(orgSlug)
+    : ((await getActiveOrg()) ??
+      (env.DEFAULT_ORG_SLUG ? await tenantLookup.bySlug(env.DEFAULT_ORG_SLUG) : null));
   if (!org) {
     return NextResponse.json(
-      { error: "No active org — run the seed first." },
+      { error: "No active org — run the seed first, or pick an organisation." },
       { status: 400 },
     );
   }
@@ -111,5 +118,7 @@ export async function POST(req: NextRequest) {
     expires,
     secure: useSecureCookie,
   });
+  // The organisation this browser works in, for the platform host.
+  res.cookies.set(ORG_COOKIE, org.slug, orgCookieOptions(useSecureCookie));
   return res;
 }

@@ -5,10 +5,9 @@ import "./globals.css";
 import { SiteHeader } from "@/app/_components/SiteHeader";
 import { SiteFooter } from "@/app/_components/SiteFooter";
 import { Analytics } from "@/app/_components/Analytics";
-import { getActiveBranding } from "@/lib/tenant";
+import { getActiveBranding, getActiveOrigin, getActiveSite } from "@/lib/tenant";
 import { brandingStyleVars } from "@/lib/branding";
-import { siteUrl, searchIndexingEnabled } from "@/lib/seo";
-import { env } from "@/lib/env";
+import { searchIndexingEnabled } from "@/lib/seo";
 
 // dcica.org's typeface. next/font self-hosts it at build time — no runtime
 // request to Google for fonts, on any page. (The one deliberate third-party
@@ -43,10 +42,10 @@ const ibmPlexSans = IBM_Plex_Sans({
  * night — and it was the description of every page on the site.
  */
 export async function generateMetadata(): Promise<Metadata> {
-  const branding = await getActiveBranding();
+  const [branding, site] = await Promise.all([getActiveBranding(), getActiveSite()]);
   const name = branding.orgName;
   return {
-    metadataBase: new URL(siteUrl()),
+    metadataBase: new URL(await getActiveOrigin()),
     title: {
       default: `${name} — events, tickets and volunteering`,
       // Every page that sets a plain string title gets the org appended, so a
@@ -68,11 +67,10 @@ export async function generateMetadata(): Promise<Metadata> {
       ? { index: true, follow: true }
       : { index: false, follow: false },
     formatDetection: { telephone: false },
-    // Emitted only when this deployment has a Search Console token configured;
-    // `undefined` renders no tag at all. See the env schema for why this is an
-    // env var and not a tenant setting.
-    verification: env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION
-      ? { google: env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION }
+    // Emitted only when this organisation has a Search Console token in its
+    // site settings; `undefined` renders no tag at all.
+    verification: site.googleSiteVerification
+      ? { google: site.googleSiteVerification }
       : undefined,
   };
 }

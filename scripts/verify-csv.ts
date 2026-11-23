@@ -39,6 +39,7 @@
  */
 import { readFileSync } from "node:fs";
 import { csvEscape, toCsv } from "../src/lib/csv";
+import { toReconRow } from "../src/lib/reconciliation";
 
 let failures = 0;
 let checks = 0;
@@ -137,6 +138,49 @@ for (const route of [
     /from "@\/lib\/csv"/.test(src),
   );
 }
+
+console.log("\n§6 the reconciliation row breaks the platform's fee and the gifts out of the gross");
+// What a treasurer reconciles against Stripe: the gross the card was charged,
+// the platform's fee Stripe moved out of it, the net before Stripe's own
+// processing, and — of the gross — what was a donation and what was the
+// buyer's processing-cost cover. Order-level amounts ride on the SUCCEEDED
+// payment only: a PENDING row is a session somebody opened, not money.
+const same = (label: string, got: unknown, want: unknown) =>
+  check(label, JSON.stringify(got) === JSON.stringify(want), JSON.stringify(got));
+const paidAt = new Date("2026-10-18T15:00:00Z");
+const lines = [
+  { amountCents: 4000, quantity: 1, isDonation: false, feeKind: null, status: "PAID" },
+  { amountCents: 2500, quantity: 1, isDonation: true, feeKind: null, status: "PAID" },
+  { amountCents: 109, quantity: 1, isDonation: false, feeKind: "PLATFORM_FEE", status: "PAID" },
+  { amountCents: 154, quantity: 1, isDonation: false, feeKind: "FEE_COVER", status: "PAID" },
+];
+const succeeded = toReconRow({
+  id: "pay_1", createdAt: paidAt, method: "STRIPE", status: "SUCCEEDED", amountCents: 6763,
+  applicationFeeCents: 109, stripeAccountId: "acct_x", stripePaymentIntentId: "pi_1", orderId: "ord_1",
+  order: { registrantEmail: "a@b.co", lineItems: lines },
+});
+same("a succeeded payment: gross, fee, net before processing, donation and cover",
+  [succeeded.amountCents, succeeded.platformFeeCents, succeeded.netBeforeProcessingCents, succeeded.donationCents, succeeded.feeCoverCents],
+  [6763, 109, 6654, 2500, 154]);
+eq("...and the connected account it lives on", succeeded.stripeAccountId, "acct_x");
+const pending = toReconRow({
+  id: "pay_2", createdAt: paidAt, method: "STRIPE", status: "PENDING", amountCents: 6763,
+  applicationFeeCents: 109, stripeAccountId: "acct_x", stripePaymentIntentId: null, orderId: "ord_1",
+  order: { registrantEmail: "a@b.co", lineItems: lines },
+});
+same("a PENDING payment carries no donation or cover — it is not money", [pending.donationCents, pending.feeCoverCents], [0, 0]);
+const cash = toReconRow({
+  id: "pay_3", createdAt: paidAt, method: "CASH", status: "SUCCEEDED", amountCents: 4000,
+  applicationFeeCents: null, stripeAccountId: null, stripePaymentIntentId: null, orderId: "ord_2",
+  order: { registrantEmail: "gate@gate.local", lineItems: [lines[0]] },
+});
+same("cash carries no fee and no account: net is the gross", [cash.platformFeeCents, cash.netBeforeProcessingCents, cash.stripeAccountId], [0, 4000, ""]);
+const reconRoute = readFileSync("src/app/api/reports/reconciliation/route.ts", "utf8");
+for (const col of ["amount_usd", "platform_fee_usd", "net_before_stripe_processing_usd", "donation_usd", "fee_cover_usd", "stripe_account"]) {
+  check(`the reconciliation CSV has a ${col} column`, new RegExp(`"${col}"`).test(reconRoute));
+}
+check("the CSV writes the new figures through the same cents→dollars rule",
+  /platformFeeCents \/ 100\)\.toFixed\(2\)/.test(reconRoute) && /donationCents \/ 100\)\.toFixed\(2\)/.test(reconRoute));
 
 console.log(
   failures === 0

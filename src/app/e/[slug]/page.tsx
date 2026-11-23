@@ -4,7 +4,7 @@ import { cache } from "react";
 import { notFound, permanentRedirect } from "next/navigation";
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
-import { getActiveOrg, getActiveBranding } from "@/lib/tenant";
+import { getActiveOrg, getActiveBranding, getActiveOrigin } from "@/lib/tenant";
 import { offeringKindsByEvent } from "@/server/performance";
 import { saleSummaryByEvent } from "@/server/eventSales";
 import { eventActions, isPaidDoor, TYPE_LABEL } from "@/lib/eventActions";
@@ -137,6 +137,7 @@ export async function generateMetadata({
       .join(" ");
 
   const canonical = `/e/${eventSlug(e)}`;
+  const origin = await getActiveOrigin();
   const image = e.imageUrl ? [e.imageUrl] : undefined;
 
   return {
@@ -147,7 +148,7 @@ export async function generateMetadata({
       type: "website",
       title,
       description,
-      url: absoluteUrl(canonical),
+      url: absoluteUrl(origin, canonical),
       images: image,
     },
     twitter: {
@@ -223,14 +224,16 @@ export default async function EventPage({
   const visibleActions = soldOut ? actions.filter((a) => !isPaidDoor(a)) : actions;
 
   const canonical = `/e/${eventSlug(e)}`;
+  const origin = await getActiveOrigin();
   const isPast = e.endsAt < now;
 
   return (
     <main className="mx-auto max-w-screen-sm px-4 py-6">
       <JsonLd
         data={eventLd({
+          organizerUrl: origin,
           name: e.name,
-          url: absoluteUrl(canonical),
+          url: absoluteUrl(origin, canonical),
           description: e.description,
           // Offset-correct, never toISOString — a 7 PM event serialised as UTC
           // lands on the following calendar day, and the date is what a person
@@ -238,7 +241,7 @@ export default async function EventPage({
           startDate: formatVenueIso(e.startsAt),
           endDate: formatVenueIso(e.endsAt),
           location: e.location,
-          imageUrl: e.imageUrl ? absoluteUrl(e.imageUrl) : null,
+          imageUrl: e.imageUrl ? absoluteUrl(origin, e.imageUrl) : null,
           status: e.status,
           organizerName: e.externallyHosted
             ? (e.hostedByName ?? branding.orgName)
@@ -251,7 +254,7 @@ export default async function EventPage({
               ? {
                   priceCents: sale.offer.priceCents,
                   currency: sale.offer.currency,
-                  url: absoluteUrl(primary.href),
+                  url: absoluteUrl(origin, primary.href),
                   soldOut: sale.offer.soldOut,
                 }
               : null,
@@ -269,8 +272,8 @@ export default async function EventPage({
       />
       <JsonLd
         data={breadcrumbLd([
-          { name: "Events", url: absoluteUrl("/") },
-          { name: e.name, url: absoluteUrl(canonical) },
+          { name: "Events", url: absoluteUrl(origin, "/") },
+          { name: e.name, url: absoluteUrl(origin, canonical) },
         ])}
       />
 

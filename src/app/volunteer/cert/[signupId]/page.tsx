@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
+import { getActiveOrg, getActiveProfile } from "@/lib/tenant";
 import { getVolunteerConfirmation } from "@/server/volunteers";
 import { VENUE_TIME_ZONE } from "@/lib/eventTime";
 import { PrintButton } from "@/app/badge/[campId]/PrintButton";
@@ -23,7 +25,18 @@ export default async function VolunteerCertificatePage({
   params: Promise<{ signupId: string }>;
 }) {
   const { signupId } = await params;
-  const c = await getVolunteerConfirmation(signupId);
+  const org = await getActiveOrg();
+  if (!org) notFound();
+  const profile = await getActiveProfile();
+  // The organisation's own assertion, or nothing: the platform never claims a
+  // tax status on anyone's behalf.
+  const taxLine =
+    profile.taxStatus === "501c3"
+      ? "501(c)(3) non-profit"
+      : profile.taxStatus === "governmental"
+        ? "Governmental unit"
+        : null;
+  const c = await getVolunteerConfirmation(org.id, signupId);
 
   if (!c) {
     return (
@@ -93,8 +106,8 @@ export default async function VolunteerCertificatePage({
           </div>
           <div className="text-right">
             <p className="font-semibold text-gray-700">{c.orgName}</p>
-            <p>501(c)(3) non-profit</p>
-            <p>Verify: admin@dcica.org</p>
+            {taxLine && <p>{taxLine}</p>}
+            {profile.contactEmail && <p>Verify: {profile.contactEmail}</p>}
           </div>
         </div>
       </div>

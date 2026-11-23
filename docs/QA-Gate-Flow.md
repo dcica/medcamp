@@ -5,13 +5,33 @@ nav_order: 12
 
 # QA — Event Gate Flow (`/gate`)
 
+> ## ⚠️ Partly superseded — read this first
+>
+> This page was written against the **June 2026** gate and the UI it describes
+> no longer exists. Do not use it to teach anyone the screens.
+>
+> | Written here | Actually ships today |
+> |---|---|
+> | Route `/gate` | **`/scan`** — `/gate` and `/checkin` are permanent redirects |
+> | "green flash" | A full-width latching **verdict banner** in three colours, with a tone per outcome (`src/lib/scanVerdict.ts`) |
+> | Field "Or enter ticket ID" | One combined box that searches **and** looks up, with an event-code prefix and as-you-type search from 2 characters |
+> | Flash "Asha Mehta admitted — give wristband" | `ADMITTED` / guest name / `Give wristband`, as three separate fields |
+>
+> **Still accurate and still worth using:** the [access matrix](#access-matrix)
+> and the [test fixtures](#test-fixtures-from-prismaseed-testts) table below.
+>
+> **For a hands-on run of the door**, use
+> [Day-of Rehearsal](Rehearsal-Day-Of.md) — it is written for volunteers, covers
+> the current screens, and includes the failure drills this page predates.
+
 Repeatable manual test for the event gate — the scan-to-admit station for
 general / ticketed events (e.g. a dandiya dance night). The gate shares the
 scan→resolve primitive with medcamp check-in, but its actions are **admission +
 will-call merch pickup + on-the-spot POS**, with continuous scanning.
 
-- **Route:** `/gate` · **UI:** `src/app/gate/` · **Server:** `src/server/gate.ts`
+- **Route:** ~~`/gate`~~ → **`/scan`** · **UI:** `src/app/scan/` · **Server:** `src/server/gate.ts`
 - **Last run:** 2026-06-21, local (`:3100`) — **PASS, no functional bugs.**
+  (That run predates the scan-station rewrite; treat the result as historical.)
 
 ---
 

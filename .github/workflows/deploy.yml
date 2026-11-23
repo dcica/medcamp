@@ -95,6 +95,7 @@ jobs:
       - run: npm run db:seed
         if: steps.check.outputs.configured == 'true'
         env:
+          SEED_ENV: test
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
       # Real public event lineup FIRST (it replaces all events for the org)...
@@ -144,6 +145,7 @@ jobs:
       - run: npm run db:seed
         if: steps.check.outputs.configured == 'true'
         env:
+          SEED_ENV: test
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
       - run: npm run db:seed:events
@@ -195,6 +197,7 @@ jobs:
       - run: npm run db:seed
         if: steps.check.outputs.configured == 'true'
         env:
+          SEED_ENV: production
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
       - run: npm run db:seed:events

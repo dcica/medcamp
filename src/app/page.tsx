@@ -3,13 +3,16 @@ import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { offeringKindsByEvent } from "@/server/performance";
 import { saleSummaryByEvent } from "@/server/eventSales";
-import { getActiveOrg } from "@/lib/tenant";
+import Link from "next/link";
+import { getActiveOrg, getActiveOrigin, getActiveProfile } from "@/lib/tenant";
+import { resolveOrgDonations } from "@/lib/orgSettings";
 import { organizationLd, primaryLocality, resolveTenantSeo } from "@/lib/seo";
 import { formatVenueMonthDay } from "@/lib/eventTime";
 import { JsonLd } from "@/app/_components/JsonLd";
 import { EmptyEventsState } from "@/app/_components/EmptyEventsState";
 import { EventRail } from "@/app/_components/EventRail";
 import { EventExtras } from "@/app/_components/EventExtras";
+import { PlatformShell } from "@/app/_components/PlatformShell";
 import {
   EventPosterCard,
   type PosterEvent,
@@ -56,7 +59,20 @@ const loadHome = cache(async () => {
           status: { in: ["OPEN", "ACTIVE"] },
           endsAt: { gte: new Date() },
         },
-        orderBy: { startsAt: "asc" },
+        // A PINNED POSITION OUTRANKS THE CALENDAR, and null keeps the
+        // calendar. Chronological is right almost always and wrong on one
+        // night a year: RON starts at 5pm and Dandiya Night at 7pm the same
+        // evening, so date order puts the competition-entry page above the
+        // ticket most visitors came for.
+        //
+        // NULLS LAST is the whole trick. Postgres sorts nulls FIRST on a
+        // DESC and last on ASC by default, and Prisma does not guess — stated
+        // explicitly here so an unpositioned event keeps its date slot
+        // instead of leaping to the front of the rail.
+        orderBy: [
+          { displayOrder: { sort: "asc", nulls: "last" } },
+          { startsAt: "asc" },
+        ],
       })
     : [];
   return { org, events };
@@ -108,6 +124,8 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function Home() {
   const { org, events } = await loadHome();
+  // The platform host (or an unknown host with no default) owns no events.
+  if (!org) return <PlatformShell />;
 
   // One `now` for the whole render, so two cards can never resolve opposite
   // sides of the same early-bird deadline.
@@ -117,8 +135,12 @@ export default async function Home() {
     saleSummaryByEvent(events, now),
   ]);
 
-  const orgName = org?.name ?? "DCICA platform";
+  const orgName = org?.name ?? "Community events";
+  const profile = await getActiveProfile();
   const local = primaryLocality(events.map((e) => e.location));
+  // The one flag /donate reads: the door is offered exactly when it exists.
+  const donations = resolveOrgDonations(org.settings);
+  const donateHref = donations.enabled ? "/donate" : null;
 
   return (
     <main className="mx-auto max-w-screen-md px-4 py-4">
@@ -127,6 +149,8 @@ export default async function Home() {
           host for the identity block rather than the layout. */}
       <JsonLd
         data={organizationLd({
+          origin: await getActiveOrigin(),
+          contactEmail: profile.contactEmail,
           orgName,
           seo: resolveTenantSeo(org?.settings),
           locality: local,
@@ -164,6 +188,23 @@ export default async function Home() {
 
           <EventExtras events={events} kinds={offeringKinds} />
 
+          {donateHref && (
+            // Under the rail, not in it: a gift is not an event. One line and
+            // one tap, so it never competes with the posters above it.
+            <section className="mt-6 rounded-xl border border-gray-200 bg-white p-4 text-sm">
+              <p className="text-gray-700">
+                Can&apos;t make it, or want to give more? Gifts go to {orgName} directly, with a
+                receipt by email.
+              </p>
+              <Link
+                href={donateHref}
+                className="mt-3 flex min-h-tap items-center justify-center rounded-lg border border-brand px-4 text-center font-medium text-brand"
+              >
+                Make a gift
+              </Link>
+            </section>
+          )}
+
           {/* TODO: a "Find my ticket" link belongs here, but there is no lookup
               route yet and a dead link is worse than none. */}
         </>
@@ -171,7 +212,7 @@ export default async function Home() {
         // The empty state, and nothing more. The front door does not get a
         // past-events section: a landing page leading with events that are over
         // is worse than one leading with nothing.
-        <EmptyEventsState />
+        <EmptyEventsState orgName={orgName} contactEmail={profile.contactEmail} donateHref={donateHref} />
       )}
     </main>
   );

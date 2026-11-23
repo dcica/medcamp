@@ -38,6 +38,8 @@ export type PaidOrderRow = {
   method: string | null;
   /** Confirmation codes minted by this order — one per admitted head. */
   campIds: string[];
+  /** The same heads with their names (null unless the event names its entrants), in seat order. */
+  heads: { campId: string; name: string | null }[];
   items: { description: string; quantity: number; amountCents: number }[];
 };
 
@@ -70,6 +72,17 @@ export type EventRegistrations = {
   /** Broken out for reconciliation, the way LineItem flags them. */
   donationCents: number;
   membershipCents: number;
+  /**
+   * The platform's service fee the buyers paid: inside `collectedCents`
+   * because the card was charged it, and NOT the organisation's revenue —
+   * Stripe moved it to the platform at charge time.
+   */
+  platformFeeCents: number;
+  /** The buyers' processing-cost cover: the organisation's money, kept apart so it is not mistaken for ticket revenue. */
+  feeCoverCents: number;
+  /** Bank debits in flight: seats held, money not yet collected. Never inside collectedCents. */
+  processingOrders: number;
+  processingCents: number;
   orders: PaidOrderRow[];
 };
 
@@ -92,7 +105,12 @@ export async function getEventRegistrations(
         registrantName: true,
         registrantEmail: true,
         createdAt: true,
-        attendees: { select: { campId: true } },
+        attendees: {
+          select: { campId: true, name: true },
+          // Seat order, so a doubles pair reads as a pair; camp-mode heads
+          // have no seat and sort last, as before.
+          orderBy: { seat: "asc" },
+        },
         lineItems: {
           select: {
             description: true,
@@ -102,6 +120,7 @@ export async function getEventRegistrations(
             serviceTypeId: true,
             isDonation: true,
             membershipPlanId: true,
+            feeKind: true,
           },
         },
         payments: {
@@ -131,8 +150,17 @@ export async function getEventRegistrations(
   let unpaidCents = 0;
   let donationCents = 0;
   let membershipCents = 0;
+  let platformFeeCents = 0;
+  let feeCoverCents = 0;
+  let processingOrders = 0;
+  let processingCents = 0;
 
   for (const o of orders) {
+    const inFlight = o.payments.find((p) => p.status === "PROCESSING");
+    if (o.status === "PENDING" && inFlight) {
+      processingOrders++;
+      processingCents += inFlight.amountCents;
+    }
     const campIds = o.attendees
       .map((a) => a.campId)
       .filter((c): c is string => c !== null);
@@ -155,7 +183,9 @@ export async function getEventRegistrations(
     for (const li of o.lineItems) {
       const total = li.amountCents * li.quantity;
       if (li.status !== "PAID") continue;
-      if (li.isDonation) donationCents += total;
+      if (li.feeKind === "PLATFORM_FEE") platformFeeCents += total;
+      else if (li.feeKind === "FEE_COVER") feeCoverCents += total;
+      else if (li.isDonation) donationCents += total;
       else if (li.membershipPlanId) membershipCents += total;
       else if (li.serviceTypeId) {
         revenueByService.set(
@@ -174,6 +204,9 @@ export async function getEventRegistrations(
         collectedCents: orderCollected,
         method: succeeded[0]?.method ?? null,
         campIds,
+        heads: o.attendees.flatMap((a) =>
+          a.campId ? [{ campId: a.campId, name: a.name }] : [],
+        ),
         items: o.lineItems
           .filter((li) => li.status === "PAID")
           .map((li) => ({
@@ -211,6 +244,10 @@ export async function getEventRegistrations(
     })),
     donationCents,
     membershipCents,
+    platformFeeCents,
+    feeCoverCents,
+    processingOrders,
+    processingCents,
     orders: paid,
   };
 }

@@ -306,9 +306,23 @@ async function main(): Promise<void> {
   // a bg-green-50 flash for "just admitted", and a second bg-green-50 block
   // inside the guest card for "already admitted by someone else".
   const gateMode = read("src/app/scan/GateMode.tsx");
-  const banner = read("src/app/_components/ScanVerdictBanner.tsx");
+  const gate = read("src/server/gate.ts");
+  const banner = read("src/lib/scanToneStyles.ts");
 
-  check("the station renders the shared banner", gateMode.includes("ScanVerdictBanner"));
+  // The station no longer renders the banner COMPONENT -- the verdict is
+  // drawn inside the camera now -- but it must still read its colours and its
+  // words from the shared tables, which is what "one place owns colour" meant
+  // all along. CampMode still renders the banner itself.
+  // ONE table, imported, not re-typed per screen. The gate draws the verdict
+  // around the camera and nothing else draws one today, but the moment a
+  // second screen does, it must read these and not invent a parallel set --
+  // that is how a green band ends up over an amber headline.
+  check("the tone tables live in one shared module",
+    banner.includes("TONE_BAND") && banner.includes("TONE_WORD"));
+  check("...and the station imports them rather than re-typing them",
+    /import \{[^}]*TONE_BAND[^}]*\} from "@\/lib\/scanToneStyles"/.test(gateMode));
+  check("the tone tables are not routed through the tenant theme",
+    !/var\(--brand|var\(--accent/.test(banner));
   check("the station plays the verdict tone", gateMode.includes("playTone"));
   check("the station asks the latch before accepting a decode",
     gateMode.includes("acceptsDecode"));
@@ -318,6 +332,271 @@ async function main(): Promise<void> {
     (gateMode.match(/bg-(green|amber|red)-(50|100)/g) ?? []).join(" "));
   check("the old flash strip is gone", !gateMode.includes("setFlash"));
 
+  // THE CAMERA FRAME. Added 2026-09-27: the viewfinder now carries the verdict
+  // colour, because the volunteer is looking at the camera, not at a strip
+  // above it. That is a SECOND coloured surface, so it has to be provably the
+  // same colour source as the first -- a green frame around an amber banner
+  // would be worse than no frame at all.
+  check("the band colour comes from the shared table, not literals",
+    gateMode.includes("TONE_BAND"));
+  // The tone also reaches the volunteer as WORDS. Colour fails in a bright
+  // doorway, the glyph fails on a cracked screen; "LET IN" fails in neither.
+  check("the tone is also stated in words", gateMode.includes("TONE_WORD"));
+  check("the station hard-codes no border colour of its own",
+    !/border-(green|amber|red)-[0-9]/.test(gateMode),
+    (gateMode.match(/border-(green|amber|red)-[0-9]+/g) ?? []).join(" "));
+
+  // Idle must not borrow a status colour: "no answer yet" must not look like
+  // an answer, which is the exact mistake the library's own green makes.
+  const idleLine = (banner.match(/idle:\s*"([^"]+)"/) ?? [])[1] ?? "";
+  check("the idle frame is neutral, not a status colour",
+    idleLine.length > 0 && !/(green|amber|red)/.test(idleLine), idleLine);
+  // The frame must not resize on a verdict: a growing border reflows the
+  // <video> mid-scan, which on a phone re-lays-out the camera with a queue
+  // waiting. One width, stated once.
+  // THE SCREEN DOES NOT SCROLL, and that is structural rather than cosmetic:
+  // a fixed full-viewport flex column whose camera is flex-1 and whose dock
+  // is flex-none cannot push a control off the bottom, however tall a guest's
+  // actions get. That is the actual fix for "the CTA is not visible", so it
+  // is the thing pinned -- not the pixel sizes on top of it.
+  check("the station is a fixed full-viewport column",
+    /fixed inset-0[^"]*flex flex-col/.test(gateMode));
+  check("the camera absorbs the slack (flex-1), so the dock cannot be pushed off",
+    /camCollapsed \? "hidden" : "flex-1"/.test(gateMode));
+  check("the dock is flex-none", /flex flex-none flex-col/.test(gateMode));
+  // One layout per state. Every function on one screen is what made it
+  // overflow in the first place.
+  check("a task collapses the camera rather than unmounting it",
+    gateMode.includes("camCollapsed") && !/\{!camCollapsed && <QrScanner/.test(gateMode));
+  // TAILWIND GENERATES NO h-13, AND SILENTLY GENERATES NOTHING FOR IT.
+  // A class that does not exist is not an error -- the control just renders
+  // at content height, which on a door screen means a sub-48px tap target
+  // that looks fine on a desktop and is unusable in a queue. Written after
+  // exactly that: the redesign shipped h-13 on six controls.
+  // No \b in this pattern ON PURPOSE. The first version used one, it was
+  // written through a shell heredoc that collapsed the backslash, and
+  // Python then turned the surviving \b into a real BACKSPACE byte. The
+  // regex became /<0x08>h-(13|...)/ which matches nothing -- a check that
+  // could not fail, which is worse than no check at all. It was caught
+  // only by mutation-testing it. A leading space-or-quote and a negative
+  // lookahead do the same job with characters no shell will touch.
+  const ghostHeights =
+    gateMode.match(/[\s"']h-(?:13|15|17|18|19|21|22|23)(?![\d[])/g) ?? [];
+  check("no height class Tailwind does not generate", ghostHeights.length === 0,
+    ghostHeights.join(" "));
+
+  // THE SCREEN MUST NOT CONTRADICT ITSELF AFTER AN ACTION.
+  //
+  // `view` is a snapshot taken at resolve time and nothing refetches it, so
+  // admitting a party of four left the pips reading "0 of 4 in" directly
+  // under a banner saying "Admitted 4", and the dock still offering "Admit
+  // all 4" for people already through. The server was right; only the screen
+  // was stale. Seen on a rehearsal phone 2026-10-03.
+  check("an admit marks those tickets in on the local view",
+    /setView\(\(prev\)[\s\S]{0,400}alreadyAdmitted: true/.test(gateMode));
+  check("...keyed on the ids that were actually admitted",
+    /const done = new Set\(attendeeIds\)/.test(gateMode));
+
+  // PENDING GREEN NEVER APPEARS WITHOUT ITS WORD. Green otherwise means
+  // "I just changed something"; on a ready-to-admit guest nothing has
+  // happened yet, and a volunteer who reads green as "they are in" waves
+  // them past without tapping Admit -- no record, wrong headcount.
+  check("a pending guest gets a band colour of its own",
+    /pendingTone/.test(gateMode));
+  check("...and the word chip shows for it, not just for a verdict",
+    /\(held \|\| guestPending\) && \(/.test(gateMode));
+  check("...with wording that says the tap is still required",
+    banner.includes("PENDING_WORD") && /TAP ADMIT/.test(banner));
+
+  // A RECEIPT IS NOT A TICKET, AND THE SCAN MUST SAY SO.
+  //
+  // `ticketCount = admissionUnits > 0 ? admissionUnits : 1` gives a merch- or
+  // fee-only order one code on purpose -- "a receipt, not an admission".
+  // admitAttendee has always thrown NOT_A_TICKET on it, so nobody got in
+  // free, but getGateView reported isPaid:true and the door painted a green
+  // "Admit & wristband". The volunteer told the guest they were in, then the
+  // tap took it back. Verified against the deployed server 2026-09-28.
+  check("the gate view carries whether the order admits anybody",
+    /admitsNobody: boolean/.test(gate));
+  check("...populated from the shared predicate, not re-derived",
+    /admitsNobody: admitsNobody\(/.test(gate));
+  check("...and the door settles it on the SCAN, before any tap",
+    /g\.admitsNobody[\s\S]{0,120}notATicket/.test(gateMode));
+
+  // PART OF A PARTY CAN ARRIVE FIRST. The redesign replaced the old
+  // per-ticket Admit buttons with pips, which are not tappable, so a family
+  // of four became all-or-nothing. A COUNT rather than a selection, because
+  // this event collects no attendee names and picking WHICH of four
+  // identical rows is a question with no answer.
+  check("a multi-ticket order can be admitted in part",
+    /admitN/.test(gateMode));
+  check("...the stepper is bounded by who is still outside",
+    /Math\.min\(pendingParty\.length, n \+ 1\)/.test(gateMode));
+  check("...and only those N are sent to the server",
+    /pendingParty\.slice\(0, admitN\)/.test(gateMode));
+
+  // A TASK SHEET MUST BE ABLE TO SCROLL ITS OWN BODY.
+  //
+  // The whole station is a fixed-height flex column that deliberately never
+  // scrolls, so a sheet is `overflow-hidden` -- it cannot be allowed to push
+  // the column taller than the viewport. The consequence is that SOMETHING
+  // inside it has to absorb the overflow, and when nothing did, the walk-up
+  // form was simply clipped mid-button: the Card action sat below the fold
+  // with no way to reach it. Reported from a Galaxy S25 Ultra inside Gmail's
+  // in-app browser, which eats another ~90px of chrome, on 2026-10-04.
+  //
+  // Silent by construction: it renders, it looks deliberate, and no amount
+  // of type-checking sees it.
+  const sheet = gateMode.slice(gateMode.indexOf("function TaskSheet"));
+  check("the task sheet scrolls its body",
+    /overflow-y-auto/.test(sheet.slice(0, 2000)));
+  // min-h-0 is the load-bearing half. A flex child defaults to min-height
+  // auto, refuses to shrink below its content, and the scroller never
+  // engages -- so the overflow-y-auto reads as present and does nothing.
+  // Both tokens in the SAME class string, in any order — Tailwind class
+  // order is arbitrary and the first version of this row demanded them
+  // adjacent, so it failed on the very code it was written to pass.
+  const scroller =
+    (sheet.slice(0, 2000).match(/className="([^"]*overflow-y-auto[^"]*)"/) ??
+      [])[1] ?? "";
+  check("...with min-h-0, or the scroller never engages",
+    /\bmin-h-0\b/.test(scroller), scroller);
+  // Two nested scrollers inside one sheet fight over the same drag.
+  check("...and only one scroller per sheet",
+    (gateMode.match(/overflow-y-auto/g) ?? []).length === 1,
+    String((gateMode.match(/overflow-y-auto/g) ?? []).length));
+
+  // THE RESOLVED-BUT-UNACTED GUEST IS A STATE OF ITS OWN.
+  //
+  // onScan deliberately does NOT settle the one case the volunteer can act
+  // on -- "paid, here, not yet admitted" -- so the phase stays `scanning`.
+  // Gating the action dock on `held` alone therefore rendered NOTHING for
+  // the commonest path at a door, while a live camera re-read the same
+  // ticket every 3 seconds. The volunteer saw Scanning -> Checking... ->
+  // Scanning forever, with no Admit button anywhere. Reported 2026-10-03.
+  //
+  // Every other outcome settles, which is why only the happy path broke --
+  // and why no existing row caught it.
+  // EVERY FULL-SURFACE OVERLAY MUST SIT INSIDE THE POSITIONED CAMERA BOX.
+  //
+  // `absolute inset-0` resolves against the nearest POSITIONED ancestor. The
+  // camera container is the only `relative` box on this screen; the root is
+  // `fixed`. So an overlay placed anywhere above that container does not
+  // cover the camera — it covers the WHOLE SCREEN, top-aligned, straight
+  // over the header. That is what shipped on 2026-10-03: a blind
+  // first-occurrence edit put the guest overlay in the status-chip row,
+  // which has the same indentation as the verdict overlay, and the guest's
+  // name rendered across the event title.
+  //
+  // tsc and the linter are both blind to it. Ordering is the only cheap
+  // signal, so ordering is what is pinned.
+  const camBox = gateMode.indexOf("relative mx-2.5");
+  const guestOverlay = gateMode.indexOf("{guestPending && view && (");
+  check("the camera box is the positioned ancestor", camBox > -1);
+  check("the resolved-guest overlay sits inside it, not above it",
+    guestOverlay > camBox, `box@${camBox} overlay@${guestOverlay}`);
+  // The verdict overlay is the LAST `{held && (` — the first one is the
+  // tone-word chip, which is exactly the ambiguity that caused the bug.
+  check("the verdict overlay sits inside it too",
+    gateMode.lastIndexOf("{held && (") > camBox);
+
+  check("the station models a resolved-but-unacted guest",
+    gateMode.includes("guestPending"));
+  check("...the action dock renders for it, not only for a held verdict",
+    /\(held \|\| guestPending\)/.test(gateMode));
+  check("...the idle dock steps aside for it",
+    /!held && !guestPending/.test(gateMode));
+  // The second half of the loop: a ticket already on screen must not be
+  // re-read. acceptsDecode() alone cannot know, because the phase is
+  // honestly `scanning`.
+  check("...and a resolved guest stops the camera re-reading their badge",
+    /acceptsDecode\(phase\) \|\| \(!!view/.test(gateMode));
+
+  // THE STATUS CHIP MUST REPORT THE CAMERA, NOT THE LATCH.
+  //
+  // It derived purely from the latch phase, which knows nothing about whether
+  // the stream ever started -- so the chip said "Scanning", with a pulsing
+  // dot, while the camera had never been switched on. A volunteer held a
+  // ticket up to a dead viewfinder and the screen told them it was working.
+  // Reported 2026-10-03; nothing reached the error table because the camera
+  // tracer only runs once a start is attempted, and no start was ever
+  // attempted. Zero rows was the clue.
+  // THE HEADCOUNT LABEL MUST NOT CLAIM TO BE A DEVICE TALLY. The initial
+  // value is getEventHeadcount -- the whole event -- and only increments
+  // after load are local. It was briefly labelled "Admitted here", which
+  // claimed a per-device count while showing six admissions the device had
+  // never made. Stale-event-total is what it is; the label says so.
+  // Anchored to a line that is ONLY that text, i.e. a JSX text node. A bare
+  // substring test also matched the comment explaining why the label was
+  // changed, so the check failed on the very file that had been fixed —
+  // the same way the "Done — next guest" row did.
+  // THE HEADCOUNT IS NOT IN THE HEADER AT ALL.
+  //
+  // It was seeded from getEventHeadcount (the whole event) and then only
+  // ever incremented by THIS device, so it was a stale event total wearing
+  // a live-looking number. Labelling it honestly only drew the eye to a
+  // figure nobody should act on. It comes back when it polls.
+  //
+  // Asserted on the RENDER, not on a substring: the comment explaining the
+  // removal says "not live" too, and an earlier version of this row passed
+  // on that comment rather than on anything real.
+  check("no headcount figure is rendered in the header",
+    !/\{headcount\}/.test(gateMode));
+  check("...and the old per-device wording is gone",
+    !/^\s*Admitted here\s*$/m.test(gateMode));
+
+  check("the station tracks the camera's real state",
+    gateMode.includes("camActive"));
+  check("...sourced from the scanner, not inferred",
+    /onActiveChange=\{setCamActive\}/.test(gateMode));
+  check("...and the chip says so when the camera is off",
+    gateMode.includes("Camera off"));
+  // The ordering matters: `camActive ?` has to gate the Scanning branch, or
+  // the chip claims to be scanning whenever the latch happens to be idle.
+  check("'Scanning' is gated on the camera actually running",
+    /camActive \?[\s\S]{0,200}Scanning/.test(gateMode));
+
+  // AND THE WAY TO TURN IT ON HAS TO BE FINDABLE. The scanner's default
+  // start button is brand navy; the gate puts it on a near-black viewfinder,
+  // where it was a thin invisible strip. `fill` makes the whole surface the
+  // control.
+  check("the gate mounts the scanner in fill mode",
+    /<QrScanner[\s\S]{0,160}fill/.test(gateMode));
+  const qr = read("src/app/_components/QrScanner.tsx");
+  check("fill mode covers the surface rather than sitting in page flow",
+    /fill[\s\S]{0,120}absolute inset-0/.test(qr));
+  check("fill mode labels the off state in words",
+    qr.includes("Tap to start the camera"));
+  // AND THE CONTROL HAS TO BE ON TOP. In fill mode the start button and
+  // #qr-reader are both `absolute inset-0`, and the reader comes LATER in
+  // the DOM — so at equal z-index the reader paints over the button and eats
+  // every tap. The button looks perfect and does nothing. Shipped once,
+  // reported as "tap to start is not working".
+  const startBtn = (qr.match(/absolute inset-0[^"]*/g) ?? []).find((c) =>
+    c.includes("flex-col"),
+  ) ?? "";
+  check("the fill-mode start control is stacked above the reader",
+    /\bz-\d+\b/.test(startBtn), startBtn.slice(0, 80));
+
+  check("there is exactly one QrScanner, mounted in every state",
+    (gateMode.match(/<QrScanner/g) ?? []).length === 1,
+    String((gateMode.match(/<QrScanner/g) ?? []).length));
+
+  // THE ACTION MUST OUTRANK THE CAMERA. The resolved guest card carries
+  // "Admit", and it used to render BELOW a ~300px viewfinder and the finder
+  // box -- so a volunteer scanned, saw a verdict, and had to scroll one-handed
+  // to act on it. Reported 2026-09-27. Ordering is load-bearing, so it is
+  // pinned by position rather than left to whoever edits the JSX next.
+  // THE ONE RELEASE CONTROL. "Done — next guest" cleared the guest WITHOUT
+  // releasing the latch, so tapping it left the camera deaf with nothing on
+  // screen explaining why. Two controls whose labels differ by one word, one
+  // of which silently broke the station, is the defect -- not the wording.
+  check("the dead second release button is gone",
+    !/onClick=\{clearGuest\}/.test(gateMode));
+  check("release is reachable in every held state",
+    (gateMode.match(/onClick=\{release\}/g) ?? []).length >= 2,
+    String((gateMode.match(/onClick=\{release\}/g) ?? []).length));
+
   // THE MID-FLOW 403. requireTill is the real gate and stays the real gate,
   // but the screen used to render every cash control to a volunteer without
   // a till -- who tapped one, lost the guest they had resolved, and landed
@@ -326,11 +605,23 @@ async function main(): Promise<void> {
   check("the screen knows whether this volunteer holds a till",
     gateMode.includes("canTakeCash"));
   check("...the pay-unpaid control is gated on it",
-    /canTakeCash &&[\s\S]{0,400}doPayUnpaid/.test(gateMode));
-  check("...so is the walk-up sale",
-    /canTakeCash && !walkUp/.test(gateMode));
-  check("...and buy-more merch",
-    /canTakeCash && catalog\.merch/.test(gateMode));
+    /canTakeCash[\s\S]{0,200}doPayUnpaid/.test(gateMode));
+  // THE WALK-UP SHEET IS NO LONGER TILL-ONLY, and the till moved INSIDE it.
+  //
+  // It was gated because a walk-up could only be paid in cash, so opening it
+  // without a till led to a control that would 403. Card changed that: the
+  // guest pays Stripe on their own phone and the volunteer handles no money,
+  // so gating the sheet would block the auditable path while leaving the
+  // cash one open to whoever does hold a till. What stays till-only is the
+  // CASH BUTTON, which is the thing that actually takes notes.
+  check("...the cash button inside the walk-up form is still till-only",
+    /canTakeCash && \([\s\S]{0,400}Take cash \{formatCents\(total\)\}/.test(gateMode));
+  check("...but the card button is offered to every gate role",
+    /onCard\(basketItems\(basket\), name\)/.test(gateMode)
+      && !/canTakeCash[\s\S]{0,200}onCard\(basketItems/.test(gateMode));
+  check("...and buy-more merch, at both the way in and the sheet",
+    /canTakeCash &&[\s\S]{0,120}catalog\.merch/.test(gateMode)
+      && /task === "buy" && canTakeCash/.test(gateMode));
   // Hidden, with a reason -- not a disabled button.
   check("a no-till volunteer is told who can take it",
     gateMode.includes("a till holder has to"));
@@ -348,11 +639,11 @@ async function main(): Promise<void> {
 
   // The banner must not be dismissable by anything but a tap, and must not
   // quietly time out - the volunteer is looking at a wristband, not a phone.
-  check("the banner has an explicit release control", banner.includes("Next guest"));
+  check("the station has an explicit release control", gateMode.includes("Next guest"));
   check("the banner never auto-dismisses",
     !banner.includes("setTimeout") && !banner.includes("setInterval"));
-  check("the banner announces itself to a screen reader",
-    banner.includes(String.raw`aria-live="assertive"`));
+  check("the verdict announces itself to a screen reader",
+    /role="status"[\s\S]{0,80}aria-live="assertive"/.test(gateMode));
   // Status colour is meaning, not identity - CLAUDE.md, verify-branding §8.
   check("the banner uses no tenant brand token",
     !/bg-brand|text-brand|accent2?/.test(banner));

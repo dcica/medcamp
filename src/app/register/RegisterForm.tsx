@@ -4,6 +4,7 @@ import type { ServiceKind } from "@prisma/client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { formatCents } from "@/lib/money";
+import { ACH_PROCESSING, computeOrderFees, coverLabel, PLATFORM_FEE_LABEL, type FeePolicy } from "@/lib/fees";
 import { trackBeginCheckout } from "@/lib/analyticsEvents";
 import {
   clearDraft,
@@ -29,6 +30,10 @@ type Service = {
   priceCents: number;
   colorHex: string;
   kind: ServiceKind;
+  /** Heads per unit: 1 for a ticket, 2 for a doubles entry, 8 for a table. */
+  admitsCount: number;
+  /** ANY, CARD_ONLY or ACH_ONLY (bank debit only — labelled, and it makes the whole order a bank debit). */
+  onlineMethods?: "ANY" | "CARD_ONLY" | "ACH_ONLY";
 };
 
 type Plan = {
@@ -68,8 +73,11 @@ type RegisterDraft = {
   marketingConsent: boolean;
   attendees: AttendeeForm[];
   quantities: Record<string, number>;
+  /** Entrant names per service key, in seat order (quantity × admitsCount). */
+  names: Record<string, string[]>;
   planId: string | null;
   donation: string;
+  coverFee: boolean;
 };
 
 /**
@@ -82,6 +90,7 @@ export function RegisterForm({
   eventId,
   services,
   collectsAttendeeDetails,
+  namesAttendees = false,
   acceptsDonations,
   honorsMembership,
   allowsRefunds,
@@ -90,10 +99,15 @@ export function RegisterForm({
   resumable,
   eventSlug,
   eventKind,
+  feePolicy,
+  orgName,
+  achOnlyAboveCents = null,
 }: {
   eventId: string;
   services: Service[];
   collectsAttendeeDetails: boolean;
+  /** Quantity mode: a name per admitted head (a player, a guest). The server insists; these inputs help. */
+  namesAttendees?: boolean;
   acceptsDonations: boolean;
   honorsMembership: boolean;
   allowsRefunds: boolean;
@@ -113,14 +127,31 @@ export function RegisterForm({
    */
   eventSlug?: string;
   eventKind?: string;
+  /**
+   * The organisation's fee policy as it applies today (src/lib/fees.ts), or
+   * null when nothing is charged: no connected Stripe account, no policy. The
+   * numbers shown here are the same pure math ensureFeeLines runs on the
+   * server, so the Total line and the Stripe page agree to the cent.
+   */
+  feePolicy: FeePolicy | null;
+  /** Named in the cover label: the money goes to them, not to the platform. */
+  orgName: string;
+  /** The organisation's bank-only threshold on the goods total; null = none. */
+  achOnlyAboveCents?: number | null;
 }) {
   const [registrant, setRegistrant] = useState({ name: "", email: "", phone: "" });
   const [iAmAttending, setIAmAttending] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
   const [attendees, setAttendees] = useState<AttendeeForm[]>([emptyAttendee()]);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [names, setNames] = useState<Record<string, string[]>>({});
   const [planId, setPlanId] = useState<string | null>(null);
   const [donation, setDonation] = useState("");
+  // Starts as the organisation set it (industry default on; an organisation
+  // may default it off). It is the buyer's to clear in one tap, and it is
+  // never a gratuity: the label names the exact amount and who receives it.
+  const coverDefault = feePolicy?.feeCoverDefaultChecked ?? false;
+  const [coverFee, setCoverFee] = useState(coverDefault);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -130,8 +161,10 @@ export function RegisterForm({
     marketingConsent,
     attendees,
     quantities,
+    names,
     planId,
     donation,
+    coverFee,
   };
 
   /** Snapshot as restored, so `dirty` is a comparison rather than a flag
@@ -178,8 +211,10 @@ export function RegisterForm({
           ? v.attendees
           : [emptyAttendee()],
       quantities: v.quantities ?? {},
+      names: v.names ?? {},
       planId: v.planId ?? null,
       donation: v.donation ?? "",
+      coverFee: typeof v.coverFee === "boolean" ? v.coverFee : coverDefault,
     };
 
     setRegistrant(applied.registrant);
@@ -187,8 +222,10 @@ export function RegisterForm({
     setMarketingConsent(applied.marketingConsent);
     setAttendees(applied.attendees);
     setQuantities(applied.quantities);
+    setNames(applied.names);
     setPlanId(applied.planId);
     setDonation(applied.donation);
+    setCoverFee(applied.coverFee);
     // The APPLIED values, not the raw draft: if a guard above substituted
     // anything, comparing against the raw draft would read as an edit the buyer
     // never made and would retract the resume button on arrival.
@@ -213,25 +250,45 @@ export function RegisterForm({
   // Admission comp: on a honoring event, a purchased membership comps admission.
   const admissionComped = Boolean(selectedPlan) && honorsMembership;
 
-  const servicesCost = collectsAttendeeDetails
-    ? attendees.reduce(
-        (sum, a) =>
-          sum +
-          a.serviceKeys.reduce(
-            (s, k) => s + (admissionComped && isAdmission(k) ? 0 : priceOf(k)),
-            0,
-          ),
-        0,
-      )
-    : services.reduce(
-        (s, svc) =>
-          s +
-          (admissionComped && svc.kind === "ADMISSION" ? 0 : priceOf(svc.key)) *
-            (quantities[svc.key] ?? 0),
-        0,
-      );
+  // The cart as lines, in the shape the fee math reads, so the fee and the
+  // cover are computed per unit exactly as the server will compute them.
+  const cartLines = [
+    ...(collectsAttendeeDetails
+      ? attendees.flatMap((a) =>
+          a.serviceKeys.map((k) => ({
+            amountCents: admissionComped && isAdmission(k) ? 0 : priceOf(k),
+            quantity: 1,
+          })),
+        )
+      : services.map((svc) => ({
+          amountCents: admissionComped && svc.kind === "ADMISSION" ? 0 : priceOf(svc.key),
+          quantity: quantities[svc.key] ?? 0,
+        }))),
+    ...(selectedPlan
+      ? [{ amountCents: selectedPlan.priceCents, quantity: 1, membershipPlanId: selectedPlan.id }]
+      : []),
+    ...(donationCents > 0 ? [{ amountCents: donationCents, quantity: 1, isDonation: true }] : []),
+  ];
+  // A bank-only item in the cart — in either mode — or a goods total over the
+  // organisation's threshold makes the whole order a bank debit, and the
+  // cover is then grossed up at the bank rate (0.8% capped at $5), not the
+  // card rate — the SAME rule the server applies in openCheckoutSession, so
+  // the label's amount and the Stripe line agree to the cent.
+  const pickedKeys = collectsAttendeeDetails
+    ? attendees.flatMap((a) => a.serviceKeys)
+    : services.filter((s) => (quantities[s.key] ?? 0) > 0).map((s) => s.key);
+  const goodsForRule = cartLines.reduce((s, l) => s + l.amountCents * l.quantity, 0);
+  const bankOnlyInCart =
+    pickedKeys.some((k) => services.find((s) => s.key === k)?.onlineMethods === "ACH_ONLY") ||
+    (achOnlyAboveCents !== null && achOnlyAboveCents !== undefined && goodsForRule > achOnlyAboveCents);
+  const feeOpts = bankOnlyInCart ? { processing: ACH_PROCESSING } : {};
+  const fees = computeOrderFees(cartLines, feePolicy, { coverProcessing: coverFee, orgName, ...feeOpts });
+  // What ticking the box would add, shown on the label whether or not it is ticked.
+  const coverIfTicked = coverFee
+    ? fees.coverCents
+    : computeOrderFees(cartLines, feePolicy, { coverProcessing: true, orgName, ...feeOpts }).coverCents;
 
-  const total = servicesCost + (selectedPlan?.priceCents ?? 0) + donationCents;
+  const total = fees.totalCents;
 
   // ── Attendee mode helpers ──
   function copyContactToFirstAttendee(name: string) {
@@ -268,6 +325,19 @@ export function RegisterForm({
     setQuantities((prev) => ({ ...prev, [key]: Math.max(0, n) }));
   }
 
+  /** How many names a service needs at its current quantity, when the event names its entrants. */
+  function namesNeeded(s: Service): number {
+    if (!namesAttendees || collectsAttendeeDetails || s.kind !== "ADMISSION") return 0;
+    return (quantities[s.key] ?? 0) * Math.max(1, s.admitsCount);
+  }
+  function setEntrantName(key: string, index: number, value: string) {
+    setNames((prev) => {
+      const next = [...(prev[key] ?? [])];
+      next[index] = value;
+      return { ...prev, [key]: next };
+    });
+  }
+
   function submit() {
     setError(null);
     startTransition(async () => {
@@ -277,6 +347,7 @@ export function RegisterForm({
         marketingConsent,
         membershipPlanId: planId ?? undefined,
         donationCents: donationCents > 0 ? donationCents : undefined,
+        coverProcessingFee: coverFee,
         attendees: collectsAttendeeDetails
           ? attendees.map((a) => ({
               name: a.name,
@@ -287,7 +358,18 @@ export function RegisterForm({
         quantities: collectsAttendeeDetails
           ? undefined
           : services
-              .map((s) => ({ serviceKey: s.key, quantity: quantities[s.key] ?? 0 }))
+              .map((s) => {
+                const needed = namesNeeded(s);
+                return {
+                  serviceKey: s.key,
+                  quantity: quantities[s.key] ?? 0,
+                  // Exactly the names this quantity needs, in seat order; the
+                  // server refuses a short or blank list with the count.
+                  ...(needed > 0
+                    ? { names: Array.from({ length: needed }, (_, i) => names[s.key]?.[i] ?? "") }
+                    : {}),
+                };
+              })
               .filter((q) => q.quantity > 0),
       });
       if (res.ok) {
@@ -494,8 +576,8 @@ export function RegisterForm({
             const qty = quantities[s.key] ?? 0;
             const comped = admissionComped && s.kind === "ADMISSION";
             return (
+              <div key={s.key} className="space-y-2">
               <div
-                key={s.key}
                 className={`flex min-h-tap items-center justify-between rounded-lg border px-3 py-2 ${
                   qty > 0 ? "border-brand bg-brand/5" : "border-gray-200"
                 }`}
@@ -514,6 +596,11 @@ export function RegisterForm({
                           ? "Free"
                           : formatCents(s.priceCents)}
                     </span>
+                    {s.onlineMethods === "ACH_ONLY" && (
+                      <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
+                        bank transfer only
+                      </span>
+                    )}
                   </span>
                 </span>
                 <span className="flex items-center gap-2">
@@ -536,6 +623,35 @@ export function RegisterForm({
                     +
                   </button>
                 </span>
+                </div>
+                {/* One name per head, grouped by unit so a doubles pair reads
+                    as a pair. Rendered only when the event asks; the server
+                    is what refuses a missing one. */}
+                {namesNeeded(s) > 0 && (
+                  <div className="space-y-2 rounded-lg border border-gray-200 px-3 py-2">
+                    {Array.from({ length: namesNeeded(s) }, (_, i) => {
+                      const heads = Math.max(1, s.admitsCount);
+                      const unit = Math.floor(i / heads) + 1;
+                      const slot = (i % heads) + 1;
+                      const label =
+                        heads > 1
+                          ? `${s.name} ${unit} — ${slot === 1 ? "player 1" : `player ${slot} (partner)`}`
+                          : `${s.name} ${unit} — name`;
+                      return (
+                        <label key={i} className="block text-xs text-gray-600">
+                          {label}
+                          <input
+                            className={inputCls}
+                            placeholder="Full name"
+                            autoComplete="off"
+                            value={names[s.key]?.[i] ?? ""}
+                            onChange={(e) => setEntrantName(s.key, i, e.target.value)}
+                          />
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -543,6 +659,13 @@ export function RegisterForm({
             Each admission counts as one entry — you&apos;ll get a QR per entry to
             scan at the door.
           </p>
+          {bankOnlyInCart && (
+            <p className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
+              An item in your order is paid by bank transfer, so this whole order will be
+              paid by bank debit on Stripe&apos;s page. It can take up to four business days to
+              clear; your place is held meanwhile and your tickets are emailed when it does.
+            </p>
+          )}
         </section>
       )}
 
@@ -619,6 +742,32 @@ export function RegisterForm({
               onChange={(e) => setDonation(e.target.value)}
             />
           </div>
+        </section>
+      )}
+
+      {/* Service fee + processing-cost cover. The fee is a disclosed line,
+          never a box the buyer could have missed; the cover is the ONE box,
+          it names its exact amount and its recipient, and one tap clears it.
+          Hidden entirely while the cart is empty — there is nothing to fee. */}
+      {feePolicy && fees.subtotalCents > 0 && (
+        <section className="space-y-2">
+          {fees.buyerFeeCents > 0 && (
+            <div className="flex items-center justify-between text-sm text-gray-600">
+              <span>{PLATFORM_FEE_LABEL}</span>
+              <span>{formatCents(fees.buyerFeeCents)}</span>
+            </div>
+          )}
+          {feePolicy.allowBuyerCover && coverIfTicked > 0 && (
+            <label className="flex min-h-tap items-center gap-3 text-sm">
+              <input
+                type="checkbox"
+                className="h-5 w-5"
+                checked={coverFee}
+                onChange={(e) => setCoverFee(e.target.checked)}
+              />
+              {coverLabel(coverIfTicked, orgName)}
+            </label>
+          )}
         </section>
       )}
 

@@ -22,6 +22,7 @@ A clickable, static mockup of the MVP — Patient, Volunteer, Vendor, and Logist
 |---|---|
 | [▶ Interactive Demo](demo/index.html) | Clickable static mockup of the MVP — Patient, Volunteer, Vendor, and Logistics flows (no real data) |
 | [Platform Mandate](Platform-Mandate.md) | Foundational: open-source (AGPL-3.0), multi-tenant, OAuth-first, Stripe Connect, self-hostable — overrides single-org assumptions |
+| [Organizer's Guide](Organizer-Guide.md) | Running event commerce: prepaid vs tab, unspent value, who is the seller, the tax questions to ask, hardware, and how to pilot it |
 | [System Overview](MedCamp-System-Overview.md) | Architecture, modules, venue configurations, build plan, and committee questions |
 | [Design System](Design-System.md) | Visual language — color/type/spacing tokens, the Care Spine motif, and component anatomy (badge, queue card, dashboard) |
 | [Platform Extensions](Platform-Extensions.md) | General events, membership, POS, vendor registration, and sponsor tiers |

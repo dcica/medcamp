@@ -46,6 +46,8 @@
  *   §4  drop the `isDonation` branch                 → break-out rows fail
  */
 import * as dotenv from "dotenv";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { PrismaClient } from "@prisma/client";
 
 // Same reasoning as verify-checkout.ts: the machine has a global DATABASE_URL
@@ -59,6 +61,7 @@ const db = new PrismaClient();
 const CODE = "VERIFY-REGS";
 const ADMIT_KEY = "verify-regs-admit";
 const MERCH_KEY = "verify-regs-merch";
+const DOUBLES_KEY = "verify-regs-doubles";
 
 let failures = 0;
 
@@ -70,7 +73,11 @@ function check(label: string, ok: boolean, detail = "") {
 async function main() {
   const { getEventRegistrations } = await import("../src/server/registrations");
 
-  const org = await db.organization.findFirstOrThrow();
+  const org = await db.organization.findUniqueOrThrow({
+    // Pin the org getActiveOrg() resolves in script scope — DEFAULT_ORG_SLUG — so
+    // fixtures land where the code under test looks, not in "the oldest row".
+    where: { slug: process.env.DEFAULT_ORG_SLUG ?? "dcica" },
+  });
   await cleanup(org.id);
 
   const event = await db.event.create({
@@ -450,11 +457,437 @@ async function main() {
   await db.event.delete({ where: { id: closedEvent.id } });
 
 
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§10 the table lists days that sold; the bars list every day");
+  // Read AS TEXT, so this asserts what SHIPS rather than a reimplementation
+  // that could rot -- same approach as verify:scan §5 and verify:analytics.
+  //
+  // THE REGRESSION THIS EXISTS FOR: making the bars use `soldDays` too. That
+  // reads like a tidy-up and is silent -- the chart still renders, but the
+  // x-axis compresses and a gap in trading becomes indistinguishable from
+  // activity. The bars must stay on `days`.
+  const chartSrc = readFileSync(
+    join(process.cwd(), "src/app/_components/DailySalesChart.tsx"),
+    "utf8",
+  );
+  const PREDICATE = /d\.units > 0 \|\| d\.cents > 0/g;
+
+  check("the quiet-day predicate is defined exactly once",
+    (chartSrc.match(PREDICATE) ?? []).length === 1,
+    String((chartSrc.match(PREDICATE) ?? []).length));
+  check("soldDays is that predicate applied to days",
+    /const soldDays = days\.filter/.test(chartSrc));
+  check("the stat-tile threshold reads off soldDays, not a second filter",
+    /const active = soldDays\.length/.test(chartSrc));
+
+  // The table body maps the REVERSED rows...
+  check("the table body maps tableRows", chartSrc.includes("{tableRows.map("));
+  check("the table body does NOT map days", !chartSrc.includes("{days.map("));
+  check("the table body does NOT map soldDays directly",
+    !chartSrc.includes("{soldDays.map("));
+
+  // NEWEST FIRST in the table, OLDEST FIRST in the bars. Reversing one without
+  // the other would have a reader matching the tallest bar to the wrong row,
+  // so both halves are pinned rather than just the one that changed.
+  check("tableRows is soldDays reversed, on a copy",
+    /const tableRows = \[\.\.\.soldDays\]\.reverse\(\)/.test(chartSrc));
+  // .reverse() mutates. Reversing soldDays in place would silently reverse the
+  // stat-tile fallback and anything else reading it.
+  check("soldDays itself is never reversed in place",
+    !/soldDays\.reverse\(\)/.test(chartSrc));
+
+  // ...while BOTH bar charts are still handed the full series.
+  const barsEls = chartSrc.match(/<Bars[\s\S]*?\/>/g) ?? [];
+  check("there are two Bars elements (units and money)", barsEls.length === 2,
+    String(barsEls.length));
+  check("every Bars gets days={days}, never soldDays",
+    barsEls.every((b) => b.includes("days={days}") && !b.includes("soldDays")));
+
+  // The bucket builder must keep emitting quiet days, or the filter above has
+  // nothing to filter and the axis is already compressed upstream.
+  const dashSrc = readFileSync(
+    join(process.cwd(), "src/server/dashboard.ts"),
+    "utf8",
+  );
+  check("getDailySales still seeds a bucket for EVERY day in range",
+    dashSrc.includes("for (let i = days - 1; i >= 0; i--)"));
+  const quiet = series.filter((d) => d.units === 0 && d.cents === 0);
+  check("the live series really does contain a quiet day to drop",
+    quiet.length > 0, quiet.length + " quiet of " + series.length);
+  check("...and at least one day that sold, so the table is not empty",
+    series.some((d) => d.units > 0 || d.cents > 0));
+
+
+
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§10 the platform service fee is broken out of the organisation's revenue");
+  // A buyer-paid fee line and a fee-cover line are PAID lines on a confirmed
+  // order, so a naive sum folds the platform's money into service revenue and
+  // a naive unit count sells two phantom tickets. Each gets a bucket of its
+  // own; "collected" stays what the card was charged, because that is what a
+  // coordinator reconciles against Stripe.
+  await db.event.update({ where: { id: event.id }, data: { status: "OPEN" } });
+  const before = await getEventRegistrations(org.id, event.id);
+  const seriesBefore = await dash.getDailySales(org.id, 7);
+  const unitsOf = (s: { units: number }[]) => s.reduce((n, d) => n + d.units, 0);
+  await db.order.create({
+    data: {
+      orgId: org.id,
+      eventId: event.id,
+      status: "CONFIRMED",
+      method: "STRIPE",
+      registrantName: "Fee Payer",
+      registrantEmail: "verify-regs-fee@example.org",
+      registrantPhone: "5550001111",
+      coverProcessingFee: true,
+      attendees: { create: [{ orgId: org.id, eventId: event.id, campId: `${CODE}-0004` }] },
+      lineItems: {
+        create: [
+          { orgId: org.id, serviceTypeId: admit.id, description: "Verify Admission", amountCents: 2500, quantity: 1, status: "PAID" },
+          { orgId: org.id, description: "Service fee", amountCents: 87, quantity: 1, feeKind: "PLATFORM_FEE", status: "PAID" },
+          { orgId: org.id, description: "$1.09 to cover the payment-processing cost for Verify", amountCents: 109, quantity: 1, feeKind: "FEE_COVER", status: "PAID" },
+        ],
+      },
+      // 2500 + 87 + 109
+      payments: { create: [{ orgId: org.id, method: "STRIPE", status: "SUCCEEDED", amountCents: 2696, applicationFeeCents: 87 }] },
+    },
+  });
+  const after = await getEventRegistrations(org.id, event.id);
+  const seriesAfter = await dash.getDailySales(org.id, 7);
+  const admitAfter = after.offerings.find((o) => o.name === "Verify Admission");
+  check("the platform fee is reported in its own bucket", after.platformFeeCents === 87, `${after.platformFeeCents}`);
+  check("the fee cover is reported in its own bucket", after.feeCoverCents === 109, `${after.feeCoverCents}`);
+  check("neither is folded into service revenue: admission rose by exactly one $25 seat",
+    (admitAfter?.revenueCents ?? 0) === (admitRow?.revenueCents ?? 0) + 2500, `${admitAfter?.revenueCents}`);
+  check("collected rose by the whole charge, fee included — it is what the card was charged",
+    after.collectedCents === before.collectedCents + 2696, `${after.collectedCents}`);
+  check("service + donation + membership + fee + cover reconciles to collected",
+    after.offerings.reduce((n, o) => n + o.revenueCents, 0)
+      + after.donationCents + after.membershipCents
+      + after.platformFeeCents + after.feeCoverCents === after.collectedCents);
+  check("fee lines are not units on the chart: one seat, not three",
+    unitsOf(seriesAfter) === unitsOf(seriesBefore) + 1,
+    `${unitsOf(seriesAfter) - unitsOf(seriesBefore)}`);
+
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§11 named entrants: a doubles entry is two named heads on one line, with a fair-market-value snapshot");
+  // A tournament sells a DOUBLES entry: one line, two heads, and the organiser
+  // needs both names and who is playing with whom. The heads are minted per
+  // line with a seat index, so a partner is "the other seat in the same unit"
+  // — no pairing table, no second form. A dinner offering carries the fair
+  // market value of what the guest receives; it is snapshotted onto the line
+  // at creation so a receipt re-issued next year reads the value that applied
+  // when they paid, never today's.
+  const { createRegistration } = await import("../src/server/registration");
+  const { confirmOrderPaid } = await import("../src/server/payments");
+  const { getEntrantRows, ENTRANTS_REPORT_HEADER } = await import("../src/server/entrants");
+  const { contributionOf } = await import("../src/lib/contribution");
+  const doubles = await db.serviceType.upsert({
+    where: { orgId_key: { orgId: org.id, key: DOUBLES_KEY } },
+    update: { kind: "ADMISSION", priceCents: 25000, admitsCount: 2 },
+    create: { orgId: org.id, key: DOUBLES_KEY, name: "Verify Doubles", priceCents: 25000, kind: "ADMISSION", admitsCount: 2 },
+  });
+  await db.serviceCap.create({
+    data: { eventId: event.id, serviceTypeId: doubles.id, priceCents: 25000, capacity: 20, fairMarketValueCents: 7500 },
+  });
+  await db.event.update({ where: { id: event.id }, data: { namesAttendees: true } });
+  const buyer = { name: "Doubles Buyer", email: "verify-regs-doubles@example.org", phone: "5550002222" };
+  const attempt = (q: { quantity: number; names?: string[] }) =>
+    createRegistration({ eventId: event.id, registrant: buyer, marketingConsent: false, quantities: [{ serviceKey: DOUBLES_KEY, ...q }] })
+      .then(() => "accepted", (e: Error) => e.message);
+  const NEED = "Enter a name for each entrant — Verify Doubles needs ";
+  check("with the flag on, an entry without names is refused, saying how many",
+    (await attempt({ quantity: 1 })) === NEED + "2.", await attempt({ quantity: 1 }));
+  check("...and too few names is the same refusal (two units need four)",
+    (await attempt({ quantity: 2, names: ["Asha", "Ravi", "Meera"] })) === NEED + "4.");
+  check("...and a blank name is refused by the schema",
+    (await attempt({ quantity: 1, names: ["Asha", "   "] })).includes("Every entrant needs a name"));
+
+  const entry = await createRegistration({
+    eventId: event.id, registrant: buyer, marketingConsent: false,
+    quantities: [{ serviceKey: DOUBLES_KEY, quantity: 2, names: [" Asha ", "Ravi", "Meera", "Dev"] }],
+  });
+  const heads = await db.attendee.findMany({ where: { orderId: entry.orderId }, orderBy: { seat: "asc" } });
+  check("two units × two heads mint four named attendees, seats 0–3, names trimmed",
+    heads.map((h) => `${h.seat}:${h.name}`).join("|") === "0:Asha|1:Ravi|2:Meera|3:Dev",
+    heads.map((h) => `${h.seat}:${h.name}`).join("|"));
+  const line = await db.lineItem.findFirstOrThrow({ where: { orderId: entry.orderId, serviceTypeId: doubles.id } });
+  check("...every head points at the line that minted it", heads.every((h) => h.lineItemId === line.id));
+  check("the line carries the fair-market-value snapshot", line.fairMarketValueCents === 7500, String(line.fairMarketValueCents));
+  check("...and the FMV never changes the price", line.amountCents === 25000);
+  await db.serviceCap.update({
+    where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: doubles.id } },
+    data: { fairMarketValueCents: 9900 },
+  });
+  check("a later change to the offering's FMV does not touch the line",
+    (await db.lineItem.findUniqueOrThrow({ where: { id: line.id } })).fairMarketValueCents === 7500);
+  check("contributionOf: paid, value received and the deductible limit, × quantity",
+    JSON.stringify(contributionOf([line])) === JSON.stringify({ paidCents: 50000, fairMarketValueCents: 15000, deductibleCents: 35000 }),
+    JSON.stringify(contributionOf([line])));
+  check("...nothing to say when no line carries an FMV",
+    contributionOf([{ amountCents: 2500, quantity: 1, fairMarketValueCents: null }]) === null);
+  check("...a ticket worth more than it cost deducts nothing, never a negative",
+    contributionOf([{ amountCents: 1000, quantity: 1, fairMarketValueCents: 2500 }])?.deductibleCents === 0);
+  check("...and the platform's fee line is not a contribution",
+    contributionOf([line, { amountCents: 109, quantity: 1, fairMarketValueCents: null, feeKind: "PLATFORM_FEE" }])?.paidCents === 50000);
+
+  await confirmOrderPaid(entry.orderId, { method: "ZELLE", idempotencyKey: `verify-regs-doubles-${entry.orderId}` });
+  const rows = await getEntrantRows(org.id, event.id);
+  check("the entrants report lists one row per player", rows.length === 4, String(rows.length));
+  check("...partners are paired by seat within the line",
+    rows.find((r) => r.player === "Asha")?.partner === "Ravi" && rows.find((r) => r.player === "Dev")?.partner === "Meera",
+    rows.map((r) => `${r.player}+${r.partner}`).join(","));
+  check("...under the division — the offering's name", rows.every((r) => r.division === "Verify Doubles"));
+  check("...with the order, the buyer's email and when it was paid",
+    rows.every((r) => r.order === entry.orderId && r.email === buyer.email && r.paid_at !== ""));
+  check("...and the CSV header is exactly these columns",
+    ENTRANTS_REPORT_HEADER.join(",") === "division,player,partner,order,email,paid_at");
+  const listed = (await getEventRegistrations(org.id, event.id)).orders.find((o) => o.id === entry.orderId);
+  check("the registrations page lists the names beside the codes",
+    listed?.heads.map((h) => h.name).join(",") === "Asha,Ravi,Meera,Dev" && listed.heads.every((h) => h.campId !== null),
+    listed?.heads.map((h) => `${h.name}/${h.campId}`).join(","));
+
+  await db.event.update({ where: { id: event.id }, data: { namesAttendees: false } });
+  const unnamed = await createRegistration({
+    eventId: event.id, registrant: buyer, marketingConsent: false,
+    quantities: [{ serviceKey: DOUBLES_KEY, quantity: 1, names: ["X", "Y"] }],
+  });
+  check("with the flag off, names sent anyway are NOT stored — the event did not ask (No-PHI)",
+    (await db.attendee.findMany({ where: { orderId: unnamed.orderId } })).every((a) => a.name === null));
+  check("...but the heads still carry their line and seat",
+    (await db.attendee.findMany({ where: { orderId: unnamed.orderId }, orderBy: { seat: "asc" } })).map((a) => a.seat).join(",") === "0,1");
+
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§12 a donation is an order with no event: it confirms, it is counted, receipted and listed");
+  // The donate page sells nothing and admits nobody. Its order has no event
+  // (the organisation's general fund), one donation line, no heads, and it
+  // goes through the same confirmation as a ticket — the money chart must
+  // count it, the donor list must show it beside the donations made on a
+  // ticket order, and a receipt (not a ticket) is what gets emailed.
+  const { createDonationOrder, getDonorRows, DONORS_REPORT_HEADER } = await import("../src/server/donations");
+  const { resolveOrgDonations } = await import("../src/lib/orgSettings");
+  check("donations are off until the organisation turns them on", resolveOrgDonations({}).enabled === false);
+  check("...and a stored policy round-trips, defaults filled",
+    JSON.stringify(resolveOrgDonations({ donations: { enabled: true, suggestedAmountsCents: [2500, 5000], minCents: 500 } }))
+      === JSON.stringify({ enabled: true, suggestedAmountsCents: [2500, 5000], allowFeeCover: true, minCents: 500 }));
+  const donor = { name: "Giver", email: "verify-regs-donor@example.org" };
+  const gift = await createDonationOrder(org.id, {
+    donor, amountCents: 2500, coverFee: false, honoreeName: "Grandma", donorNote: "In memory", marketingConsent: false,
+  }, { enabled: true, suggestedAmountsCents: [2500], allowFeeCover: true, minCents: 100 });
+  const giftOrder = await db.order.findUniqueOrThrow({ where: { id: gift.orderId }, include: { lineItems: true, attendees: true } });
+  check("an eventless order with ONE donation line and no heads",
+    giftOrder.eventId === null && giftOrder.lineItems.length === 1 && giftOrder.lineItems[0]?.isDonation === true && giftOrder.attendees.length === 0,
+    `event ${giftOrder.eventId} lines ${giftOrder.lineItems.length} heads ${giftOrder.attendees.length}`);
+  check("...carrying the honoree and the note", giftOrder.honoreeName === "Grandma" && giftOrder.donorNote === "In memory");
+  check("...worth exactly the gift", gift.totalCents === 2500 && giftOrder.lineItems[0]?.amountCents === 2500);
+  const centsOf = (s: { cents: number }[]) => s.reduce((n, d) => n + d.cents, 0);
+  const seriesBeforeGift = await dash.getDailySales(org.id, 7);
+  await confirmOrderPaid(gift.orderId, { method: "ZELLE", idempotencyKey: `verify-regs-gift-${gift.orderId}` });
+  check("it confirms with no event, no ticket and no capacity to claim",
+    (await db.order.findUniqueOrThrow({ where: { id: gift.orderId } })).status === "CONFIRMED");
+  const seriesAfterGift = await dash.getDailySales(org.id, 7);
+  check("the sales chart counts the money (the eventless arm) and no units",
+    centsOf(seriesAfterGift) === centsOf(seriesBeforeGift) + 2500 && unitsOf(seriesAfterGift) === unitsOf(seriesBeforeGift),
+    `+${centsOf(seriesAfterGift) - centsOf(seriesBeforeGift)} cents, +${unitsOf(seriesAfterGift) - unitsOf(seriesBeforeGift)} units`);
+  // A second gift, left unpaid: a donor list is money received, never intent.
+  const unpaidGift = await createDonationOrder(org.id, { donor, amountCents: 9900, coverFee: false, marketingConsent: false },
+    { enabled: true, suggestedAmountsCents: [2500], allowFeeCover: true, minCents: 100 });
+  const donors = await getDonorRows(org.id, { year: new Date().getFullYear() });
+  check("the donor list has the general-fund gift as 'general'",
+    donors.some((r) => r.order === gift.orderId && r.event === "general" && r.amount_usd === "25.00" && r.donor === "Giver" && r.honoree === "Grandma"),
+    JSON.stringify(donors.find((r) => r.order === gift.orderId)));
+  check("...and the donation made on the paid ticket order, under its event code",
+    donors.some((r) => r.order === paidOrder.id && r.event === CODE && r.amount_usd === "10.00"));
+  check("...and not the unpaid gift", !donors.some((r) => r.order === unpaidGift.orderId));
+  check("...with the header exactly these columns — the donor's note included, or it reaches nobody", DONORS_REPORT_HEADER.join(",") === "date,donor,email,amount_usd,event,honoree,note,order", DONORS_REPORT_HEADER.join(","));
+  check("...and the note is on the row", donors.find((r) => r.order === gift.orderId)?.note === "In memory");
+  check("...and on the admin page", /r\.note/.test(readFileSync(join(process.cwd(), "src/app/admin/donations/page.tsx"), "utf8")));
+  check("...and nothing from another year", (await getDonorRows(org.id, { year: 1999 })).length === 0);
+  // THE YEAR IS THE VENUE'S. 11:30pm on New Year's Eve in Flower Mound is
+  // 05:30 UTC on 1 January: a UTC year would move that gift into the new
+  // year's list, and a year-end letter would thank the donor for a gift they
+  // made last year. Not expressed via venueDayKey on both sides — a fixed
+  // instant with a known answer is the only version that can fail.
+  await db.order.create({
+    data: {
+      orgId: org.id, eventId: null, status: "CONFIRMED", method: "STRIPE",
+      registrantName: "Midnight Giver", registrantEmail: "verify-regs-donor@example.org", registrantPhone: "",
+      lineItems: { create: [{ orgId: org.id, description: "Donation", amountCents: 1500, quantity: 1, isDonation: true, status: "PAID" }] },
+      payments: { create: [{ orgId: org.id, method: "STRIPE", status: "SUCCEEDED", amountCents: 1500, createdAt: new Date("2026-01-01T05:30:00Z") }] },
+    },
+  });
+  const in2026 = await getDonorRows(org.id, { year: 2026 });
+  const in2025 = await getDonorRows(org.id, { year: 2025 });
+  check("a gift at 11:30pm on New Year's Eve, venue time, belongs to the old year",
+    !in2026.some((r) => r.donor === "Midnight Giver") && in2025.some((r) => r.donor === "Midnight Giver" && r.date === "2025-12-31"),
+    `2026: ${in2026.filter((r) => r.donor === "Midnight Giver").length}, 2025: ${in2025.filter((r) => r.donor === "Midnight Giver").map((r) => r.date).join(",")}`);
+  // The receipt path, read as text: an eventless order gets a receipt, never
+  // a ticket email, from the one block that sends both.
+  const paySrc = readFileSync(join(process.cwd(), "src/server/payments.ts"), "utf8");
+  check("confirmOrderPaid sends a donation receipt for an eventless order", /sendDonationReceiptEmail\(/.test(paySrc));
+  check("...and stamps receiptSentAt only when it was delivered", /receiptSentAt/.test(paySrc) && /delivered/.test(paySrc));
+
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§13 a Zelle, cheque or cash payment is recorded from the registrations page");
+  // What scripts/mint-offline-order.ts did from a laptop, now a server function
+  // the admin page calls: the SAME createRegistration (prices from the cap
+  // rows, never from the form) and the SAME confirmOrderPaid (caps, codes,
+  // one ledger row), keyed on the payment reference so a double entry cannot
+  // mint twice, and refusing to confirm when the money received is not what
+  // the basket costs — the order is left PENDING for a human to look at.
+  const { recordOfflinePayment } = await import("../src/server/offlineOrders");
+  const payer = { name: "Zelle Payer", email: "verify-regs-zelle@example.org" };
+  const zelle = await recordOfflinePayment(org.id, {
+    eventId: event.id, registrant: payer, items: [{ serviceKey: ADMIT_KEY, quantity: 2 }],
+    method: "ZELLE", amountCents: 5000, ref: "ZL-VERIFY-1",
+  });
+  check("a Zelle payment for 2 × $25 confirms the order and mints two codes",
+    zelle.ok && zelle.campIds.length === 2 && zelle.alreadyConfirmed === false, JSON.stringify(zelle));
+  if (zelle.ok) {
+    const zo = await db.order.findUniqueOrThrow({ where: { id: zelle.orderId }, include: { payments: true, lineItems: true } });
+    check("...settled as ZELLE with one SUCCEEDED payment for the amount received",
+      zo.status === "CONFIRMED" && zo.method === "ZELLE" && zo.payments.length === 1 && zo.payments[0]?.status === "SUCCEEDED" && zo.payments[0]?.amountCents === 5000);
+    check("...keyed on the payment reference SCOPED to the organisation (cheque 1001 exists in every organisation)", zo.idempotencyKey === `${org.id}:ZL-VERIFY-1`, String(zo.idempotencyKey));
+    check("...with no phone invented: the sentinel stands in", zo.registrantPhone === "000-000-0000");
+  }
+  const again = await recordOfflinePayment(org.id, {
+    eventId: event.id, registrant: payer, items: [{ serviceKey: ADMIT_KEY, quantity: 2 }],
+    method: "ZELLE", amountCents: 5000, ref: "ZL-VERIFY-1",
+  });
+  check("the same reference again is refused as a duplicate, not minted twice",
+    !again.ok && again.reason === "duplicate-ref", JSON.stringify(again));
+  const short = await recordOfflinePayment(org.id, {
+    eventId: event.id, registrant: payer, items: [{ serviceKey: ADMIT_KEY, quantity: 2 }],
+    method: "CHECK", amountCents: 4000, ref: "CHK-VERIFY-2",
+  });
+  check("money that does not match the basket is NOT confirmed: the order is left PENDING, and says why",
+    !short.ok && short.reason === "amount-mismatch" && short.totalCents === 5000 && typeof short.orderId === "string"
+      && (await db.order.findUniqueOrThrow({ where: { id: short.orderId! } })).status === "PENDING",
+    JSON.stringify(short));
+  const unknownItem = await recordOfflinePayment(org.id, {
+    eventId: event.id, registrant: payer, items: [{ serviceKey: "not-offered", quantity: 1 }],
+    method: "CASH", amountCents: 100, ref: "CASH-VERIFY-3",
+  });
+  check("an item the event does not sell is refused in the buyer's words", !unknownItem.ok && unknownItem.reason === "refused");
+  const camp = await db.event.create({
+    data: {
+      orgId: org.id, type: "CAMP", status: "OPEN", code: `${CODE}-CAMP`, name: "Registrations Camp",
+      startsAt: new Date(Date.now() + 20 * 24 * 3600_000), endsAt: new Date(Date.now() + 20 * 24 * 3600_000 + 3 * 3600_000),
+      collectsAttendeeDetails: true,
+    },
+  });
+  const campTry = await recordOfflinePayment(org.id, {
+    eventId: camp.id, registrant: payer, items: [{ serviceKey: ADMIT_KEY, quantity: 1 }],
+    method: "ZELLE", amountCents: 2500, ref: "ZL-VERIFY-4",
+  });
+  check("an attendee-mode event is refused (per-person details cannot be invented here)",
+    !campTry.ok && campTry.reason === "attendee-mode", JSON.stringify(campTry));
+  const foreign = await recordOfflinePayment("not-this-org", {
+    eventId: event.id, registrant: payer, items: [{ serviceKey: ADMIT_KEY, quantity: 1 }],
+    method: "ZELLE", amountCents: 2500, ref: "ZL-VERIFY-5",
+  });
+  check("another organisation's event is refused with the same words as a missing one",
+    !foreign.ok && foreign.message === "That event could not be found.", JSON.stringify(foreign));
+  // The ticket email has ONE builder now, shared by the webhook path, the
+  // resend button and the offline script. Read as text.
+  const paySrc2 = readFileSync(join(process.cwd(), "src/server/payments.ts"), "utf8");
+  check("confirmOrderPaid sends the ticket through sendTicketEmailFor", /sendTicketEmailFor\(/.test(paySrc2));
+  check("...and there is exactly one sendConfirmationEmail call in payments.ts", (paySrc2.match(/sendConfirmationEmail\(/g) ?? []).length === 1);
+  check("the offline script's --resend uses the shared builder too",
+    /sendTicketEmailFor\(/.test(readFileSync(join(process.cwd(), "scripts/mint-offline-order.ts"), "utf8")));
+  const actSrc = readFileSync(join(process.cwd(), "src/app/admin/camps/[id]/registrations/actions.ts"), "utf8");
+  check("the admin actions require an admin and re-scope the event to the organisation",
+    /requireAdmin\(\)/.test(actSrc) && /recordOfflinePayment\(/.test(actSrc) && /sendTicketEmailFor\(/.test(actSrc));
+  // CASH is a till holder's to record (CLAUDE.md's role table: committee/admin
+  // cash = No), exactly as at the door; Zelle and cheques are fine for an admin.
+  check("recording CASH needs a till holder, like the door", /canRecordCash\(/.test(actSrc) && /"CASH"/.test(actSrc));
+  check("...and the form hides the option from members who cannot", /canRecordCash/.test(readFileSync(join(process.cwd(), "src/app/admin/camps/[id]/registrations/OfflinePaymentForm.tsx"), "utf8")));
+
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§14 a bank debit in flight holds the seat once, and gives it back on failure");
+  // The reservation is the same atomic cap claim confirmation makes, stamped
+  // on the order so confirmation does not make it twice; a failed debit
+  // returns exactly what was held and leaves the order payable again.
+  const { markPaymentProcessing, releaseProcessingPayment, resumeCheckoutForOrder } = await import("../src/server/payments");
+  const { signResumeProof } = await import("../src/lib/checkoutResume");
+  const capBefore = (await db.serviceCap.findUniqueOrThrow({ where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: admit.id } } })).sold;
+  const debit = await createRegistration({
+    eventId: event.id, registrant: { name: "Bank Payer", email: "verify-regs-ach@example.org", phone: "5550003333" },
+    marketingConsent: false, quantities: [{ serviceKey: ADMIT_KEY, quantity: 2 }],
+  });
+  await db.payment.create({ data: { orgId: org.id, orderId: debit.orderId, method: "STRIPE", status: "PENDING", amountCents: debit.totalCents, stripeCheckoutId: "cs_verify_ach_1" } });
+  await markPaymentProcessing(debit.orderId, { id: "cs_verify_ach_1", payment_intent: "pi_verify_ach_1" });
+  const soldAfterHold = (await db.serviceCap.findUniqueOrThrow({ where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: admit.id } } })).sold;
+  const heldOrder = await db.order.findUniqueOrThrow({ where: { id: debit.orderId }, include: { payments: true } });
+  check("the reservation claims the two seats and stamps the order",
+    soldAfterHold === capBefore + 2 && heldOrder.capsReservedAt !== null && heldOrder.status === "PENDING", `sold ${capBefore}→${soldAfterHold}, stamp ${heldOrder.capsReservedAt}`);
+  check("...and the payment is PROCESSING with its intent recorded",
+    heldOrder.payments[0]?.status === "PROCESSING" && heldOrder.payments[0]?.stripePaymentIntentId === "pi_verify_ach_1");
+  check("...no ticket yet: nothing scans", (await db.attendee.findMany({ where: { orderId: debit.orderId } })).every((a) => a.campId === null));
+  await markPaymentProcessing(debit.orderId, { id: "cs_verify_ach_1", payment_intent: "pi_verify_ach_1" });
+  check("a retried processing event holds nothing more",
+    (await db.serviceCap.findUniqueOrThrow({ where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: admit.id } } })).sold === capBefore + 2);
+  const resumeHeld = await resumeCheckoutForOrder(debit.orderId, signResumeProof(debit.orderId), undefined, { orgId: org.id });
+  check("resume is refused while the debit is in flight (no double pay)", !resumeHeld.ok && resumeHeld.reason === "not-resumable", JSON.stringify(resumeHeld));
+  await confirmOrderPaid(debit.orderId, { method: "STRIPE", stripeCheckoutId: "cs_verify_ach_1", stripePaymentIntentId: "pi_verify_ach_1", idempotencyKey: "evt_verify_ach_ok" });
+  check("confirmation on a held order does NOT claim the seats a second time",
+    (await db.serviceCap.findUniqueOrThrow({ where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: admit.id } } })).sold === capBefore + 2);
+  check("...and mints the codes", (await db.attendee.findMany({ where: { orderId: debit.orderId } })).every((a) => a.campId !== null));
+
+  const failing = await createRegistration({
+    eventId: event.id, registrant: { name: "Bounced Payer", email: "verify-regs-ach@example.org", phone: "5550003333" },
+    marketingConsent: false, quantities: [{ serviceKey: ADMIT_KEY, quantity: 1 }],
+  });
+  await db.payment.create({ data: { orgId: org.id, orderId: failing.orderId, method: "STRIPE", status: "PENDING", amountCents: failing.totalCents, stripeCheckoutId: "cs_verify_ach_2" } });
+  await markPaymentProcessing(failing.orderId, { id: "cs_verify_ach_2", payment_intent: "pi_verify_ach_2" });
+  const soldHeld2 = (await db.serviceCap.findUniqueOrThrow({ where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: admit.id } } })).sold;
+  await releaseProcessingPayment(failing.orderId, "cs_verify_ach_2");
+  const released = await db.order.findUniqueOrThrow({ where: { id: failing.orderId }, include: { payments: true } });
+  check("a failed debit gives the seat back, marks the payment FAILED and leaves the order payable",
+    (await db.serviceCap.findUniqueOrThrow({ where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: admit.id } } })).sold === soldHeld2 - 1
+      && released.capsReservedAt === null && released.status === "PENDING" && released.payments[0]?.status === "FAILED",
+    `sold ${soldHeld2}→${(await db.serviceCap.findUniqueOrThrow({ where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: admit.id } } })).sold}`);
+  await releaseProcessingPayment(failing.orderId, "cs_verify_ach_2");
+  check("...and releasing twice gives nothing back twice",
+    (await db.serviceCap.findUniqueOrThrow({ where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: admit.id } } })).sold === soldHeld2 - 1);
+
+  // ── A gift paid by bank debit, and events arriving out of order ──
+  const giftDebit = await createDonationOrder(org.id, { donor, amountCents: 3000, coverFee: false, marketingConsent: false },
+    { enabled: true, suggestedAmountsCents: [2500], allowFeeCover: true, minCents: 100 });
+  await db.payment.create({ data: { orgId: org.id, orderId: giftDebit.orderId, method: "STRIPE", status: "PENDING", amountCents: 3000, stripeCheckoutId: "cs_verify_gift_ach" } });
+  const giftHold = await markPaymentProcessing(giftDebit.orderId, { id: "cs_verify_gift_ach", payment_intent: "pi_verify_gift_ach" });
+  check("a gift paid by bank debit is marked processing like a ticket (nothing to hold, nothing to scan)",
+    giftHold.reserved === true && (await db.payment.findFirstOrThrow({ where: { orderId: giftDebit.orderId } })).status === "PROCESSING");
+  const pay3 = readFileSync(join(process.cwd(), "src/server/payments.ts"), "utf8");
+  check("...and the donor is told on both outcomes, with the organisation's name where an event's would go",
+    !/if \(order\?\.event\) \{[\s\S]{0,200}sendPaymentProcessingEmail/.test(pay3) && !/if \(order\?\.event\) \{[\s\S]{0,200}sendPaymentFailedEmail/.test(pay3)
+      && /sendPaymentProcessingEmail\(/.test(pay3) && /sendPaymentFailedEmail\(/.test(pay3));
+  check("the donate thanks page can show a debit in flight",
+    /payments: \{ select: \{ status: true \} \}/.test(readFileSync(join(process.cwd(), "src/app/donate/thanks/[orderId]/page.tsx"), "utf8")));
+
+  // Stripe does not order events, and a completion that 500'd is retried for
+  // days: a FAILURE that lands before the completion must leave nothing for
+  // the late completion to hold, or the seats are held with no path to
+  // release them.
+  const late = await createRegistration({
+    eventId: event.id, registrant: { name: "Late Payer", email: "verify-regs-ach@example.org", phone: "5550003333" },
+    marketingConsent: false, quantities: [{ serviceKey: ADMIT_KEY, quantity: 1 }],
+  });
+  await db.payment.create({ data: { orgId: org.id, orderId: late.orderId, method: "STRIPE", status: "PENDING", amountCents: late.totalCents, stripeCheckoutId: "cs_verify_ach_3" } });
+  const soldBeforeLate = (await db.serviceCap.findUniqueOrThrow({ where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: admit.id } } })).sold;
+  await releaseProcessingPayment(late.orderId, "cs_verify_ach_3");
+  await markPaymentProcessing(late.orderId, { id: "cs_verify_ach_3", payment_intent: "pi_verify_ach_3" });
+  const lateOrder = await db.order.findUniqueOrThrow({ where: { id: late.orderId }, include: { payments: true } });
+  check("a failure that arrives BEFORE the completion marks that payment FAILED, and the late completion holds nothing",
+    (await db.serviceCap.findUniqueOrThrow({ where: { eventId_serviceTypeId: { eventId: event.id, serviceTypeId: admit.id } } })).sold === soldBeforeLate
+      && lateOrder.payments[0]?.status === "FAILED" && lateOrder.capsReservedAt === null,
+    `payment ${lateOrder.payments[0]?.status}, stamp ${lateOrder.capsReservedAt}`);
+
   await cleanup(org.id);
 }
 
 async function cleanup(orgId: string): Promise<void> {
-  const events = await db.event.findMany({ where: { orgId, code: CODE } });
+  const events = await db.event.findMany({ where: { orgId, code: { in: [CODE, `${CODE}-CAMP`] } } });
   for (const event of events) {
     const orders = await db.order.findMany({
       where: { eventId: event.id },
@@ -473,8 +906,18 @@ async function cleanup(orgId: string): Promise<void> {
     await db.event.delete({ where: { id: event.id } });
   }
   await db.serviceType.deleteMany({
-    where: { orgId, key: { in: [ADMIT_KEY, MERCH_KEY] } },
+    where: { orgId, key: { in: [ADMIT_KEY, MERCH_KEY, DOUBLES_KEY] } },
   });
+  // Eventless (general-fund) orders are not under any event's cascade.
+  const gifts = await db.order.findMany({
+    where: { orgId, eventId: null, registrantEmail: "verify-regs-donor@example.org" },
+    select: { id: true },
+  });
+  const giftIds = gifts.map((g) => g.id);
+  const giftPayments = await db.payment.findMany({ where: { orderId: { in: giftIds } }, select: { id: true } });
+  await db.ledgerEntry.deleteMany({ where: { paymentId: { in: giftPayments.map((p) => p.id) } } });
+  await db.payment.deleteMany({ where: { orderId: { in: giftIds } } });
+  await db.order.deleteMany({ where: { id: { in: giftIds } } });
 }
 
 main()

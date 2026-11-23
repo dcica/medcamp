@@ -93,8 +93,16 @@ export default async function EventServicesPage({
             body: "Admission issues a scannable ticket and counts toward the door headcount. Merchandise is a physical good handed over at the gate. Entry fee buys a slot and admits nobody — a competition entry.",
           },
           {
+            label: "Tables and doubles",
+            body: "A table of 8 or a doubles entry is one catalogue item whose 'admits' count is 8 or 2: one purchase, one line, one code per seat. Capacity counts purchases of the item, and the price (and any fair market value) is per table or per pair. Online only — the door sells one person at a time and never shows a bundle.",
+          },
+          {
             label: "Capacity",
             body: "Unlimited means registration never stops selling. A limit stops sales once that many are sold; it can't be set below what's already sold.",
+          },
+          {
+            label: "Fair market value",
+            body: "For a dinner seat or a table: what the guest receives at a comparable price, not your cost. The confirmation email then states the payment, that value and the deductible remainder (IRS Pub 1771). A $100 seat at a dinner comparable to a $40 meal is $60 deductible even if the meal cost you $30.",
           },
           {
             label: "Removing",
@@ -125,6 +133,9 @@ export default async function EventServicesPage({
           maxParticipants: c.maxParticipants,
           minDuration: toDurationInput(c.minDurationSeconds),
           maxDuration: toDurationInput(c.maxDurationSeconds),
+          fairMarketValueDollars:
+            c.fairMarketValueCents === null ? null : c.fairMarketValueCents / 100,
+          onlineMethods: c.onlineMethods,
         }))}
         catalogue={catalogue.map((s) => ({
           id: s.id,
