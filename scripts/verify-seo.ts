@@ -632,6 +632,46 @@ async function main(): Promise<void> {
       perform.searchParams.get("utm_content") === "perform",
     links[1].url,
   );
+
+  // The centre logo. A flyer cannot be recalled, so the logo must never cost
+  // the code its ability to scan, and must never become a markup channel.
+  const { withCenterLogo, QR_LOGO_FRACTION } = await import("../src/lib/marketingQr");
+  const QRCode = (await import("qrcode")).default;
+  const plain = await QRCode.toString(links[0].url, { type: "svg", margin: 2, errorCorrectionLevel: "H" });
+  const logo = "data:image/png;base64,iVBORw0KGgo=";
+  const withLogo = withCenterLogo(plain, logo);
+  const n = Number(/viewBox="0 0 (\d+)/.exec(plain)?.[1]);
+  const img = /<image x="([\d.]+)" y="([\d.]+)" width="([\d.]+)"/.exec(withLogo);
+  const pad = /<rect x="([\d.]+)" y="[\d.]+" width="([\d.]+)"/.exec(withLogo);
+  check(
+    "the logo is embedded once, inside the svg, as the data uri it was given",
+    withLogo.split("<image").length === 2 &&
+      withLogo.includes(`href="${logo}"`) &&
+      withLogo.trimEnd().endsWith("</svg>"),
+  );
+  check(
+    "the logo is centred and covers at most a quarter of the width",
+    !!img &&
+      QR_LOGO_FRACTION <= 0.25 &&
+      Math.abs(Number(img[1]) + Number(img[3]) / 2 - n / 2) < 0.01 &&
+      Number(img[3]) <= n * 0.25 + 0.001,
+    img?.[0],
+  );
+  check(
+    "the white pad covers at most 30% of the width and stays clear of the finder patterns",
+    !!pad && Number(pad[2]) <= n * 0.3 && Number(pad[1]) >= 2 + 8,
+    pad?.[0],
+  );
+  eq(
+    "a logo that is not an image data uri leaves the code untouched",
+    [
+      withCenterLogo(plain, "https://evil.example/x.png"),
+      withCenterLogo(plain, 'data:image/png;base64,AA"/><script>'),
+      withCenterLogo(plain, "data:text/html;base64,AAAA"),
+      withCenterLogo(plain, null),
+    ].every((s) => s === plain),
+    true,
+  );
 }
 
 main()

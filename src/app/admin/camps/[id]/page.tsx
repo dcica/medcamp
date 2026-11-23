@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { getActiveOrg, getActiveOrigin } from "@/lib/tenant";
 import { offeringKindsByEvent } from "@/server/performance";
 import { marketingLinks } from "@/lib/marketingQr";
+import { qrLogoDataUri } from "@/server/qrLogo";
 import { formatVenueZone, formatWhen, instantToVenueInput } from "@/lib/eventTime";
 import { STATUS_STYLE } from "@/lib/eventLifecycle";
 import { PageHelp } from "@/app/_components/PageHelp";
@@ -67,6 +68,7 @@ export default async function CampDetailPage({
     offeringKindsByEvent([camp.id]),
   ]);
   const qrLinks = marketingLinks(origin, camp, kindsMap.get(camp.id));
+  const qrLogo = await qrLogoDataUri(org?.settings, org?.name, origin);
 
   return (
     <div className="space-y-6">
@@ -239,7 +241,12 @@ export default async function CampDetailPage({
         <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
           QR codes for marketing
         </h3>
-        <MarketingQr code={camp.code} links={qrLinks} status={camp.status} />
+        <MarketingQr
+          code={camp.code}
+          links={qrLinks}
+          status={camp.status}
+          logoDataUri={qrLogo}
+        />
       </div>
 
       {/* Registration & policy flags */}
