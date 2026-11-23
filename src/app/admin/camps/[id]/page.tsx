@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/server/admin";
 import { db } from "@/lib/db";
-import { getActiveOrg } from "@/lib/tenant";
+import { getActiveOrg, getActiveOrigin } from "@/lib/tenant";
+import { offeringKindsByEvent } from "@/server/performance";
+import { marketingLinks } from "@/lib/marketingQr";
 import { formatVenueZone, formatWhen, instantToVenueInput } from "@/lib/eventTime";
 import { STATUS_STYLE } from "@/lib/eventLifecycle";
 import { PageHelp } from "@/app/_components/PageHelp";
@@ -12,6 +14,7 @@ import { CampControls } from "./CampControls";
 import { EditEventForm } from "./EditEventForm";
 import { EventFlags } from "./EventFlags";
 import { PublicDoors } from "./PublicDoors";
+import { MarketingQr } from "./MarketingQr";
 import { Breadcrumbs, campTrail } from "@/app/_components/Breadcrumbs";
 
 export const dynamic = "force-dynamic";
@@ -56,6 +59,14 @@ export default async function CampDetailPage({
     : null;
 
   if (!camp) notFound();
+
+  // Same origin and same per-service kinds the public pages use, so the
+  // flyer codes name exactly the buttons a member of the public will see.
+  const [origin, kindsMap] = await Promise.all([
+    getActiveOrigin(),
+    offeringKindsByEvent([camp.id]),
+  ]);
+  const qrLinks = marketingLinks(origin, camp, kindsMap.get(camp.id));
 
   return (
     <div className="space-y-6">
@@ -221,6 +232,14 @@ export default async function CampDetailPage({
             offersVendors: camp.offersVendors,
           }}
         />
+      </div>
+
+      {/* Flyer / poster QR codes, one per public door above. */}
+      <div>
+        <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
+          QR codes for marketing
+        </h3>
+        <MarketingQr code={camp.code} links={qrLinks} status={camp.status} />
       </div>
 
       {/* Registration & policy flags */}

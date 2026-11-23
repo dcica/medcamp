@@ -583,6 +583,55 @@ async function main(): Promise<void> {
       await db.$disconnect();
     }
   }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n§9  marketing QR links (pure)");
+  /*
+   * A printed QR cannot be recalled. These pin the two ways it goes stale: a
+   * code for a door the site does not open, and a code whose URL the event
+   * page will not resolve.
+   */
+  const { marketingLinks } = await import("../src/lib/marketingQr");
+  const base = {
+    id: "evt1",
+    name: "Christmas Parade",
+    code: "XMAS-2026",
+    type: "GENERAL",
+    offersRegistration: true,
+    offersVolunteers: true,
+    offersVendors: false,
+  };
+  const feeOnly = { hasFee: true, hasOther: false };
+  const keys = (l: { key: string }[]) => l.map((x) => x.key);
+
+  eq(
+    "one code per public door, in button order, page first",
+    keys(marketingLinks("https://x.org", base, feeOnly)),
+    ["page", "perform", "volunteer"],
+  );
+  eq(
+    "a door switched off has no code",
+    keys(marketingLinks("https://x.org", { ...base, offersRegistration: false }, feeOnly)),
+    ["page", "volunteer"],
+  );
+  const links = marketingLinks("https://x.org/o/harit", base, feeOnly);
+  const page = new URL(links[0].url);
+  check(
+    "the event-page code resolves to its own page, under the tenant path",
+    page.pathname.startsWith("/o/harit/e/") &&
+      seo.resolveEventSlug([base], page.pathname.split("/e/")[1])?.exact === true,
+    links[0].url,
+  );
+  const perform = new URL(links[1].url);
+  check(
+    "a door code keeps its own query and carries the utm tags",
+    perform.pathname === "/o/harit/perform" &&
+      perform.searchParams.get("event") === "evt1" &&
+      perform.searchParams.get("utm_source") === "qr" &&
+      perform.searchParams.get("utm_campaign") === "xmas-2026" &&
+      perform.searchParams.get("utm_content") === "perform",
+    links[1].url,
+  );
 }
 
 main()
